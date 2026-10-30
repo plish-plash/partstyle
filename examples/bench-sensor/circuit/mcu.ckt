@@ -1,0 +1,34 @@
+block mcu "ATmega328P on its 8 MHz internal RC at 3.3 V, with ISP and UART headers"
+
+port +3V3 : power_in
+port GND  : ground
+port AIN  : input
+
+part U4  lib:ATMEGA328P-AU
+part C9  cap(100n, 16V, X7R, 0603)  @ VCC pin 4 bypass
+part C10 cap(100n, 16V, X7R, 0603)  @ VCC pin 6 bypass
+part C11 cap(100n, 16V, X7R, 0603)  @ AVCC bypass
+part C12 cap(100n, 16V, X7R, 0603)  @ AREF bypass, internal 1.1 V reference
+part R5  res(10k, 1%, 0603)         @ RESET pull-up
+part J3  lib:TSW-103-07-G-D         @ AVR ISP: 1 MISO, 2 VCC, 3 SCK, 4 MOSI, 5 RESET, 6 GND
+part J5  lib:TSW-103-07-G-S         @ UART: 1 = TXD, 2 = RXD, 3 = GND
+part R6  res(330, 1%, 0603)
+part D4  led(red, 0603)             @ status LED
+
+net +3V3   : U4.VCC U4.AVCC C9.1 C10.1 C11.1 R5.1 J3.2 -> port +3V3
+net GND    : U4.GND C9.2 C10.2 C11.2 C12.2 J3.6 J5.3 D4.K -> port GND
+net AREF   : U4.AREF C12.1
+net AIN    : U4.ADC7                   -> port AIN
+net RESET  : U4.RESET R5.2 J3.5
+net MOSI   : U4.PB3 J3.4
+net MISO   : U4.PB4 J3.1
+net SCK    : U4.PB5 J3.3
+net TXD    : U4.PD1 J5.1
+net RXD    : U4.PD0 J5.2
+net LED    : U4.PB1 R6.1
+net LED_A  : R6.2 D4.A
+
+waive U4.PB* erc.unconnected-pin "spare GPIO"
+waive U4.PC* erc.unconnected-pin "spare GPIO"
+waive U4.PD* erc.unconnected-pin "spare GPIO"
+waive U4.ADC6 erc.unconnected-pin "spare analog input"

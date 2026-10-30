@@ -1,0 +1,16 @@
+id: PESD5V0S1BL
+manufacturer: Nexperia
+mpn: PESD5V0S1BL,315
+summary: Bidirectional 5 V ESD protection diode, SOD-323
+package: SOD-323
+footprint: Diode_SMD:D_SOD-323
+pins:
+  1: { name: "1", type: passive }
+  2: { name: "2", type: passive }
+ratings:
+  vrwm: 5V
+  esd_contact: 30kV
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null

@@ -1,0 +1,18 @@
+block main "Deliberately broken: one fault per check"
+
+port GND : ground
+
+part U1 lib:L7805CV
+part U2 lib:L7805CV               @ second regulator fighting U1
+part U3 lib:MCP6002-I_SN
+part U4 lib:NOT_IN_LIBRARY
+part C1 cap(100n, 16V)
+part C2 cap(1uH)
+
+net +12V : U1.IN C1.1                          @ no source attribute
+net +5V  : U1.OUT U2.OUT U3.VDD
+net GND  : U1.GND U2.GND U3.VSS C1.2 -> port GND
+net SIG  : U3.VINA+ U3.VINB+
+net LONE : C2.1
+net BAD  : U3.OUTX
+net NOCOLON U3.VDD

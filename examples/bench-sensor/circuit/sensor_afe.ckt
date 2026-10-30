@@ -1,0 +1,25 @@
+block sensor_afe "Remote 0-3.3 V sensor input: ESD clamp, RC filter, unity-gain buffer"
+
+port +5V  : power_in
+port +3V3 : power_in
+port GND  : ground
+port AIN  : output
+
+part J2  lib:TSW-103-07-G-S         @ remote sensor: 1 = signal, 2 = +5V, 3 = GND
+part D3  lib:PESD5V0S1BL            @ ESD clamp at the connector
+part R2  res(1k, 1%, 0603)          @ limits clamp current; with C6 a 16 kHz low-pass
+part R4  res(100k, 1%, 0603)        @ reads 0 V when the sensor is unplugged
+part C6  cap(10n, 16V, X7R, 0603)
+part U3  lib:MCP6002-I_SN
+part C8  cap(100n, 16V, X7R, 0603)  @ U3 bypass
+part R3  res(1k, 1%, 0603)          @ isolates the buffer from the ADC sample cap
+part C7  cap(100n, 16V, X7R, 0603)  @ ADC charge reservoir
+
+net SENSE_RAW : J2.1 D3.1 R2.1
+net SENSE     : R2.2 R4.1 C6.1 U3.VINA+   {voltage: 0-3.3V}
+net BUF       : U3.OUTA U3.VINA- R3.1
+net AIN       : R3.2 C7.1                 -> port AIN
+net SPARE_B   : U3.OUTB U3.VINB-          @ unused half as a grounded follower
+net +5V       : J2.2                      -> port +5V
+net +3V3      : U3.VDD C8.1               -> port +3V3
+net GND       : J2.3 D3.2 R4.2 C6.2 C7.2 C8.2 U3.VSS U3.VINB+ -> port GND

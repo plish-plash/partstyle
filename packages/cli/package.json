@@ -1,0 +1,15 @@
+{
+  "name": "@partstyle/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "partstyle": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@partstyle/engine": "workspace:*"
+  }
+}

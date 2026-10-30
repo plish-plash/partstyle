@@ -1,0 +1,22 @@
+id: MCP1700T-3302E_TT
+manufacturer: Microchip
+mpn: MCP1700T-3302E/TT
+summary: 3.3 V 250 mA low-quiescent LDO, SOT-23
+package: SOT-23-3
+footprint: Package_TO_SOT_SMD:SOT-23
+pins:
+  1: { name: GND, type: power_in }
+  2: { name: VOUT, type: power_out }
+  3: { name: VIN, type: power_in }
+ratings:
+  vin_max: 6V
+  iout_max: 250mA
+  dropout: 178mV
+requirements:
+  - 1 uF ceramic on VIN and on VOUT
+notes:
+  - VIN absolute maximum is 6.5 V; never feed it from the 12 V rail
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null

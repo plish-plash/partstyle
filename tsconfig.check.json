@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "paths": {
+      "@partstyle/engine": ["./packages/engine/src/index.ts"],
+      "@partstyle/engine/node": ["./packages/engine/src/node.ts"]
+    }
+  },
+  "include": ["packages/*/src", "vitest.config.ts"]
+}

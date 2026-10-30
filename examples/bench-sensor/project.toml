@@ -1,0 +1,8 @@
+name = "bench-sensor"
+top = "main"
+
+[library]
+paths = ["../../library"]
+
+[sourcing]
+distributors = ["lcsc", "digikey"]

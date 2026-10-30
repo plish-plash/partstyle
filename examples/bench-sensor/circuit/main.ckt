@@ -1,0 +1,10 @@
+block main "Benchtop sensor interface: 12 V in, buffered remote analog sensor into an ATmega328P"
+
+use power      as PWR
+use sensor_afe as AFE
+use mcu        as MCU
+
+net +5V  : PWR.+5V AFE.+5V
+net +3V3 : PWR.+3V3 AFE.+3V3 MCU.+3V3
+net GND  : PWR.GND AFE.GND MCU.GND
+net AIN  : AFE.AIN MCU.AIN

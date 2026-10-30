@@ -1,0 +1,26 @@
+id: MCP6002-I_SN
+manufacturer: Microchip
+mpn: MCP6002-I/SN
+summary: Dual 1 MHz rail-to-rail I/O op-amp, 1.8-6 V, SOIC-8
+package: SOIC-8
+footprint: Package_SO:SOIC-8_3.9x4.9mm_P1.27mm
+pins:
+  1: { name: OUTA, type: output }
+  2: { name: VINA-, type: input }
+  3: { name: VINA+, type: input }
+  4: { name: VSS, type: power_in }
+  5: { name: VINB+, type: input }
+  6: { name: VINB-, type: input }
+  7: { name: OUTB, type: output }
+  8: { name: VDD, type: power_in }
+ratings:
+  vdd_max: 7V
+  vdd_min: 1.8V
+  gbw: 1MHz
+requirements:
+  - 0.1 uF bypass from VDD to VSS, close to pin 8
+  - tie unused amplifier halves off (e.g. follower with input at a defined level)
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null

@@ -1,0 +1,17 @@
+id: TSW-103-07-G-D
+manufacturer: Samtec
+mpn: TSW-103-07-G-D
+summary: 2x3 2.54 mm pin header, through-hole (AVR ISP)
+package: PinHeader_2x03
+footprint: Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical
+pins:
+  1: { name: "1", type: passive }
+  2: { name: "2", type: passive }
+  3: { name: "3", type: passive }
+  4: { name: "4", type: passive }
+  5: { name: "5", type: passive }
+  6: { name: "6", type: passive }
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null
