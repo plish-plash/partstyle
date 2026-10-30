@@ -3,7 +3,7 @@ import { parseCkt } from "./ckt/parser.js";
 import { compareIssues, dedupeIssues, type Issue } from "./diagnostics.js";
 import { runErc } from "./erc/rules.js";
 import { elaborate, type Netlist, type WaiverScope } from "./netlist/elaborate.js";
-import { buildLibrary } from "./parts/library.js";
+import { buildLibrary, type PartLibrary } from "./parts/library.js";
 import { type ProjectConfig, parseProjectConfig } from "./project/config.js";
 import type { ProjectSource } from "./project/source.js";
 
@@ -14,6 +14,9 @@ export interface ValidationResult {
   waived: number;
   config?: ProjectConfig;
   netlist?: Netlist;
+  /** Parsed circuit files, in source order. */
+  blocks: CktFile[];
+  library: PartLibrary;
 }
 
 /** Parse, elaborate and run structural ERC over a project, then apply waivers. */
@@ -30,13 +33,22 @@ export function validateProject(source: ProjectSource): ValidationResult {
   const { library, issues: libraryIssues } = buildLibrary(source.parts);
   issues.push(...libraryIssues);
 
-  if (!config) return { issues: dedupeIssues(issues).sort(compareIssues), waived: 0 };
+  if (!config) {
+    return { issues: dedupeIssues(issues).sort(compareIssues), waived: 0, blocks, library };
+  }
 
   const elaborated = elaborate(blocks, library, config.top);
   issues.push(...elaborated.issues, ...runErc(elaborated.netlist));
 
   const { kept, waived } = applyWaivers(dedupeIssues(issues), elaborated.waiverScopes);
-  return { issues: kept.sort(compareIssues), waived, config, netlist: elaborated.netlist };
+  return {
+    issues: kept.sort(compareIssues),
+    waived,
+    config,
+    netlist: elaborated.netlist,
+    blocks,
+    library,
+  };
 }
 
 function globToRegExp(glob: string): RegExp {

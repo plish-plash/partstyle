@@ -46,6 +46,25 @@ export function dedupeIssues(issues: Issue[]): Issue[] {
   });
 }
 
+/**
+ * Issues present only in `after` (added) or only in `before` (resolved). Matching ignores
+ * location, since edits shift line numbers.
+ */
+export function issueDelta(before: Issue[], after: Issue[]): { added: Issue[]; resolved: Issue[] } {
+  const key = (i: Issue) => `${i.code}|${i.severity}|${i.message}`;
+  const subtract = (from: Issue[], other: Issue[]) => {
+    const counts = new Map<string, number>();
+    for (const i of other) counts.set(key(i), (counts.get(key(i)) ?? 0) + 1);
+    return from.filter((i) => {
+      const n = counts.get(key(i)) ?? 0;
+      if (n === 0) return true;
+      counts.set(key(i), n - 1);
+      return false;
+    });
+  };
+  return { added: subtract(after, before), resolved: subtract(before, after) };
+}
+
 export function formatIssue(issue: Issue): string {
   const loc = issue.location;
   const where = loc ? `${loc.file}:${loc.line}:${loc.col} ` : "";

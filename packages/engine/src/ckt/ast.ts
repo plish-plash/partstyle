@@ -75,3 +75,14 @@ export interface CktFile {
   uses: UseDecl[];
   waivers: WaiverDecl[];
 }
+
+/** One parsed .ckt line. */
+export type Statement =
+  | { kind: "block"; decl: BlockDecl }
+  | { kind: "port"; decl: PortDecl }
+  | { kind: "part"; decl: PartDecl }
+  | { kind: "net"; decl: NetDecl }
+  | { kind: "use"; decl: UseDecl }
+  | { kind: "waive"; decl: WaiverDecl };
+
+export type StatementKind = Statement["kind"];

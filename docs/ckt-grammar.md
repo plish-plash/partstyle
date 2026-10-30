@@ -41,6 +41,26 @@ net GND  : PWR.GND MCU.GND
 Parts inside an instance get path names (`PWR/U1`), and so do nets that are not joined to a
 parent net (`PWR/VIN_RAW`). The top block is `top` in `project.toml`, which defaults to `main`.
 
+## Patches (`apply`)
+
+A patch is a batch of edits, one per line, applied all-or-nothing:
+
+```
+in power                          # block to edit; optional if the project has one block
++ part C13 cap(47u, 25V) @ bulk   # add a statement (error if the key exists)
+= part U2 lib:MCP1700T-3302E_TT   # replace the statement with the same kind and key
+- part D2                         # remove; also drops D2's pins from nets (part|net|port|use|waive)
+net +12V += C13.1 C13.2           # connect pins to an existing net
+net GND  -= C3.2                  # disconnect pins
+rename part C13 C20               # also rewrites pinrefs and waivers (part|use|net)
+in sensor_ref                     # a new block: its first edit must be
++ block sensor_ref "2.5 V ref"    #   '+ block NAME', creating circuit/NAME.ckt
+```
+
+Keys: part REF, net NAME, port NAME, use INST, waive SUBJECT. Edited lines are rewritten in
+canonical spacing; untouched lines keep their formatting. The reply lists the edits and only
+the issues they added or resolved. Use `dry_run` to preview.
+
 ## Issue codes
 
 | Code                                                            | Severity                           | Meaning                                                      |
@@ -55,3 +75,4 @@ parent net (`PWR/VIN_RAW`). The top block is `top` in `project.toml`, which defa
 | `erc.unsourced-power`                                           | error                              | `power_in` pins, no `power_out`, no `source`, no ground port |
 | `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`   | warning                            |                                                              |
 | `elab.unused-block`, `elab.attr-conflict`, `waive.unused`       | warning                            |                                                              |
+| `patch.error`                                                   | error                              | patch rejected; nothing was applied                          |

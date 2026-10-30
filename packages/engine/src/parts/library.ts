@@ -13,6 +13,8 @@ export interface LibraryEntry {
   record: PartRecord;
   file: string;
   layer: PartSource["layer"];
+  /** YAML source, for full-detail reads. */
+  text: string;
 }
 
 export type PartLibrary = Map<string, LibraryEntry>;
@@ -75,7 +77,7 @@ export function buildLibrary(sources: PartSource[]): { library: PartLibrary; iss
         subjects: [],
       });
     }
-    library.set(record.id, { record, file: source.file, layer: source.layer });
+    library.set(record.id, { record, file: source.file, layer: source.layer, text: source.text });
   }
   return { library, issues };
 }

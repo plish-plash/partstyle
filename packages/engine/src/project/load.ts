@@ -36,7 +36,9 @@ export async function loadProject(dir: string): Promise<ProjectSource> {
     config = await readText(root, path.join(root, "project.toml"));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new ProjectLoadError(`no project.toml in ${root}`);
+      throw new ProjectLoadError(
+        `no project.toml in ${root} (create a project with: partstyle init)`,
+      );
     }
     throw e;
   }
@@ -60,5 +62,9 @@ export async function loadProject(dir: string): Promise<ProjectSource> {
     partFiles.map(async ({ file, layer }) => ({ ...(await readText(root, file)), layer })),
   );
 
-  return { config, circuits, parts };
+  const context = await readText(root, path.join(root, "context.md")).catch((e) => {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw e;
+  });
+  return { config, circuits, parts, ...(context && { context }) };
 }

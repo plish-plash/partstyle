@@ -1,0 +1,17 @@
+{
+  "name": "@partstyle/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "partstyle-mcp": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@partstyle/engine": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

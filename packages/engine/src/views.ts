@@ -1,0 +1,127 @@
+import { parse as parseYaml } from "yaml";
+import { printSpec } from "./ckt/print.js";
+import { formatIssue } from "./diagnostics.js";
+import type { ProjectSource } from "./project/source.js";
+import type { TextResult } from "./query.js";
+import type { ValidationResult } from "./validate.js";
+
+const MAX_LISTED_ISSUES = 10;
+
+export function countIssues(result: ValidationResult): { errors: number; warnings: number } {
+  return {
+    errors: result.issues.filter((i) => i.severity === "error").length,
+    warnings: result.issues.filter((i) => i.severity === "warning").length,
+  };
+}
+
+export function issueSummary(result: ValidationResult): string {
+  const { errors, warnings } = countIssues(result);
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return `${plural(errors, "error")}, ${plural(warnings, "warning")}${
+    result.waived > 0 ? ` (${result.waived} waived)` : ""
+  }`;
+}
+
+/** One line per issue, then `name: N errors, M warnings`. */
+export function formatValidation(result: ValidationResult, fallbackName: string): string {
+  const name = result.config?.name ?? fallbackName;
+  return [...result.issues.map(formatIssue), `${name}: ${issueSummary(result)}`].join("\n");
+}
+
+/** Front matter of context.md, or undefined if absent or malformed. */
+function contextFrontMatter(text: string): Record<string, unknown> | undefined {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!m) return undefined;
+  try {
+    const data = parseYaml(m[1] as string);
+    return typeof data === "object" && data !== null
+      ? (data as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function contextLines(source: ProjectSource): string[] {
+  if (!source.context) return ["context: none (add context.md)"];
+  const fm = contextFrontMatter(source.context.text);
+  if (!fm) return ["context: context.md has no YAML front matter"];
+  const lines = [`context: ${String(fm.use_case ?? "(no use_case)")}`];
+  for (const [key, value] of Object.entries(fm)) {
+    if (key === "use_case" || key === "external_interfaces") continue;
+    lines.push(`  ${key}: ${JSON.stringify(value)}`);
+  }
+  const interfaces = Array.isArray(fm.external_interfaces) ? fm.external_interfaces : [];
+  for (const i of interfaces as Record<string, unknown>[]) {
+    const hazards = Array.isArray(i.hazards) ? `; hazards: ${i.hazards.join(", ")}` : "";
+    lines.push(`  interface ${String(i.connector)}: ${String(i.connects_to ?? "?")}${hazards}`);
+  }
+  return lines;
+}
+
+/** The cheap first read: blocks, part counts, issues and context in a few hundred tokens. */
+export function overview(source: ProjectSource, result: ValidationResult): string {
+  const name = result.config?.name ?? "(invalid project.toml)";
+  const lines = [`project ${name} (top: ${result.config?.top ?? "?"})`, ...contextLines(source)];
+
+  lines.push("blocks:");
+  for (const b of result.blocks) {
+    const uses = b.uses.map((u) => `${u.instance}=${u.block}`).join(" ");
+    const ports = b.ports.map((p) => p.name).join(" ");
+    const desc = b.block.description ? ` "${b.block.description}"` : "";
+    lines.push(
+      `  ${b.block.name} (${b.file}): ${b.parts.length} parts${ports ? `; ports ${ports}` : ""}${
+        uses ? `; uses ${uses}` : ""
+      }${desc}`,
+    );
+  }
+
+  const parts = result.netlist?.parts ?? [];
+  const fromLib = parts.filter((p) => p.record);
+  const unverified = new Set(
+    fromLib.filter((p) => !p.record?.provenance.verified_by).map((p) => p.record?.id),
+  );
+  lines.push(
+    `parts: ${parts.length} (${fromLib.length} library, ${parts.length - fromLib.length} generic; ` +
+      `${unverified.size} of ${new Set(fromLib.map((p) => p.record?.id)).size} records unverified)`,
+    `nets: ${result.netlist?.nets.length ?? 0}`,
+    `issues: ${issueSummary(result)}`,
+    ...result.issues.slice(0, MAX_LISTED_ISSUES).map((i) => `  ${formatIssue(i)}`),
+  );
+  if (result.issues.length > MAX_LISTED_ISSUES) {
+    lines.push(`  ... ${result.issues.length - MAX_LISTED_ISSUES} more (run validate)`);
+  }
+  lines.push("changes since checkpoint: not tracked yet");
+  return lines.join("\n");
+}
+
+/** A block's .ckt text (`full`), or just its ports, parts and net names (`summary`). */
+export function readBlock(
+  source: ProjectSource,
+  result: ValidationResult,
+  name: string,
+  detail: "summary" | "full",
+): TextResult {
+  const block = result.blocks.find((b) => b.block.name === name);
+  if (!block) {
+    const known = result.blocks.map((b) => b.block.name).join(", ");
+    return { ok: false, text: `no block '${name}' (blocks: ${known})` };
+  }
+  if (detail === "full") {
+    const text = source.circuits.find((c) => c.file === block.file)?.text ?? "";
+    return { ok: true, text: `# ${block.file}\n${text}` };
+  }
+  const desc = block.block.description ? ` "${block.block.description}"` : "";
+  const lines = [
+    `block ${name}${desc} (${block.file})`,
+    `ports: ${block.ports.map((p) => `${p.name} ${p.kind}`).join(", ") || "(none)"}`,
+    block.parts.length === 0 ? "parts: (none)" : "parts:",
+    ...block.parts.map(
+      (p) => `  ${p.ref} ${printSpec(p.spec)}${p.intent === undefined ? "" : ` @ ${p.intent}`}`,
+    ),
+    `uses: ${block.uses.map((u) => `${u.instance}=${u.block}`).join(" ") || "(none)"}`,
+    `nets: ${block.nets.map((n) => `${n.name}(${n.pins.length})`).join(" ") || "(none)"}`,
+  ];
+  if (block.waivers.length > 0) lines.push(`waivers: ${block.waivers.length}`);
+  return { ok: true, text: lines.join("\n") };
+}

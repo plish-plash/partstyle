@@ -1,0 +1,52 @@
+# Using partstyle with Claude Code and MCP clients
+
+## Claude Code (primary)
+
+Claude Code edits the `.ckt` files with its own file tools and calls the CLI to read, query,
+validate and patch. Build once, then put the CLI on your PATH:
+
+```sh
+pnpm install && pnpm build
+pnpm add -g ./packages/cli     # provides `partstyle`, linked to this checkout
+```
+
+Start each design with `partstyle init` (or ask Claude to). It writes a project `CLAUDE.md`
+with the workflow, naming conventions and a worked example block, so Claude needs no example
+project to copy from. See the [CLI reference](cli.md) for every command.
+
+## MCP (chat clients, or Claude Code without shell access)
+
+The server speaks stdio and serves one project folder, which need not exist yet:
+`init_project` creates the project there.
+
+```json
+{
+  "mcpServers": {
+    "partstyle": {
+      "command": "node",
+      "args": ["<repo>/packages/mcp/dist/main.js", "--project", "<path to design>"]
+    }
+  }
+}
+```
+
+For Claude Code: `claude mcp add partstyle -- node <repo>/packages/mcp/dist/main.js --project .`
+
+Each tool calls the same `Workspace` method as the matching CLI command, so output is
+identical.
+
+| MCP tool                            | CLI                                        |
+| ----------------------------------- | ------------------------------------------ |
+| `init_project(name, library_paths)` | `partstyle init [DIR] --name --library`    |
+| `overview`                          | `partstyle overview`                       |
+| `read_block(block, detail)`         | `partstyle read-block BLOCK --detail ...`  |
+| `query(expr)`                       | `partstyle query EXPR`                     |
+| `apply(patch, dry_run)`             | `partstyle apply [FILE\|-] [--dry-run]`    |
+| `validate`                          | `partstyle validate [--json]`              |
+| `part_search(q)`                    | `partstyle part search Q`                  |
+| `part_get(id, tier)`                | `partstyle part get ID --tier ...`         |
+| `part_put(record, scope)`           | `partstyle part put [FILE\|-] --scope ...` |
+| resource `partstyle://grammar`      | `partstyle grammar`                        |
+
+`init_project` creates the project in the server's `--project` folder; `library_paths` are
+relative to that folder.

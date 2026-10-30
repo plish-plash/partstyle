@@ -24,8 +24,8 @@ export const PartRecordSchema = z
   .strictObject({
     id: z
       .string()
-      .regex(/^[^\s:]+$/, "id must not contain whitespace or ':'")
-      .describe("Library id, referenced from .ckt as lib:<id>; usually the MPN"),
+      .regex(/^[A-Za-z0-9._+-]+$/, "id may contain only letters, digits and . _ + -")
+      .describe("Library id and file name, referenced as lib:<id>; the MPN with / replaced by _"),
     manufacturer: z.string().min(1),
     mpn: z.string().min(1),
     summary: z.string().min(1).describe("One line: what it is, key ratings, package"),
