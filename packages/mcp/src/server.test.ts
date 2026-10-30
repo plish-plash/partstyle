@@ -30,7 +30,9 @@ describe("MCP server", () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "apply",
+      "bom_export",
       "init_project",
+      "kicad_export",
       "overview",
       "part_get",
       "part_put",

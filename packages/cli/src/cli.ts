@@ -36,6 +36,8 @@ commands:
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
+  kicad export [--no-check]                write kicad/ and verify it with kicad-cli
+  bom export                               resolve generics, write bom.lock and bom.csv
   grammar                                  print the .ckt and patch reference
   schema part                              print the part-record JSON Schema
 
@@ -62,6 +64,7 @@ function parse(argv: string[]) {
       project: { type: "string", short: "p" },
       json: { type: "boolean" },
       "dry-run": { type: "boolean" },
+      "no-check": { type: "boolean" },
       detail: { type: "string" },
       tier: { type: "string" },
       scope: { type: "string" },
@@ -163,6 +166,15 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
       }
       return usageError("usage: part search QUERY | part get ID | part put [FILE|-]");
     }
+
+    case "kicad":
+      if (args[0] !== "export" || args.length > 1)
+        return usageError("usage: kicad export [--no-check]");
+      return fromText(await ws.kicadExport({ check: !values["no-check"] }));
+
+    case "bom":
+      if (args[0] !== "export" || args.length > 1) return usageError("usage: bom export");
+      return fromText(await ws.bomExport());
 
     case "grammar":
       return { stdout: await readGrammarReference(), exitCode: 0 };

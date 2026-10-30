@@ -46,6 +46,8 @@ identical.
 | `part_search(q)`                    | `partstyle part search Q`                  |
 | `part_get(id, tier)`                | `partstyle part get ID --tier ...`         |
 | `part_put(record, scope)`           | `partstyle part put [FILE\|-] --scope ...` |
+| `kicad_export(check)`               | `partstyle kicad export [--no-check]`      |
+| `bom_export`                        | `partstyle bom export`                     |
 | resource `partstyle://grammar`      | `partstyle grammar`                        |
 
 `init_project` creates the project in the server's `--project` folder; `library_paths` are

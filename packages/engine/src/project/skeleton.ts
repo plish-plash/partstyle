@@ -52,6 +52,17 @@ and fix or explain every issue.
 - Record design rationale in \`notes/decisions.md\` and layout constraints in \`notes/pcb.md\`.
 - Waive an issue only with a real reason in the waiver.
 
+## Hand-off to KiCad
+
+- \`partstyle bom export\` resolves generics to library parts and writes \`bom.csv\`. A generic
+  stays unresolved until a library record's \`generic:\` field satisfies it, e.g.
+  \`generic: cap(100n, 50V, X7R, 10%, 0603)\` on a concrete 100 nF part.
+- \`partstyle kicad export\` writes \`kicad/\` and checks it with kicad-cli (netlist round trip and
+  KiCad ERC). Never edit \`kicad/*.kicad_sch\`: change the .ckt files and export again. PCB layout
+  happens in KiCad, and re-export never touches the PCB.
+- Keep \`annotation.lock\` and \`bom.lock\` under version control: they hold refdes and part
+  choices stable across exports.
+
 ## Conventions
 
 - Refdes prefixes: R, C, L, D (diodes and LEDs), Q, U (ICs), J (connectors), Y (crystals),

@@ -3,8 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { findKicad } from "./kicad.js";
 import { projectClaudeMd } from "./skeleton.js";
 import { Workspace } from "./workspace.js";
+
+// Tests that need KiCad installed are skipped without it.
+const kicad = await findKicad(process.cwd(), {});
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
 
@@ -77,19 +81,34 @@ describe("Workspace.partPut", () => {
       "package: SOT-23",
       "footprint: Package_TO_SOT_SMD:SOT-23",
       "pins:",
-      "  1: {name: IN, type: power_in}",
+      "  1: {name: GND, type: power_in}",
+      "  2: {name: OUT, type: power_out}",
+      "  3: {name: IN, type: power_in}",
       "provenance: {extracted_by: ai, verified_by: null}",
     ].join("\n");
 
   it("writes to the global library by default and to parts/ for project scope", async () => {
-    expect((await ws.partPut(record("X1"))).text).toBe(
-      "created ../../library/X1.yaml (lib:X1); unverified until a human checks it",
-    );
+    const created = (await ws.partPut(record("X1"))).text.split("\n");
+    expect(created[0]).toBe("created ../../library/X1.yaml (lib:X1)");
+    expect(created.at(-1)).toBe("unverified until a human checks it");
     expect(await readFile(path.join(tmp, "library/X1.yaml"), "utf8")).toBe(`${record("X1")}\n`);
     expect((await ws.partPut(record("X1"))).text).toMatch(/^updated /);
     expect((await ws.partPut(record("X2"), "project")).text).toMatch(/^created parts\/X2\.yaml/);
     expect((await ws.partSearch("X2")).text).toMatch(/^X2: ACME X2/);
   });
+
+  it.skipIf(!kicad.footprints)(
+    "rejects a pin table that does not match the footprint pads",
+    async () => {
+      const twoPins = record("X3").replace("  3: {name: IN, type: power_in}\n", "");
+      expect(await ws.partPut(twoPins)).toEqual({
+        ok: false,
+        text: "X3: pin table does not match Package_TO_SOT_SMD:SOT-23 (pads with no pin: 3); not written",
+      });
+      const missing = await ws.partPut(record("X4").replace("SMD:SOT-23", "SMD:SOT-99"));
+      expect(missing.text).toContain("warning: X4: footprint Package_TO_SOT_SMD:SOT-99 is not in");
+    },
+  );
 
   it("rejects invalid records without writing", async () => {
     const r = await ws.partPut(record("bad/id"));

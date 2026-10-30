@@ -1,0 +1,14 @@
+id: CL21A106KAYNNNE
+manufacturer: Samsung Electro-Mechanics
+mpn: CL21A106KAYNNNE
+summary: 10 uF 25 V X5R 10% MLCC, 0805
+package: "0805"
+footprint: Capacitor_SMD:C_0805_2012Metric
+generic: cap(10u, 25V, X5R, 10%, 0805)
+pins:
+  1: { name: "1", type: passive }
+  2: { name: "2", type: passive }
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null

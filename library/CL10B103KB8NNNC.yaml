@@ -1,0 +1,14 @@
+id: CL10B103KB8NNNC
+manufacturer: Samsung Electro-Mechanics
+mpn: CL10B103KB8NNNC
+summary: 10 nF 50 V X7R 10% MLCC, 0603
+package: "0603"
+footprint: Capacitor_SMD:C_0603_1608Metric
+generic: cap(10n, 50V, X7R, 10%, 0603)
+pins:
+  1: { name: "1", type: passive }
+  2: { name: "2", type: passive }
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null

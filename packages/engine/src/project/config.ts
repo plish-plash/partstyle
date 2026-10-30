@@ -19,6 +19,14 @@ export const ProjectConfigSchema = z.object({
       distributors: z.array(z.enum(distributors)).default([]),
     })
     .default({ distributors: [] }),
+  /** Overrides for KiCad discovery; normally found automatically. */
+  kicad: z
+    .object({
+      cli: z.string().optional(),
+      footprints: z.string().optional(),
+      symbols: z.string().optional(),
+    })
+    .default({}),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

@@ -22,9 +22,11 @@ waive SUBJECT [CODE] "reason"            # suppress a validation issue
 - **`@ intent`** runs to the end of the line. It records why a part or net is there.
 - **Net attributes** are free text values: `{voltage: 12V ±10%, source: J1 through D1}`.
   `source` tells ERC that a rail with no `power_out` pin is supplied from elsewhere.
-- **Generics**: `res(value, [tol], [pkg])`, `cap(value, [voltage], [dielectric], [pkg])`,
-  `ind(value, [current], [pkg])` with pins 1, 2; `led(color, [pkg])` and `diode(kind, [pkg])`
-  with pins K (1), A (2). Values use SI prefixes: `330n`, `4k7`, `10uF`, `1.5A`.
+- **Generics**: `res`, `cap`, `ind` (pins 1, 2) take a value first; `led` (color) and `diode`
+  (kind) have pins K (1), A (2). Further arguments, in any order, are recognized by form:
+  voltage `16V`, current `1A`, power `0.1W`, tolerance `1%`, dielectric `X7R`/`C0G`, package
+  `0603`/`SOD-123`. Values use SI prefixes: `330n`, `4k7`, `10uF`. A chip package (`0603`)
+  gives the part a footprint even before it resolves to an MPN.
 - **Waivers**: SUBJECT is a refdes, pinref or net, relative to the block. `*` matches anything
   (`U4.PD*`). CODE limits the waiver to one issue code. Unused waivers are reported.
 
@@ -63,16 +65,18 @@ the issues they added or resolved. Use `dry_run` to preview.
 
 ## Issue codes
 
-| Code                                                            | Severity                           | Meaning                                                      |
-| --------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------ |
-| `parse.syntax`, `parse.missing-block`                           | error                              | malformed statement                                          |
-| `elab.unknown-part/-pin/-ref/-port/-block/-top`                 | error                              | name does not resolve                                        |
-| `elab.duplicate-ref/-net/-port/-block`, `elab.port-bound-twice` | error                              | declared twice                                               |
-| `elab.pin-multiple-nets`                                        | error                              | pin on two nets (a short)                                    |
-| `elab.unbound-port`, `elab.bad-generic`, `elab.recursive-use`   | error                              |                                                              |
-| `erc.unconnected-pin`                                           | error for `power_in`, else warning | pin on no net (`nc` pins exempt)                             |
-| `erc.output-conflict`                                           | error                              | outputs of two parts on one net                              |
-| `erc.unsourced-power`                                           | error                              | `power_in` pins, no `power_out`, no `source`, no ground port |
-| `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`   | warning                            |                                                              |
-| `elab.unused-block`, `elab.attr-conflict`, `waive.unused`       | warning                            |                                                              |
-| `patch.error`                                                   | error                              | patch rejected; nothing was applied                          |
+| Code                                                             | Severity                           | Meaning                                                           |
+| ---------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
+| `parse.syntax`, `parse.missing-block`                            | error                              | malformed statement                                               |
+| `elab.unknown-part/-pin/-ref/-port/-block/-top`                  | error                              | name does not resolve                                             |
+| `elab.duplicate-ref/-net/-port/-block`, `elab.port-bound-twice`  | error                              | declared twice                                                    |
+| `elab.pin-multiple-nets`                                         | error                              | pin on two nets (a short)                                         |
+| `elab.unbound-port`, `elab.bad-generic`, `elab.recursive-use`    | error                              |                                                                   |
+| `erc.unconnected-pin`                                            | error for `power_in`, else warning | pin on no net (`nc` pins exempt)                                  |
+| `erc.output-conflict`                                            | error                              | outputs of two parts on one net                                   |
+| `erc.unsourced-power`                                            | error                              | `power_in` pins, no `power_out`, no `source`, no ground port      |
+| `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`    | warning                            |                                                                   |
+| `elab.unused-block`, `elab.attr-conflict`, `waive.unused`        | warning                            |                                                                   |
+| `patch.error`                                                    | error                              | patch rejected; nothing was applied                               |
+| `part.footprint-pads`                                            | error                              | record's pins and footprint pads differ                           |
+| `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint |

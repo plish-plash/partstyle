@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseGenericText } from "./generic.js";
 
 export const pinTypes = [
   "input",
@@ -44,6 +45,16 @@ export const PartRecordSchema = z
       .optional()
       .describe("External components and conditions the datasheet requires"),
     notes: z.array(z.string()).optional().describe("Gotchas and application notes"),
+    generic: z
+      .string()
+      .refine(
+        (t) => parseGenericText(t) !== undefined,
+        "must be a generic spec such as cap(100n, 50V, X7R, 10%, 0603)",
+      )
+      .optional()
+      .describe(
+        "For a concrete passive: the generic it satisfies, so cap()/res()/... can resolve to it at BOM time",
+      ),
     sourcing: z
       .strictObject({
         lcsc: z.string().nullable().optional(),

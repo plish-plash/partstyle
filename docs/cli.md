@@ -40,6 +40,9 @@ if needed. Fails if DIR already has a `project.toml`. Existing files are never o
 | `notes/pcb.md`       | layout notes for the KiCad hand-off                                         |
 | `CLAUDE.md`          | instructions for Claude Code: workflow, conventions, an example block       |
 
+Later commands add `annotation.lock` and `bom.lock` (commit both), `bom.csv`, and the
+generated KiCad project in `kicad/`.
+
 If `CLAUDE.md` already exists, the instructions go to `CLAUDE.partstyle.md`; add the line
 `@CLAUDE.partstyle.md` to your `CLAUDE.md` to load them.
 
@@ -139,6 +142,95 @@ Validates a YAML part record against the schema and writes it as `<id>.yaml`: to
 global library path when one is configured (`global`, the default), otherwise to `parts/`
 (`project`). Project records override global records with the same id. Leave
 `provenance.verified_by: null`; a human marks records verified.
+
+When KiCad's footprint libraries are found, the record's footprint is checked first: if its
+numbered pads differ from the pin table, the record is rejected (a wrong pinout is a board
+respin); if the footprint is not in the libraries, it is written with a warning.
+
+A record for a concrete passive can carry `generic: cap(100n, 50V, X7R, 10%, 0603)`, the
+generic it satisfies, so `bom export` and `kicad export` can resolve generics to it.
+
+## Outputs
+
+### `bom export`
+
+Resolves every generic part to a library record whose `generic` field meets each constraint:
+same value, voltage/current/power at least as high, tolerance at least as tight, same
+dielectric and package when given. Among matches it prefers parts stocked by the preferred
+distributors in `project.toml` (`[sourcing] distributors`, in order), then the lowest voltage
+rating, then id. Writes:
+
+- `bom.lock`: how each generic resolved. A choice is kept until the part's spec changes or the
+  record stops fitting; delete a line to re-resolve it.
+- `bom.csv`: one row per distinct part with references, quantity, value, spec, manufacturer,
+  MPN, footprint, a part-number column per preferred distributor, and notes (unresolved
+  generics, unverified records).
+
+Unresolved generics are reported as `bom.unresolved` warnings and keep a footprint derived from
+their package when it is a chip size (`0603` → `R_0603_1608Metric`).
+
+### `kicad export [--no-check]`
+
+Writes a KiCad 10 project to `kicad/` and updates `annotation.lock` and `bom.lock`. Refuses
+while the design has validation errors.
+
+| File                  | Contents                                                  |
+| --------------------- | --------------------------------------------------------- |
+| `<name>.kicad_sch`    | top block; each `use` is a hierarchical sheet             |
+| `<block>.kicad_sch`   | one sheet per block, shared by all its instances          |
+| `partstyle.kicad_sym` | symbols generated from part records and generics          |
+| `sym-lib-table`       | registers `partstyle.kicad_sym` for the project           |
+| `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor |
+| `<name>.kicad_pro`    | written only if missing, so KiCad's own settings survive  |
+
+Pins connect through symbols and labels on their endpoints rather than drawn wires:
+
+- **Power nets** (any net with power pins or a `ground`/`power_in`/`power_out` port) use KiCad
+  power symbols from its `power` library: `power:GND`, `power:+5V` and so on when one is named
+  after the net, otherwise `power:GND` (ground) or `power:VCC` with the net name as its value.
+  They connect globally, so their ports get no sheet pins. The name is the bare net name, or
+  the instance-qualified one (`PWR_+12V`) when two nets share a bare name. If a block used more
+  than once would need different power names per instance, that net falls back to labels.
+- **Other nets** use local labels; ports become hierarchical labels and sheet pins.
+- **Unconnected pins** get no-connect flags.
+- **PWR_FLAG** (`power:PWR_FLAG`) is added to every net drawn with power symbols or feeding
+  `power_in` pins that has no `power_out` pin, i.e. power from outside the design (a
+  `{source: ...}` rail, ground). It sits in a sheet where the net reaches real part pins.
+
+Power symbol definitions are copied from KiCad's installed `power.kicad_sym` so they match the
+library exactly; without KiCad, built-in look-alikes with the same names are used. Placement is
+a simple grid until the viewer's auto-layout (M3). Symbols carry MPN, Manufacturer, Spec and
+distributor fields, so KiCad's own BOM tools work too.
+
+Refdes come from `annotation.lock`, which maps instance paths to flat references. A new part
+keeps its local refdes when free; a clash (two blocks both with `C1`) takes the next free
+number. Edit the lock to renumber. UUIDs are derived from names, so re-exporting the same
+design produces identical files and "Update PCB from Schematic" keeps placement. The PCB file is
+never written; stale sheets are removed only if partstyle wrote them.
+
+Unless `--no-check` is given and when kicad-cli is found, the export is then verified:
+
+1. **Round trip:** `kicad-cli sch export netlist` re-derives the netlist from the written
+   schematic, and it must match the design net for net. A mismatch is an exporter bug.
+2. **ERC:** `kicad-cli sch erc` runs on the schematic; violations are listed.
+
+The command fails (exit 1) on a round-trip mismatch, KiCad ERC errors or footprint pad errors.
+Next step: open `kicad/<name>.kicad_pro`, then in the PCB editor run Tools > Update PCB from
+Schematic.
+
+### Finding KiCad
+
+`kicad-cli` and the stock footprint and symbol libraries are located in this order:
+`[kicad] cli`, `[kicad] footprints` and `[kicad] symbols` in `project.toml` (relative to the
+project); the `KICAD_CLI`, `KICAD10_FOOTPRINT_DIR` / `KICAD9_FOOTPRINT_DIR` and
+`KICAD10_SYMBOL_DIR` / `KICAD9_SYMBOL_DIR` environment variables; `PATH`; then the usual install
+location (`C:\Program Files\KiCad\<version>\bin` on Windows, the highest version;
+`/Applications/KiCad` on macOS; `/usr/bin` on Linux), with the libraries beside it. Without
+KiCad, exports still work but skip the checks and use look-alike power symbols, and footprint
+checks are skipped everywhere.
+
+When the footprint libraries are found, `validate`, `overview` and `apply` also report
+`part.footprint-pads` (error) and `part.footprint-missing` (warning) for the library parts in use.
 
 ## Reference
 

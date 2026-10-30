@@ -1,0 +1,12 @@
+block filter "First-order RC low-pass"
+
+port IN  : input
+port OUT : output
+port GND : ground
+
+part R1 res(1k, 1%, 0603)
+part C1 cap(100n, 16V, X7R, 0603)
+
+net SIG_IN  : R1.1                -> port IN
+net SIG_OUT : R1.2 C1.1           -> port OUT
+net GROUND  : C1.2                -> port GND

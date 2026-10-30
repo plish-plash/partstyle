@@ -151,5 +151,28 @@ export function createServer(ws: Workspace, version = "0.0.0"): McpServer {
     async ({ record, scope }) => reply(await ws.partPut(record, scope)),
   );
 
+  server.registerTool(
+    "kicad_export",
+    {
+      description:
+        "Write the KiCad project to kicad/ (schematic, symbols, netlist; never the PCB), then verify it with kicad-cli: netlist round-trip and KiCad ERC. Requires a design without errors.",
+      inputSchema: {
+        check: z.boolean().optional().describe("Run kicad-cli checks (default true)"),
+      },
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    async ({ check }) => reply(await ws.kicadExport({ check: check ?? true })),
+  );
+
+  server.registerTool(
+    "bom_export",
+    {
+      description:
+        "Resolve generic parts to library MPNs (preferring the project's distributors), update bom.lock and write bom.csv.",
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    async () => reply(await ws.bomExport()),
+  );
+
   return server;
 }

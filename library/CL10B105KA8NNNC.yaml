@@ -1,0 +1,14 @@
+id: CL10B105KA8NNNC
+manufacturer: Samsung Electro-Mechanics
+mpn: CL10B105KA8NNNC
+summary: 1 uF 25 V X7R 10% MLCC, 0603
+package: "0603"
+footprint: Capacitor_SMD:C_0603_1608Metric
+generic: cap(1u, 25V, X7R, 10%, 0603)
+pins:
+  1: { name: "1", type: passive }
+  2: { name: "2", type: passive }
+sourcing: { lifecycle: active }
+provenance:
+  extracted_by: ai
+  verified_by: null
