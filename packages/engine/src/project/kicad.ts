@@ -3,8 +3,19 @@ import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Issue } from "../diagnostics.js";
+import type { SymbolCandidate } from "../kicad/export.js";
+import {
+  flattenSymbol,
+  genericSymbolId,
+  kicadSymbol,
+  rankSymbolMatches,
+  type SchSymbol,
+  symbolKey,
+  symbolNames,
+} from "../kicad/libsym.js";
 import { parseSymbolLib, type SymbolLib } from "../kicad/power.js";
 import { children, readSExpr } from "../kicad/sexpr.js";
+import type { FlatPart } from "../netlist/elaborate.js";
 import type { LibraryEntry } from "../parts/library.js";
 
 const run = promisify(execFile);
@@ -106,12 +117,83 @@ export async function findKicad(
   return { ...(cli && { cli }), ...(footprints && { footprints }), ...(symbols && { symbols }) };
 }
 
-/** KiCad's `power` symbol library, if installed. */
-export async function loadPowerLibrary(symbolsDir: string): Promise<SymbolLib | undefined> {
-  const text = await readFile(path.join(symbolsDir, "power.kicad_sym"), "utf8").catch(
-    () => undefined,
-  );
-  return text === undefined ? undefined : parseSymbolLib(text);
+/**
+ * KiCad's stock symbol libraries. Parsing all of them is slow (hundreds of MB), so names are
+ * indexed by a text scan and a library is parsed only when one of its symbols is needed.
+ */
+export class KicadSymbolLibraries {
+  private names?: Promise<{ lib: string; name: string }[]>;
+  private readonly libs = new Map<string, Promise<SymbolLib | undefined>>();
+
+  constructor(readonly dir: string) {}
+
+  /** Every top-level symbol name, with its library nickname (the file name). */
+  index(): Promise<{ lib: string; name: string }[]> {
+    this.names ??= (async () => {
+      const files = (await readdir(this.dir)).filter((f) => f.endsWith(".kicad_sym")).sort();
+      const all: { lib: string; name: string }[] = [];
+      for (const f of files) {
+        const text = await readFile(path.join(this.dir, f), "utf8");
+        const lib = f.slice(0, -".kicad_sym".length);
+        for (const name of symbolNames(text)) all.push({ lib, name });
+      }
+      return all;
+    })();
+    return this.names;
+  }
+
+  /** A parsed library by nickname (`power`, `Device`), or undefined if not installed. */
+  library(lib: string): Promise<SymbolLib | undefined> {
+    let p = this.libs.get(lib);
+    if (!p) {
+      p = readFile(path.join(this.dir, `${lib}.kicad_sym`), "utf8").then(
+        (text) => parseSymbolLib(text),
+        () => undefined,
+      );
+      this.libs.set(lib, p);
+    }
+    return p;
+  }
+
+  /** A symbol by `Lib:Name`, flattened and ready to place. */
+  async symbol(libId: string): Promise<SchSymbol | undefined> {
+    const [lib, name] = libId.split(":");
+    if (!lib || !name) return undefined;
+    const library = await this.library(lib);
+    const flat = library && flattenSymbol(library, name);
+    return flat && kicadSymbol(libId, flat);
+  }
+
+  /**
+   * KiCad symbols to try for each part type: the record's `kicad_symbol`, else matches on its
+   * MPN; for generics, the Device library's R, C, L, LED and diode symbols.
+   */
+  async candidates(parts: FlatPart[]): Promise<Map<string, SymbolCandidate[]>> {
+    const out = new Map<string, SymbolCandidate[]>();
+    for (const part of parts) {
+      const key = symbolKey(part);
+      if (out.has(key)) continue;
+      let ids: { libId: string; explicit: boolean }[] = [];
+      if (part.spec.kind === "generic") {
+        const id = genericSymbolId(part.spec.fn, part.spec.args);
+        if (id) ids = [{ libId: id, explicit: false }];
+      } else if (part.record?.kicad_symbol) {
+        ids = [{ libId: part.record.kicad_symbol, explicit: true }];
+      } else if (part.record) {
+        ids = rankSymbolMatches(part.record, await this.index()).map((m) => ({
+          libId: `${m.lib}:${m.name}`,
+          explicit: false,
+        }));
+      }
+      const list: SymbolCandidate[] = [];
+      for (const { libId, explicit } of ids) {
+        const symbol = await this.symbol(libId);
+        list.push({ libId, explicit, ...(symbol && { symbol }) });
+      }
+      out.set(key, list);
+    }
+    return out;
+  }
 }
 
 export async function runKicadCli(cli: string, args: string[]): Promise<{ stdout: string }> {

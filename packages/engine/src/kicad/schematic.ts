@@ -2,18 +2,10 @@ import type { BomEntry } from "../bom.js";
 import type { CktFile, PortKind } from "../ckt/ast.js";
 import type { FlatNet, Netlist } from "../netlist/elaborate.js";
 import type { Annotation } from "./annotate.js";
+import { type SchSymbol, type SymbolUnit, symbolKey } from "./libsym.js";
 import { type PowerSymbol, placePower, powerLibrary, type SymbolLib } from "./power.js";
 import { type SExpr, sym, writeSExpr, yesNo } from "./sexpr.js";
-import {
-  effects,
-  type GeneratedSymbol,
-  GRID,
-  LIB,
-  property,
-  qualified,
-  symbolForGeneric,
-  symbolForRecord,
-} from "./symbols.js";
+import { effects, type GeneratedSymbol, GRID, LIB, property } from "./symbols.js";
 import { stableUuid } from "./uuid.js";
 
 export const SCH_VERSION = 20260306;
@@ -43,15 +35,17 @@ export interface SchematicInput {
   bom: Map<string, BomEntry>;
   /** KiCad's `power` symbol library, when installed; fallbacks are used otherwise. */
   powerLib?: SymbolLib;
+  /** The symbol for each part type, by `symbolKey`: KiCad's own or a generated one. */
+  symbols: Map<string, SchSymbol>;
 }
 
 export interface SchematicOutput {
   /** File name (relative to the KiCad folder) → text. */
   files: Map<string, string>;
   instances: SheetInstance[];
-  /** Symbol UUID for a part path, for the netlist's tstamps. */
-  symbolUuid: (path: string) => string;
-  /** Generated symbols for the project library (power symbols come from KiCad's library). */
+  /** UUIDs of a part's placed units, for the netlist's tstamps. */
+  symbolUuids: (path: string) => string[];
+  /** Generated symbols in use, for the project library. */
   symbols: GeneratedSymbol[];
   /** The name KiCad gives each flat net: the power name for power nets, else `/<path>`. */
   netNames: Map<string, string>;
@@ -163,21 +157,15 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
   };
   const drawnGlobal = new Set<string>(); // flat net names drawn with power symbols
 
-  // Generated symbols, shared by all sheets.
-  const symbolCache = new Map<string, GeneratedSymbol>();
-  const symbolFor = (path: string): GeneratedSymbol | undefined => {
+  const symbolFor = (path: string): SchSymbol | undefined => {
     const part = input.netlist.parts.find((p) => p.path === path);
-    if (!part) return undefined;
-    const key = part.spec.kind === "lib" ? part.spec.id : part.spec.fn;
-    if (!symbolCache.has(key)) {
-      const s =
-        part.spec.kind === "lib"
-          ? part.record && symbolForRecord(part.record)
-          : symbolForGeneric(part.spec.fn);
-      if (s) symbolCache.set(key, s);
-    }
-    return symbolCache.get(key);
+    return part && input.symbols.get(symbolKey(part));
   };
+  /** Unit 1 keeps the single-unit UUID, so PCBs made before multi-unit support stay linked. */
+  const unitUuid = (block: string, ref: string, unit: number) =>
+    unit === 1
+      ? symbolUuidFor(block, ref)
+      : stableUuid(project, "symbol", block, ref, String(unit));
 
   // Nets that need a PWR_FLAG: no power_out pin drives them, but something needs power: a
   // power_in pin, or KiCad's own power symbols (whose pins are power inputs).
@@ -347,38 +335,46 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
     type Cell = { w: number; h: number; draw: (origin: Point) => void };
     const cells: Cell[] = [];
 
+    // One cell per placed unit; multi-unit parts (dual op-amps) place every unit.
     for (const decl of block.parts) {
       const path = first.prefix + decl.ref;
       const s = symbolFor(path);
       if (!s) continue;
-      libSymbols.set(`${LIB}:${s.name}`, qualified(s));
-      const side = (outward: number) =>
-        [...s.pins]
-          .filter(([, a]) => a.outward === outward)
-          .map(([n]) => pinNet.get(`${decl.ref}#${n}`));
-      const lw = textLen([...side(180), ...side(0)]) * 1.27 + 3 * GRID;
-      const lh = textLen([...side(90), ...side(270)]) * 1.27 + 3 * GRID;
-      const vertical = side(180).length + side(0).length === 0;
-      const w = s.box.maxX - s.box.minX + 2 * lw + (vertical ? 12 * GRID : 0);
-      const h = s.box.maxY - s.box.minY + 2 * lh + 4 * GRID;
-      cells.push({
-        w,
-        h,
-        draw: (o) => {
-          const at = { x: snap(o.x + lw - s.box.minX), y: snap(o.y + lh + 3 * GRID + s.box.maxY) };
-          items.push(placedSymbol(decl.ref, path, s, at, vertical));
-          const shown = new Set<string>();
-          for (const [num, a] of s.pins) {
-            const p = { x: at.x + a.x, y: at.y - a.y };
-            const net = pinNet.get(`${decl.ref}#${num}`);
-            items.push(
-              net === undefined
-                ? ["no_connect", ["at", p.x, p.y], ["uuid", nextUuid("nc")]]
-                : connect(net, p, a.outward, shown),
-            );
-          }
-        },
-      });
+      libSymbols.set(s.libId, s.def);
+      for (const unit of s.units) {
+        // Hidden pins are stacked under a visible pin on the same net; the visible one is drawn.
+        const visible = [...unit.pins].filter(([, a]) => !a.hidden);
+        const side = (outward: number) =>
+          visible
+            .filter(([, a]) => a.outward === outward)
+            .map(([n]) => pinNet.get(`${decl.ref}#${n}`));
+        const lw = textLen([...side(180), ...side(0)]) * 1.27 + 3 * GRID;
+        const lh = textLen([...side(90), ...side(270)]) * 1.27 + 3 * GRID;
+        const vertical = side(180).length + side(0).length === 0;
+        const w = unit.box.maxX - unit.box.minX + 2 * lw + (vertical ? 12 * GRID : 0);
+        const h = unit.box.maxY - unit.box.minY + 2 * lh + 4 * GRID;
+        cells.push({
+          w,
+          h,
+          draw: (o) => {
+            const at = {
+              x: snap(o.x + lw - unit.box.minX),
+              y: snap(o.y + lh + 3 * GRID + unit.box.maxY),
+            };
+            items.push(placedSymbol(decl.ref, path, s, unit, at, vertical));
+            const shown = new Set<string>();
+            for (const [num, a] of visible) {
+              const p = { x: at.x + a.x, y: at.y - a.y };
+              const net = pinNet.get(`${decl.ref}#${num}`);
+              items.push(
+                net === undefined
+                  ? ["no_connect", ["at", p.x, p.y], ["uuid", nextUuid("nc")]]
+                  : connect(net, p, a.outward, shown),
+              );
+            }
+          },
+        });
+      }
     }
 
     for (const u of block.uses) {
@@ -502,10 +498,12 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
     function placedSymbol(
       ref: string,
       path: string,
-      s: GeneratedSymbol,
+      s: SchSymbol,
+      unit: SymbolUnit,
       at: Point,
       textRight: boolean,
     ): SExpr[] {
+      const box = unit.box;
       const entry = input.bom.get(path);
       const record = entry?.record;
       const fields: [string, string][] = [
@@ -518,24 +516,24 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
       ];
       const refAt: [number, number, number] = textRight
         ? [at.x + 2 * GRID, at.y - 1.27, 0]
-        : [at.x + s.box.minX + GRID, at.y - s.box.maxY - 2.54, 0];
+        : [at.x + box.minX + GRID, at.y - box.maxY - 2.54, 0];
       const valueAt: [number, number, number] = textRight
         ? [at.x + 2 * GRID, at.y + 1.27, 0]
-        : [at.x + s.box.minX + GRID, at.y - s.box.maxY - 0.254, 0];
+        : [at.x + box.minX + GRID, at.y - box.maxY - 0.254, 0];
       return [
         "symbol",
-        ["lib_id", `${LIB}:${s.name}`],
+        ["lib_id", s.libId],
         ["at", at.x, at.y, 0],
-        ["unit", 1],
+        ["unit", unit.unit],
         ["body_style", 1],
         ["exclude_from_sim", yesNo(false)],
         ["in_bom", yesNo(true)],
         ["on_board", yesNo(true)],
         ["in_pos_files", yesNo(true)],
         ["dnp", yesNo(false)],
-        ["uuid", symbolUuidFor(name, ref)],
+        ["uuid", unitUuid(name, ref, unit.unit)],
         property("Reference", refOf(annotation, path), refAt, { justify: ["left", "bottom"] }),
-        property("Value", entry?.value ?? s.name, valueAt, { justify: ["left", "bottom"] }),
+        property("Value", entry?.value ?? s.libId, valueAt, { justify: ["left", "bottom"] }),
         property("Footprint", entry?.footprint ?? "", [at.x, at.y, 0], { hide: true }),
         property("Datasheet", record?.provenance.datasheet?.url ?? "", [at.x, at.y, 0], {
           hide: true,
@@ -546,7 +544,7 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
         ...fields
           .filter(([, v]) => v !== "")
           .map(([k, v]) => property(k, v, [at.x, at.y, 0], { hide: true })),
-        ...[...s.pins.keys()].map(
+        ...[...unit.pins.keys()].map(
           (n) => ["pin", n, ["uuid", stableUuid(project, "pin", name, ref, n)]] as SExpr[],
         ),
         [
@@ -560,7 +558,7 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
                   "path",
                   i.path,
                   ["reference", refOf(annotation, i.prefix + ref)],
-                  ["unit", 1],
+                  ["unit", unit.unit],
                 ] as SExpr[],
             ),
           ],
@@ -596,13 +594,16 @@ export function buildSchematics(input: SchematicInput): SchematicOutput {
   return {
     files,
     instances,
-    symbolUuid: (path) => {
+    symbolUuids: (path) => {
       const slash = path.lastIndexOf("/");
       const prefix = path.slice(0, slash + 1);
-      const inst = instances.find((i) => i.prefix === prefix);
-      return symbolUuidFor(inst?.block.block.name ?? "", path.slice(slash + 1));
+      const block = instances.find((i) => i.prefix === prefix)?.block.block.name ?? "";
+      const units = symbolFor(path)?.units ?? [{ unit: 1 }];
+      return units.map((u) => unitUuid(block, path.slice(slash + 1), u.unit));
     },
-    symbols: [...symbolCache.values()],
+    symbols: [...new Set(input.symbols.values())].flatMap((s) =>
+      s.generated ? [s.generated] : [],
+    ),
     netNames,
     powerFlags: flagCounter,
   };

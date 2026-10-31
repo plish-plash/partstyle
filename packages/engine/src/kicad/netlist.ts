@@ -3,7 +3,7 @@ import type { Netlist } from "../netlist/elaborate.js";
 import type { Annotation } from "./annotate.js";
 import type { SheetInstance } from "./schematic.js";
 import { children, readSExpr, type SExpr, value, writeSExpr } from "./sexpr.js";
-import { LIB, toKicadPinType } from "./symbols.js";
+import { toKicadPinType } from "./symbols.js";
 
 export interface NetlistInput {
   project: string;
@@ -11,7 +11,10 @@ export interface NetlistInput {
   annotation: Annotation;
   bom: Map<string, BomEntry>;
   instances: SheetInstance[];
-  symbolUuid: (path: string) => string;
+  /** UUIDs of each placed unit of a part. */
+  symbolUuids: (path: string) => string[];
+  /** The symbol a part was drawn with, `Lib:Name`. */
+  libIdOf: (path: string) => string;
   /** KiCad net names (power symbol names for power nets); defaults to `/<flat name>`. */
   netNames?: Map<string, string>;
 }
@@ -35,6 +38,7 @@ export function writeKicadNetlist(input: NetlistInput): string {
     const entry = input.bom.get(part.path);
     const r = entry?.record;
     const inst = instanceOf(part.path);
+    const libId = input.libIdOf(part.path);
     const fields: [string, string][] = [
       ["Footprint", entry?.footprint ?? ""],
       ["Datasheet", r?.provenance.datasheet?.url ?? ""],
@@ -51,8 +55,8 @@ export function writeKicadNetlist(input: NetlistInput): string {
       ["fields", ...fields.map(([k, v]) => ["field", ["name", k], ...(v ? [v] : [])] as SExpr[])],
       [
         "libsource",
-        ["lib", LIB],
-        ["part", part.spec.kind === "lib" ? part.spec.id : part.spec.fn],
+        ["lib", libId.slice(0, libId.indexOf(":"))],
+        ["part", libId.slice(libId.indexOf(":") + 1)],
         ["description", r?.summary ?? ""],
       ],
       [
@@ -62,7 +66,7 @@ export function writeKicadNetlist(input: NetlistInput): string {
       ],
       ["property", ["name", "Sheetfile"], ["value", inst?.file ?? ""]],
       ["sheetpath", ["names", inst?.names ?? "/"], ["tstamps", inst ? sheetTstamps(inst) : "/"]],
-      ["tstamps", input.symbolUuid(part.path)],
+      ["tstamps", ...input.symbolUuids(part.path)],
     ] as SExpr[];
   });
 

@@ -178,7 +178,7 @@ while the design has validation errors.
 | --------------------- | --------------------------------------------------------- |
 | `<name>.kicad_sch`    | top block; each `use` is a hierarchical sheet             |
 | `<block>.kicad_sch`   | one sheet per block, shared by all its instances          |
-| `partstyle.kicad_sym` | symbols generated from part records and generics          |
+| `partstyle.kicad_sym` | symbols generated for parts with no usable KiCad symbol   |
 | `sym-lib-table`       | registers `partstyle.kicad_sym` for the project           |
 | `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor |
 | `<name>.kicad_pro`    | written only if missing, so KiCad's own settings survive  |
@@ -198,9 +198,29 @@ Pins connect through symbols and labels on their endpoints rather than drawn wir
   `{source: ...}` rail, ground). It sits in a sheet where the net reaches real part pins.
 
 Power symbol definitions are copied from KiCad's installed `power.kicad_sym` so they match the
-library exactly; without KiCad, built-in look-alikes with the same names are used. Placement is
-a simple grid until the viewer's auto-layout (M3). Symbols carry MPN, Manufacturer, Spec and
-distributor fields, so KiCad's own BOM tools work too.
+library exactly; without KiCad, built-in look-alikes with the same names are used.
+
+**Part symbols** also come from KiCad's stock libraries when a suitable one exists:
+
+1. Generics use `Device:R`, `Device:C`, `Device:L`, `Device:LED`, and `Device:D` (or
+   `D_Schottky`, `D_Zener`, `D_TVS` for `diode(schottky|zener|tvs)`).
+2. A part record's `kicad_symbol: Lib:Name` is used when set. Use it for parts KiCad does not
+   name by MPN, such as connectors (`Connector_Generic:Conn_01x03`).
+3. Otherwise the libraries are searched by the record's id and MPN: an exact name, a KiCad
+   wildcard name (`MCP6002-xSN` for `MCP6002-I/SN`, `MCP1700x-330xxTT` for
+   `MCP1700T-3302E/TT`), or the longest name that is a prefix of the MPN followed by a letter
+   (`L7805` for `L7805CV`).
+
+A candidate is used only if its pin numbers match the record exactly. It must also have no
+hidden power inputs, which KiCad would connect globally by name. Any hidden pins must sit under
+a visible pin on the same net. Derived symbols are flattened and multi-unit symbols place every
+unit (a dual op-amp becomes U3A, U3B and its power unit U3C). Otherwise a symbol is generated
+from the pin table into `partstyle.kicad_sym`. The export lists which KiCad symbols it used and
+why any part got a generated one. A `kicad_symbol` that cannot be used is a
+`kicad.symbol-fallback` warning.
+
+Placement is a simple grid until the viewer's auto-layout (M3). Symbols carry MPN,
+Manufacturer, Spec and distributor fields, so KiCad's own BOM tools work too.
 
 Refdes come from `annotation.lock`, which maps instance paths to flat references. A new part
 keeps its local refdes when free; a clash (two blocks both with `C1`) takes the next free

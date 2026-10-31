@@ -18,7 +18,7 @@ import {
   findKicad,
   footprintPads,
   type KicadInstall,
-  loadPowerLibrary,
+  KicadSymbolLibraries,
   parseErcJson,
   runKicadCli,
 } from "./kicad.js";
@@ -61,6 +61,8 @@ export class Workspace {
   }
 
   private kicadInstall?: Promise<KicadInstall>;
+  /** Indexed lazily on the first export; kept so later exports skip the scan. */
+  private symbolLibs?: KicadSymbolLibraries;
 
   /** KiCad discovery, once per workspace. */
   private kicad(config?: ProjectConfig): Promise<KicadInstall> {
@@ -303,14 +305,19 @@ export class Workspace {
         return fail(`cannot export with ${issueSummary(result)}; fix the errors first (validate)`);
       }
       const { cli, footprints, symbols } = await this.kicad(result.config);
-      const powerLib = symbols ? await loadPowerLibrary(symbols) : undefined;
+      if (symbols && this.symbolLibs?.dir !== symbols) {
+        this.symbolLibs = new KicadSymbolLibraries(symbols);
+      }
+      const libs = symbols ? this.symbolLibs : undefined;
+      const power = await libs?.library("power");
+      const symbolCandidates = await libs?.candidates(result.netlist.parts);
       const x = exportKicad(
         result,
         {
           annotation: await this.readOptional("annotation.lock"),
           bom: await this.readOptional("bom.lock"),
         },
-        powerLib,
+        { ...(power && { power }), ...(symbolCandidates && { symbolCandidates }) },
       );
 
       const dir = path.join(this.root, KICAD_DIR);
@@ -339,6 +346,25 @@ export class Workspace {
         `exported ${KICAD_DIR}/: ${x.rootSchematic} (${sheets} sheet${sheets === 1 ? "" : "s"}), ` +
           `partstyle.kicad_sym (${x.schematic.symbols.length} symbols), ${x.netlistFile}`,
       );
+      const fromKicad = x.symbols.filter((s) => !s.generated);
+      const generated = x.symbols.filter((s) => s.generated);
+      if (fromKicad.length > 0) {
+        lines.push(
+          `KiCad symbols: ${fromKicad
+            .map((s) => s.libId)
+            .sort()
+            .join(", ")}`,
+        );
+      }
+      for (const s of generated) {
+        const why =
+          s.rejected.length > 0
+            ? s.rejected.join("; ")
+            : symbols
+              ? "no KiCad symbol matches its MPN; set kicad_symbol in the part record"
+              : "KiCad symbol libraries not found";
+        lines.push(`generated symbol ${s.libId}: ${why}`);
+      }
       for (const [p, r] of x.renumbered)
         lines.push(`annotation: ${p} -> ${r} (its refdes was taken)`);
       lines.push(...summarizeLockChanges(x.bom.changes));

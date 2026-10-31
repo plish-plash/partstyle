@@ -32,6 +32,13 @@ export const PartRecordSchema = z
     summary: z.string().min(1).describe("One line: what it is, key ratings, package"),
     package: z.string().min(1),
     footprint: z.string().min(1).describe("KiCad footprint, Library:Footprint"),
+    kicad_symbol: z
+      .string()
+      .regex(/^[^:\s]+:[^:\s]+$/, "must be Library:Symbol")
+      .optional()
+      .describe(
+        "KiCad library symbol for export, e.g. Connector_Generic:Conn_01x03; found by MPN when omitted; pin numbers must match",
+      ),
     pins: z
       .record(z.string().regex(/^[A-Za-z0-9]+$/, "pin numbers are alphanumeric"), PinSchema)
       .refine((pins) => Object.keys(pins).length > 0, "a part needs at least one pin")

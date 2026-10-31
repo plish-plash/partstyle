@@ -58,7 +58,9 @@ and fix or explain every issue.
   stays unresolved until a library record's \`generic:\` field satisfies it, e.g.
   \`generic: cap(100n, 50V, X7R, 10%, 0603)\` on a concrete 100 nF part.
 - \`partstyle kicad export\` writes \`kicad/\` and checks it with kicad-cli (netlist round trip and
-  KiCad ERC). Never edit \`kicad/*.kicad_sch\`: change the .ckt files and export again. PCB layout
+  KiCad ERC). It draws parts with KiCad's own symbols, found by MPN; when it reports a
+  generated symbol for a part KiCad has under another name (connectors, generic modules), set
+  \`kicad_symbol: Library:Symbol\` in the part record. Never edit \`kicad/*.kicad_sch\`: change the .ckt files and export again. PCB layout
   happens in KiCad, and re-export never touches the PCB.
 - Keep \`annotation.lock\` and \`bom.lock\` under version control: they hold refdes and part
   choices stable across exports.

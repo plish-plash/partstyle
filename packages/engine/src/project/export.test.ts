@@ -45,6 +45,15 @@ describe("kicadExport", () => {
       expect(r.text).toContain("round-trip: KiCad's netlist from the schematic matches the design");
       expect(r.text).toContain("KiCad ERC: 0 errors, 0 warnings");
       expect(r.text).toContain("bom.unresolved PWR/C3 cap(10u, 16V, X7R, 0805)");
+      // Every part type finds a stock KiCad symbol: by MPN, by kicad_symbol, or Device:*.
+      expect(r.text).toContain("partstyle.kicad_sym (0 symbols)");
+      expect(r.text).toContain(
+        "KiCad symbols: Amplifier_Operational:MCP6002-xSN, Connector:Barrel_Jack_Switch, " +
+          "Connector_Generic:Conn_01x03, Connector_Generic:Conn_02x03_Odd_Even, Device:C, " +
+          "Device:D_TVS, Device:LED, Device:R, Diode:1N5819, MCU_Microchip_ATmega:ATmega328P-A, " +
+          "Regulator_Linear:L7805, Regulator_Linear:MCP1700x-330xxTT",
+      );
+      expect(r.text).not.toContain("generated symbol");
       // kicad-cli adds its own bench-sensor.kicad_prl (local settings) when it runs ERC.
       expect(await readdir(path.join(tmp, "examples/bench-sensor/kicad"))).toEqual(
         expect.arrayContaining([

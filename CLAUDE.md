@@ -29,8 +29,10 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
 - `packages/cli` and `packages/mcp`: thin shells over `Workspace`. Every MCP tool has a CLI
   command with identical output; add both together (see [docs/claude-code.md](docs/claude-code.md)).
   - KiCad hand-off: `bom.ts` (generic → MPN resolution, bom.lock), `kicad/` (S-expressions,
-    annotation, generated symbols, schematic and netlist writers; pure), and
-    `project/kicad.ts` (finding kicad-cli, footprint pad checks, ERC parsing; node).
+    annotation, schematic and netlist writers; pure). Symbols: `kicad/libsym.ts` matches and
+    vets KiCad library symbols (flattening, units, pin compatibility), `kicad/power.ts` power
+    symbols, `kicad/symbols.ts` generated fallbacks. `project/kicad.ts` (node) finds kicad-cli
+    and the stock libraries, indexes symbol names, checks footprint pads and parses ERC.
 - `project/skeleton.ts`: files `init` creates, including the project CLAUDE.md template.
   `examples/bench-sensor/CLAUDE.md` is generated from it (a test keeps them in sync).
 - `library/`: seed global part records. `examples/bench-sensor/`: 30-part reference design.
