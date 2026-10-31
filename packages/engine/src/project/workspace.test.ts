@@ -137,6 +137,7 @@ describe("Workspace.init", () => {
       "  notes/decisions.md",
       "  notes/pcb.md",
       "  CLAUDE.md",
+      "  .gitignore",
       "next: fill in context.md with the user, then add blocks (partstyle grammar shows how)",
     ]);
     expect(await readFile(path.join(dir, "project.toml"), "utf8")).toContain(

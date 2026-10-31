@@ -10,11 +10,14 @@ import {
   type ValidationResult,
 } from "@partstyle/engine";
 import { ProjectLoadError, readGrammarReference, Workspace } from "@partstyle/engine/node";
+import { startViewer } from "@partstyle/server";
 
 export interface CommandResult {
   stdout: string;
   stderr?: string;
   exitCode: number;
+  /** Set by long-running commands (`view`): stops them. */
+  close?: () => Promise<void>;
 }
 
 export interface CliIO {
@@ -38,6 +41,8 @@ commands:
   part put [FILE|-] [--scope global|project]  add or update a part record
   kicad export [--no-check]                write kicad/ and verify it with kicad-cli
   bom export                               resolve generics, write bom.lock and bom.csv
+  view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
+  focus                                    what is selected in the viewer, and open comments
   grammar                                  print the .ckt and patch reference
   schema part                              print the part-record JSON Schema
 
@@ -70,6 +75,7 @@ function parse(argv: string[]) {
       scope: { type: "string" },
       name: { type: "string" },
       library: { type: "string", multiple: true },
+      port: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -175,6 +181,30 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
     case "bom":
       if (args[0] !== "export" || args.length > 1) return usageError("usage: bom export");
       return fromText(await ws.bomExport());
+
+    case "view": {
+      if (args.length > 0) return usageError("usage: view [--port N]");
+      const port = values.port === undefined ? undefined : Number(values.port);
+      // 0 picks any free port.
+      if (port !== undefined && !(Number.isInteger(port) && port >= 0 && port < 65536)) {
+        return usageError("--port must be a port number");
+      }
+      try {
+        const probe = await ws.overview(); // fail early, with the usual message, outside a project
+        if (!probe.ok) return { stdout: "", stderr: probe.text, exitCode: 1 };
+        const viewer = await startViewer(ws, port === undefined ? {} : { port });
+        return {
+          stdout: `viewer for ${ws.root} at ${viewer.url} (Ctrl-C to stop)`,
+          exitCode: 0,
+          close: viewer.close,
+        };
+      } catch (e) {
+        return { stdout: "", stderr: (e as Error).message, exitCode: 1 };
+      }
+    }
+
+    case "focus":
+      return fromText(await ws.focus());
 
     case "grammar":
       return { stdout: await readGrammarReference(), exitCode: 0 };

@@ -92,7 +92,7 @@ describe("annotate", () => {
 });
 
 describe("symbols", () => {
-  it("puts every pin of a record symbol on the grid, grounds at the bottom", () => {
+  it("puts every pin of a record symbol on the grid, supplies on top, grounds at the bottom", () => {
     const record = result.library.get("ATMEGA328P-AU")?.record;
     if (!record) throw new Error("seed record missing");
     const s = symbolForRecord(record);
@@ -102,8 +102,18 @@ describe("symbols", () => {
       expect(Math.abs(a.y / GRID - Math.round(a.y / GRID))).toBeLessThan(1e-9);
     }
     expect(s.pins.get("3")?.outward).toBe(270); // GND
-    expect(s.pins.get("4")?.outward).toBe(180); // VCC, left
+    expect(s.pins.get("4")?.outward).toBe(90); // VCC, top
     expect(s.pins.get("12")?.outward).toBe(0); // PB0, right
+    expect(s.pins.get("20")?.outward).toBe(180); // AREF, left
+  });
+
+  it("keeps a regulator's supply input on the left, in line with its output", () => {
+    const record = result.library.get("L7805CV")?.record;
+    if (!record) throw new Error("seed record missing");
+    const s = symbolForRecord(record);
+    expect(s.pins.get("1")?.outward).toBe(180); // IN
+    expect(s.pins.get("3")?.outward).toBe(0); // OUT
+    expect(s.pins.get("2")?.outward).toBe(270); // GND
   });
 
   it("has symbols for every generic", () => {
@@ -149,15 +159,15 @@ describe("power symbols", () => {
 });
 
 describe("exportKicad", () => {
-  it("writes a netlist that reads back as the same connectivity", () => {
-    const x = exportKicad(result, { annotation: "", bom: "" });
+  it("writes a netlist that reads back as the same connectivity", async () => {
+    const x = await exportKicad(result, { annotation: "", bom: "" });
     const parsed = parseKicadNetlist(x.files.get(x.netlistFile) as string);
     expect(parsed.refs.size).toBe(30);
     expect(compareNetlists(result.netlist as Netlist, x.annotation, parsed)).toEqual([]);
   });
 
-  it("detects a netlist that differs", () => {
-    const x = exportKicad(result, { annotation: "", bom: "" });
+  it("detects a netlist that differs", async () => {
+    const x = await exportKicad(result, { annotation: "", bom: "" });
     const parsed = parseKicadNetlist(x.files.get(x.netlistFile) as string);
     const gnd = parsed.nets.find((n) => n.name === "GND");
     gnd?.nodes.pop();
@@ -167,21 +177,21 @@ describe("exportKicad", () => {
     expect(problems.some((p) => p.startsWith("net GND {"))).toBe(true);
   });
 
-  it("is deterministic", () => {
-    const a = exportKicad(result, { annotation: "", bom: "" });
-    const b = exportKicad(result, { annotation: "", bom: "" });
+  it("is deterministic", async () => {
+    const a = await exportKicad(result, { annotation: "", bom: "" });
+    const b = await exportKicad(result, { annotation: "", bom: "" });
     expect([...a.files]).toEqual([...b.files]);
   });
 
-  it("flags only nets fed from outside: the 12 V input and ground", () => {
-    const x = exportKicad(result, { annotation: "", bom: "" });
+  it("flags only nets fed from outside: the 12 V input and ground", async () => {
+    const x = await exportKicad(result, { annotation: "", bom: "" });
     expect(x.schematic.powerFlags).toBe(2);
     expect(x.files.get("power.kicad_sch")).toContain('(lib_id "power:PWR_FLAG")');
     expect(x.files.get("partstyle.kicad_sym")).not.toContain("PWR_FLAG");
   });
 
-  it("draws power nets with power symbols and keeps them off sheet pins", () => {
-    const x = exportKicad(result, { annotation: "", bom: "" });
+  it("draws power nets with power symbols and keeps them off sheet pins", async () => {
+    const x = await exportKicad(result, { annotation: "", bom: "" });
     const power = x.files.get("power.kicad_sch") as string;
     expect(power).toContain('(lib_id "power:GND")');
     expect(power).not.toMatch(/\(hierarchical_label "(GND|\+5V|\+3V3)"/);
@@ -217,7 +227,7 @@ net AIN2 : B.AIN`;
         c.file === "circuit/main.ckt" ? { ...c, text: main } : c,
       ),
     });
-    const x = exportKicad(r, { annotation: "", bom: "" });
+    const x = await exportKicad(r, { annotation: "", bom: "" });
     const afe = x.files.get("sensor_afe.kicad_sch") as string;
     expect(afe).toMatch(/\(hierarchical_label "\+5V"/);
     expect(afe).toContain('(lib_id "power:GND")');

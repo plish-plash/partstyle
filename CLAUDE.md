@@ -5,10 +5,15 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
 
 ## Commands
 
-- `pnpm build`: `tsc -b`, compiles packages to `dist/`
+- `pnpm build`: `tsc -b` to `dist/`, then the viewer with Vite (`packages/viewer/dist`)
 - `pnpm test`: Vitest. Tests import `@partstyle/engine` from source, so no build is needed
-- `pnpm lint` / `pnpm format`: Biome check / autofix (also formats Markdown)
-- `pnpm typecheck`: strict tsc over all sources including tests (`tsconfig.check.json`)
+  (the one test serving the built viewer page is skipped until it is built)
+- `pnpm lint` / `pnpm format`: Biome check / autofix (also formats Markdown; `.svelte` files are
+  excluded because Biome cannot see template usage)
+- `pnpm typecheck`: strict tsc over all sources including tests (`tsconfig.check.json`), then
+  `svelte-check` for the viewer (which uses its own TypeScript 6; svelte-check does not support 7)
+- `pnpm partstyle -p examples/bench-sensor view`, then open the printed URL; for UI work run
+  `pnpm --filter @partstyle/viewer dev` (Vite, proxies `/api` to a viewer on port 7766)
 - `pnpm check`: lint + typecheck + test
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
   [docs/cli.md](docs/cli.md), and keep it updated when commands change
@@ -17,6 +22,9 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
   KiCad is missing (`project/kicad.ts` `findKicad` checks there). Tests that need kicad-cli
   use `it.skipIf` and are skipped without it. To eyeball a generated schematic, run
   `kicad-cli sch export svg` and screenshot the SVG with headless Edge (no PDF renderer here).
+  To screenshot the viewer, use `--virtual-time-budget=8000` and the `?live=0` URL (the live
+  event stream otherwise keeps headless Edge waiting forever); write `.partstyle/focus.json`
+  first to choose the sheet and selection.
 
 ## Layout
 
@@ -33,6 +41,20 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
     vets KiCad library symbols (flattening, units, pin compatibility), `kicad/power.ts` power
     symbols, `kicad/symbols.ts` generated fallbacks. `project/kicad.ts` (node) finds kicad-cli
     and the stock libraries, indexes symbol names, checks footprint pads and parses ERC.
+  - Drawing (shared by the viewer and KiCad export, pure): `drawing/plan.ts` decides per net
+    power symbol / wire / label; `drawing/orient.ts` turns two-terminal parts; `drawing/layout.ts`
+    places and routes each sheet with ELK (decoupling and shunt parts ride beside a host part
+    inside its ELK node; flips and mirrors are tried as extra layouts and kept if they shorten
+    the wiring; connected components are packed onto the smallest paper) and snaps it to 1.27 mm
+    grid (`gridRoute` keeps segments orthogonal); `drawing/wires.ts`
+    splits, merges and adds junctions; `drawing/connectivity.ts` proves the geometry matches the
+    netlist; `drawing/prepare.ts` is the entry point. `kicad/schematic.ts` only serializes it.
+  - Review: `review.ts` (comments.yaml, .partstyle/focus.json, `focus` text) and
+    `viewer-model.ts` (the JSON the viewer renders).
+- `packages/server`: local HTTP server for the viewer (model API, SSE live reload, focus,
+  comments, verify); 127.0.0.1 only, Host-header and custom-header checks. Started by
+  `partstyle view` and by the MCP server.
+- `packages/viewer`: Svelte 5 + Vite app rendering `ViewerModel` as SVG (KiCad colours).
 - `project/skeleton.ts`: files `init` creates, including the project CLAUDE.md template.
   `examples/bench-sensor/CLAUDE.md` is generated from it (a test keeps them in sync).
 - `library/`: seed global part records. `examples/bench-sensor/`: 30-part reference design.

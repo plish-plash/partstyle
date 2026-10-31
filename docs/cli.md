@@ -183,19 +183,49 @@ while the design has validation errors.
 | `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor |
 | `<name>.kicad_pro`    | written only if missing, so KiCad's own settings survive  |
 
-Pins connect through symbols and labels on their endpoints rather than drawn wires:
+Each sheet is laid out automatically with ELK (layered, left to right) — the same layout the
+viewer shows. How a net is drawn depends on what it connects:
 
+- **Small nets** (2–6 connections in a sheet: pins, sheet pins and its hierarchical label) are
+  routed as orthogonal wires, with junction dots where three wires meet. Signal flows left to
+  right: out of pins on a symbol's right side, into pins on its left.
+- **Adjacent pins** of one part on the same net (three GND pins in a row) are tied with a short
+  wire along their ends and share one label or power symbol.
+- **Larger nets** use local labels at each pin; ports of such nets get hierarchical labels.
+  A port net that reaches only one pin in a sheet has its hierarchical label right on that pin.
 - **Power nets** (any net with power pins or a `ground`/`power_in`/`power_out` port) use KiCad
   power symbols from its `power` library: `power:GND`, `power:+5V` and so on when one is named
   after the net, otherwise `power:GND` (ground) or `power:VCC` with the net name as its value.
   They connect globally, so their ports get no sheet pins. The name is the bare net name, or
   the instance-qualified one (`PWR_+12V`) when two nets share a bare name. If a block used more
   than once would need different power names per instance, that net falls back to labels.
-- **Other nets** use local labels; ports become hierarchical labels and sheet pins.
+- **Power symbols point the conventional way**: rails up, ground down. At a pin on a symbol's
+  side, a short stub carries the symbol clear of the part, unless another connected pin is in
+  its way, when it points straight out of the pin instead.
+- **Ports** that are not power nets become sheet pins on the parent's sheet symbol.
 - **Unconnected pins** get no-connect flags.
 - **PWR_FLAG** (`power:PWR_FLAG`) is added to every net drawn with power symbols or feeding
   `power_in` pins that has no `power_out` pin, i.e. power from outside the design (a
   `{source: ...}` rail, ground). It sits in a sheet where the net reaches real part pins.
+
+Parts are placed to read like a hand-drawn schematic:
+
+- **Two-terminal parts** (R, C, L, F, FB, D, LED refdes) are turned: a part to ground stands
+  with ground at the bottom, one between a rail and a signal stands with the rail on top, and
+  anything else lies in the signal path, a diode anode first. A series part whose neighbours
+  end up on the wrong side is reversed, so no wire loops around it.
+- **Shunt parts** (two-terminal parts from a wired net to ground or a rail: filter caps,
+  pull-downs, clamps) hang under the net's wire (or stand over it, for a rail) beside the pin
+  that drives it, instead of taking a place in the signal path.
+- **Other parts may be mirrored** left to right when their pins face away from what they
+  connect to (an input connector with its pins on the left). Each candidate is tried and kept
+  only if the sheet then needs less wiring.
+- **Decoupling parts** (two-terminal parts on power nets only) are drawn in a row under the IC
+  or connector they serve: the nearest one declared before or after them that shares a rail.
+  Declare a capacitor next to its IC to keep them together.
+- **Unconnected groups** are packed in declaration order onto the smallest paper that holds
+  them (A4 first), and generated symbols put a part's supply pins on top and grounds at the
+  bottom (a regulator keeps its input on the left, in line with its output).
 
 Power symbol definitions are copied from KiCad's installed `power.kicad_sym` so they match the
 library exactly; without KiCad, built-in look-alikes with the same names are used.
@@ -219,8 +249,9 @@ from the pin table into `partstyle.kicad_sym`. The export lists which KiCad symb
 why any part got a generated one. A `kicad_symbol` that cannot be used is a
 `kicad.symbol-fallback` warning.
 
-Placement is a simple grid until the viewer's auto-layout (M3). Symbols carry MPN,
-Manufacturer, Spec and distributor fields, so KiCad's own BOM tools work too.
+Symbols carry MPN, Manufacturer, Spec and distributor fields, so KiCad's own BOM tools work
+too. Before writing, the layout's connectivity is re-derived from its geometry and compared with
+the design; a difference is reported as a `layout.connectivity` error (a layout bug).
 
 Refdes come from `annotation.lock`, which maps instance paths to flat references. A new part
 keeps its local refdes when free; a clash (two blocks both with `C1`) takes the next free
@@ -251,6 +282,46 @@ checks are skipped everywhere.
 
 When the footprint libraries are found, `validate`, `overview` and `apply` also report
 `part.footprint-pads` (error) and `part.footprint-missing` (warning) for the library parts in use.
+
+## Viewer and review
+
+### `view [--port N]`
+
+Serves the live viewer for the project at `http://127.0.0.1:7766/` (or the next free port;
+`--port 0` picks any) until Ctrl-C. The MCP server starts the same viewer automatically. The
+page shows each sheet with the auto-layout described under `kicad export`, and updates within a
+moment of any change to the project's files or its part libraries.
+
+- **Navigate:** sheet buttons in the header, or double-click a sheet. Scroll to zoom, drag to
+  pan.
+- **Point:** click a part, pin, wire, label or sheet to select it; shift-click adds to the
+  selection. The selection is what `focus` reports to the AI.
+- **Inspect:** the side panel shows the part card (record, verification, datasheet, ratings,
+  requirements, pins and their nets), the net card, and issues pinned to what they concern.
+  Issues and comments also appear as markers on the sheet.
+- **Comment:** attach a comment to the selected item; resolve it when done.
+- **Verify:** "Mark verified" sets `verified_by: human` in an AI-extracted part record.
+
+The server listens on 127.0.0.1 only, refuses requests addressed to other host names, and accepts
+writes only from its own page. Add `?live=0` to the URL for a static snapshot without the update
+stream (for example, for screenshots).
+
+### `focus`
+
+What the person has selected in the viewer, described like `query` output, plus open comments
+and the viewer's URL. The AI calls this when someone says "this" or "here".
+
+```
+selected in the viewer (viewing sheet MCU):
+  MCU/U4 lib:ATMEGA328P-AU 8-bit AVR MCU, 32 KB flash, 2 KB SRAM, 1.8-5.5 V, TQFP-32 [unverified]
+  pin MCU/U4.RESET (pin 29, input) on net MCU/RESET
+open comments (1):
+  c1 on MCU/R5: Is 10k strong enough for a reset line on a 2 m cable?
+viewer: http://127.0.0.1:7766/
+```
+
+Review state lives in two files: `comments.yaml` (versioned with the design) and
+`.partstyle/focus.json` (local, git-ignored). `overview` lists open comments too.
 
 ## Reference
 

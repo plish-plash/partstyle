@@ -10,6 +10,7 @@
     "dist"
   ],
   "dependencies": {
-    "@partstyle/engine": "workspace:*"
+    "@partstyle/engine": "workspace:*",
+    "@partstyle/server": "workspace:*"
   }
 }

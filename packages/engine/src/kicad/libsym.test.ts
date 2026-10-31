@@ -202,7 +202,7 @@ describe("export with KiCad symbols", () => {
   });
   const lib = parseSymbolLib(libText);
 
-  it("places every unit of a multi-unit symbol and lists them all in the netlist", () => {
+  it("places every unit of a multi-unit symbol and lists them all in the netlist", async () => {
     const op = (result.netlist as Netlist).parts.find((p) => p.path === "AFE/U3") as FlatPart;
     const candidates = new Map<string, SymbolCandidate[]>([
       [
@@ -215,7 +215,11 @@ describe("export with KiCad symbols", () => {
         ],
       ],
     ]);
-    const x = exportKicad(result, { annotation: "", bom: "" }, { symbolCandidates: candidates });
+    const x = await exportKicad(
+      result,
+      { annotation: "", bom: "" },
+      { symbolCandidates: candidates },
+    );
     expect(x.symbols.find((s) => s.key === "lib:MCP6002-I_SN")).toMatchObject({
       libId: "L:MCP6002-xSN",
       generated: false,
@@ -230,7 +234,7 @@ describe("export with KiCad symbols", () => {
     expect(comp?.match(/\(tstamps "[^"]+" "[^"]+" "[^"]+"\)/)).not.toBeNull();
   });
 
-  it("falls back to a generated symbol, with a warning when kicad_symbol named the bad one", () => {
+  it("falls back to a generated symbol, with a warning when kicad_symbol named the bad one", async () => {
     const candidates = new Map<string, SymbolCandidate[]>([
       [
         "lib:L7805CV",
@@ -244,7 +248,11 @@ describe("export with KiCad symbols", () => {
       ],
       ["lib:1N5819", [{ libId: "Diode:NOPE", explicit: false }]],
     ]);
-    const x = exportKicad(result, { annotation: "", bom: "" }, { symbolCandidates: candidates });
+    const x = await exportKicad(
+      result,
+      { annotation: "", bom: "" },
+      { symbolCandidates: candidates },
+    );
     expect(x.symbols.find((s) => s.key === "lib:L7805CV")).toMatchObject({
       libId: "partstyle:L7805CV",
       generated: true,

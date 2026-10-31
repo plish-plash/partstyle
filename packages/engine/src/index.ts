@@ -4,6 +4,17 @@ export { type LexError, lexLine, type Token, type TokenKind } from "./ckt/lexer.
 export { parseCkt, parsePinRef, parseStatement } from "./ckt/parser.js";
 export { printPinRef, printSpec, printStatement } from "./ckt/print.js";
 export * from "./diagnostics.js";
+export { checkConnectivity } from "./drawing/connectivity.js";
+export { type Fill, type Prim, type SymbolGraphics, symbolGraphics } from "./drawing/graphics.js";
+export type { DrawingPlan, NetPlan } from "./drawing/plan.js";
+export {
+  type Drawing,
+  type KicadLibraries,
+  prepareDrawing,
+  type SymbolCandidate,
+  type SymbolChoice,
+} from "./drawing/prepare.js";
+export type * from "./drawing/types.js";
 export { runErc } from "./erc/rules.js";
 export * from "./kicad/annotate.js";
 export { exportKicad, type KicadExport } from "./kicad/export.js";
@@ -29,6 +40,23 @@ export * from "./project/config.js";
 export { projectClaudeMd, projectSkeleton, type SkeletonOptions } from "./project/skeleton.js";
 export type { ProjectSource, TextFile } from "./project/source.js";
 export { queryUsage, runQuery, type TextResult } from "./query.js";
+export {
+  COMMENTS_FILE,
+  type Comment,
+  describeSubject,
+  FOCUS_FILE,
+  type Focus,
+  focusText,
+  formatComments,
+  parseComments,
+  parseFocus,
+} from "./review.js";
 export { parseQuantity, type Quantity } from "./units.js";
 export { applyWaivers, type ValidationResult, validateProject } from "./validate.js";
+export {
+  buildViewerModel,
+  type PartInfo,
+  type ViewerModel,
+  type ViewerSheet,
+} from "./viewer-model.js";
 export { countIssues, formatValidation, issueSummary, overview, readBlock } from "./views.js";

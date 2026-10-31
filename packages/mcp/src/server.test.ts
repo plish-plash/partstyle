@@ -31,6 +31,7 @@ describe("MCP server", () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       "apply",
       "bom_export",
+      "focus",
       "init_project",
       "kicad_export",
       "overview",

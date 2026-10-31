@@ -11,6 +11,8 @@ export interface ProjectSource {
   config: TextFile;
   /** context.md: YAML front matter for checks, prose for people and the AI. */
   context?: TextFile;
+  /** comments.yaml: review comments from the viewer. */
+  comments?: TextFile;
   circuits: TextFile[];
   parts: PartSource[];
 }

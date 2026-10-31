@@ -107,6 +107,8 @@ export interface PowerLibrary {
   /** The symbol for a net: KiCad's own when it has one of that name, else GND or VCC. */
   forNet(netName: string, ground: boolean): PowerSymbol;
   flag(): PowerSymbol;
+  /** A symbol by its lib_id (`power:GND`), as placed by `forNet` or `flag`. */
+  byLibId(libId: string): PowerSymbol;
 }
 
 /** Power symbols from KiCad's `power` library when available, otherwise the fallbacks. */
@@ -130,10 +132,26 @@ export function powerLibrary(kicadPower: SymbolLib | undefined): PowerLibrary {
       return get(ground || groundName.test(netName) ? "GND" : "VCC");
     },
     flag: () => get("PWR_FLAG"),
+    byLibId: (libId) => get(libId.slice(libId.indexOf(":") + 1)),
   };
 }
 
 type Point = { x: number; y: number };
+
+/** Rotation that makes a power symbol's drawing point `outward`. */
+export const powerRotation = (p: PowerSymbol, outward: number) =>
+  (((outward - p.bodyDir) % 360) + 360) % 360;
+
+/** Where a power symbol's net name goes: beyond its drawing, centred. */
+export function powerValueAt(at: Point, outward: number, value: string): Point {
+  const rad = (outward * Math.PI) / 180;
+  const horizontal = outward === 0 || outward === 180;
+  const distance = horizontal ? 3.81 + value.length * 0.6 : 5.08;
+  return {
+    x: at.x + Math.round(Math.cos(rad) * distance * 100) / 100,
+    y: at.y - Math.round(Math.sin(rad) * distance * 100) / 100,
+  };
+}
 
 /**
  * A placed power symbol whose drawing points `outward` from `at`. Its Value is the net name,
@@ -145,6 +163,7 @@ export function placePower(
     at: Point;
     outward: number;
     value: string;
+    valueAt: Point;
     uuid: string;
     pinUuid: string;
     project: string;
@@ -154,14 +173,11 @@ export function placePower(
   },
 ): SExpr[] {
   const { at, outward } = opts;
-  const rotation = (((outward - p.bodyDir) % 360) + 360) % 360;
-  const rad = (outward * Math.PI) / 180;
-  const horizontal = outward === 0 || outward === 180;
-  const distance = horizontal ? 3.81 + opts.value.length * 0.6 : 5.08;
+  const rotation = powerRotation(p, outward);
   // Field angles are relative to the symbol; counter-rotate so the net name reads horizontally.
   const textAt: [number, number, number] = [
-    at.x + Math.round(Math.cos(rad) * distance * 100) / 100,
-    at.y - Math.round(Math.sin(rad) * distance * 100) / 100,
+    opts.valueAt.x,
+    opts.valueAt.y,
     rotation === 90 || rotation === 270 ? 90 : 0,
   ];
   return [

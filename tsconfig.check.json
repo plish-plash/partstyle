@@ -5,8 +5,11 @@
     "noEmit": true,
     "paths": {
       "@partstyle/engine": ["./packages/engine/src/index.ts"],
-      "@partstyle/engine/node": ["./packages/engine/src/node.ts"]
+      "@partstyle/engine/node": ["./packages/engine/src/node.ts"],
+      "@partstyle/server": ["./packages/server/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "vitest.config.ts"]
+  "include": ["packages/*/src", "vitest.config.ts"],
+  // The Svelte viewer is checked by svelte-check (pnpm --filter @partstyle/viewer check).
+  "exclude": ["packages/viewer"]
 }

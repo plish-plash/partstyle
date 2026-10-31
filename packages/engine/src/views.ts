@@ -3,6 +3,7 @@ import { printSpec } from "./ckt/print.js";
 import { formatIssue } from "./diagnostics.js";
 import type { ProjectSource } from "./project/source.js";
 import type { TextResult } from "./query.js";
+import { parseComments } from "./review.js";
 import type { ValidationResult } from "./validate.js";
 
 const MAX_LISTED_ISSUES = 10;
@@ -90,6 +91,11 @@ export function overview(source: ProjectSource, result: ValidationResult): strin
   );
   if (result.issues.length > MAX_LISTED_ISSUES) {
     lines.push(`  ... ${result.issues.length - MAX_LISTED_ISSUES} more (run validate)`);
+  }
+  const open = parseComments(source.comments?.text ?? "").filter((c) => c.status === "open");
+  if (open.length > 0) {
+    lines.push(`comments: ${open.length} open (see focus)`);
+    for (const c of open.slice(0, 3)) lines.push(`  ${c.id} on ${c.subject}: ${c.text}`);
   }
   lines.push("changes since checkpoint: not tracked yet");
   return lines.join("\n");

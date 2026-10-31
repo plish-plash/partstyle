@@ -10,9 +10,14 @@ export default defineConfig({
       "@partstyle/engine": fileURLToPath(
         new URL("./packages/engine/src/index.ts", import.meta.url),
       ),
+      "@partstyle/server": fileURLToPath(
+        new URL("./packages/server/src/index.ts", import.meta.url),
+      ),
     },
   },
   test: {
     include: ["packages/*/src/**/*.test.ts"],
+    // Some tests run kicad-cli, ELK layout and an HTTP server for real.
+    testTimeout: 30_000,
   },
 });

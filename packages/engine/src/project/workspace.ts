@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { formatBomCsv, resolveBom } from "../bom.js";
 import { compareIssues, formatIssue, issueDelta } from "../diagnostics.js";
+import { type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
 import { annotate, formatAnnotationLock, parseAnnotationLock } from "../kicad/annotate.js";
 import { exportKicad } from "../kicad/export.js";
 import { compareNetlists, parseKicadNetlist } from "../kicad/netlist.js";
@@ -10,9 +11,21 @@ import { parsePartRecord } from "../parts/library.js";
 import { describePart, type PartTier, searchParts } from "../parts/search.js";
 import { applyPatch } from "../patch.js";
 import { runQuery, type TextResult } from "../query.js";
+import {
+  COMMENTS_FILE,
+  type Comment,
+  FOCUS_FILE,
+  type Focus,
+  focusText,
+  formatComments,
+  nextCommentId,
+  parseComments,
+  parseFocus,
+} from "../review.js";
 import { type ValidationResult, validateProject } from "../validate.js";
+import { buildViewerModel, type ViewerModel } from "../viewer-model.js";
 import { countIssues, formatValidation, issueSummary, overview, readBlock } from "../views.js";
-import type { ProjectConfig } from "./config.js";
+import { type ProjectConfig, parseProjectConfig } from "./config.js";
 import {
   checkFootprints,
   findKicad,
@@ -86,6 +99,31 @@ export class Workspace {
       );
     }
     return { source, result };
+  }
+
+  /** KiCad's power library and symbol candidates for the parts in use, when KiCad is installed. */
+  private async libraries(result: ValidationResult): Promise<KicadLibraries> {
+    const { symbols } = await this.kicad(result.config);
+    if (!symbols || !result.netlist) return {};
+    if (this.symbolLibs?.dir !== symbols) this.symbolLibs = new KicadSymbolLibraries(symbols);
+    const power = await this.symbolLibs.library("power");
+    const symbolCandidates = await this.symbolLibs.candidates(result.netlist.parts);
+    return { ...(power && { power }), symbolCandidates };
+  }
+
+  private async locks(): Promise<{ annotation: string; bom: string }> {
+    return {
+      annotation: await this.readOptional("annotation.lock"),
+      bom: await this.readOptional("bom.lock"),
+    };
+  }
+
+  /** Review comments and the viewer selection, read fresh (they are small and change often). */
+  async review(): Promise<{ comments: Comment[]; focus: Focus }> {
+    return {
+      comments: parseComments(await this.readOptional(COMMENTS_FILE)),
+      focus: parseFocus(await this.readOptional(FOCUS_FILE)),
+    };
   }
 
   private async readOptional(file: string): Promise<string> {
@@ -305,20 +343,7 @@ export class Workspace {
         return fail(`cannot export with ${issueSummary(result)}; fix the errors first (validate)`);
       }
       const { cli, footprints, symbols } = await this.kicad(result.config);
-      if (symbols && this.symbolLibs?.dir !== symbols) {
-        this.symbolLibs = new KicadSymbolLibraries(symbols);
-      }
-      const libs = symbols ? this.symbolLibs : undefined;
-      const power = await libs?.library("power");
-      const symbolCandidates = await libs?.candidates(result.netlist.parts);
-      const x = exportKicad(
-        result,
-        {
-          annotation: await this.readOptional("annotation.lock"),
-          bom: await this.readOptional("bom.lock"),
-        },
-        { ...(power && { power }), ...(symbolCandidates && { symbolCandidates }) },
-      );
+      const x = await exportKicad(result, await this.locks(), await this.libraries(result));
 
       const dir = path.join(this.root, KICAD_DIR);
       await mkdir(dir, { recursive: true });
@@ -461,6 +486,134 @@ export class Workspace {
     });
   }
 
+  /** What the person has selected in the viewer, and the open review comments. */
+  focus(): Promise<TextResult> {
+    return this.guard(async () => {
+      const { result } = await this.load();
+      const { comments, focus } = await this.review();
+      let url: string | undefined;
+      try {
+        url = (JSON.parse(await this.readOptional(VIEWER_FILE)) as { url?: string }).url;
+      } catch {
+        url = undefined;
+      }
+      return { ok: true, text: focusText(focus, comments, result.netlist, url) };
+    });
+  }
+
+  /** Absolute paths of the global part libraries in project.toml, for watching. */
+  async libraryDirs(): Promise<string[]> {
+    const text = await this.readOptional("project.toml");
+    const paths = parseProjectConfig(text, "project.toml").config?.library.paths ?? [];
+    return paths.map((p) => path.resolve(this.root, p));
+  }
+
+  /** Records the viewer's selection for `focus` (and other processes) to read. */
+  async setFocus(focus: Focus): Promise<void> {
+    await this.writeState(
+      FOCUS_FILE,
+      `${JSON.stringify({ ...focus, updated: new Date().toISOString() }, null, 2)}\n`,
+    );
+  }
+
+  /** Where a running viewer can be reached, for `focus` to mention. */
+  async setViewerUrl(url: string | undefined): Promise<void> {
+    if (url === undefined) await rm(path.join(this.root, VIEWER_FILE), { force: true });
+    else await this.writeState(VIEWER_FILE, `${JSON.stringify({ url, pid: process.pid })}\n`);
+  }
+
+  private async writeState(file: string, text: string): Promise<void> {
+    const full = path.join(this.root, file);
+    await mkdir(path.dirname(full), { recursive: true });
+    await writeFile(full, text, "utf8");
+  }
+
+  async addComment(subject: string, text: string): Promise<Comment> {
+    const { comments } = await this.review();
+    const comment: Comment = {
+      id: nextCommentId(comments),
+      subject,
+      text: text.trim(),
+      status: "open",
+      created: new Date().toISOString(),
+    };
+    await writeFile(
+      path.join(this.root, COMMENTS_FILE),
+      formatComments([...comments, comment]),
+      "utf8",
+    );
+    return comment;
+  }
+
+  async resolveComment(id: string): Promise<TextResult> {
+    const { comments } = await this.review();
+    const c = comments.find((x) => x.id === id);
+    if (!c) return fail(`no comment ${id}`);
+    c.status = "resolved";
+    await writeFile(path.join(this.root, COMMENTS_FILE), formatComments(comments), "utf8");
+    return { ok: true, text: `resolved ${id}` };
+  }
+
+  /** Marks a part record checked against its datasheet (`verified_by: human`). */
+  verifyPart(id: string): Promise<TextResult> {
+    return this.guard(async () => {
+      const { result } = await this.load();
+      const entry = result.library.get(id);
+      if (!entry) return fail(`no part '${id}' in the library`);
+      if (entry.record.provenance.verified_by)
+        return { ok: true, text: `${id} is already verified` };
+      const file = path.resolve(this.root, entry.file);
+      const text = await readFile(file, "utf8");
+      const updated = text.replace(/verified_by:\s*null/, "verified_by: human");
+      if (updated === text) return fail(`could not find 'verified_by: null' in ${entry.file}`);
+      await writeFile(file, updated, "utf8");
+      return { ok: true, text: `marked ${id} verified in ${entry.file}` };
+    });
+  }
+
+  /**
+   * Everything the viewer draws: the laid-out sheets, symbols, parts, nets, issues and review
+   * state. A design that does not elaborate still gets its issues, with no sheets.
+   */
+  async viewerModel(): Promise<ViewerModel> {
+    const { result } = await this.load();
+    const review = await this.review();
+    const { errors, warnings } = countIssues(result);
+    const empty: ViewerModel = {
+      project: result.config?.name ?? path.basename(this.root),
+      top: result.config?.top ?? "main",
+      summary: { errors, warnings, waived: result.waived },
+      issues: result.issues,
+      sheets: [],
+      symbols: {},
+      parts: {},
+      nets: {},
+      ...review,
+    };
+    if (!result.netlist || !result.config) return empty;
+    try {
+      const drawing = await prepareDrawing(
+        result,
+        await this.locks(),
+        await this.libraries(result),
+      );
+      return buildViewerModel(drawing, result, review);
+    } catch (e) {
+      return {
+        ...empty,
+        issues: [
+          ...result.issues,
+          {
+            code: "layout.failed",
+            severity: "error",
+            message: `could not draw the design: ${(e as Error).message}`,
+            subjects: [],
+          },
+        ],
+      };
+    }
+  }
+
   /** Resolves generic parts against the library, writes bom.lock and a grouped bom.csv. */
   bomExport(): Promise<TextResult> {
     return this.guard(async () => {
@@ -501,6 +654,7 @@ export class Workspace {
 }
 
 const KICAD_DIR = "kicad";
+const VIEWER_FILE = ".partstyle/viewer.json";
 
 function summarizeLockChanges(changes: string[]): string[] {
   if (changes.length === 0) return [];

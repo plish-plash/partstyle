@@ -38,6 +38,15 @@ Start cheap and drill down:
 3. \`partstyle query "part U1"\`, \`query "net +5V"\`, \`query "parts where vin_max < 15V"\`
 4. \`partstyle part get ID\` (tiers: summary, pins, full); prefer this to re-reading datasheets
 
+## The person and the viewer
+
+The person watches the design in the live viewer (\`partstyle view\`) as you edit it. They point
+and comment there rather than typing refdes:
+
+- When they say "this", "here" or "the selected part", run \`partstyle focus\`: it lists what
+  they have selected and their open comments.
+- Answer open comments; the person resolves them in the viewer.
+
 ## Editing
 
 Edit \`circuit/*.ckt\` directly, or send a batched patch with \`partstyle apply\` (stdin), which
@@ -161,5 +170,14 @@ Layout guidance for the KiCad hand-off: layer count, keep-outs, placement constr
 `,
     },
     { file: "CLAUDE.md", text: projectClaudeMd(name) },
+    {
+      file: ".gitignore",
+      text: `# Local viewer state and KiCad's per-user files. Commit everything else, including
+# annotation.lock, bom.lock and comments.yaml.
+.partstyle/
+kicad/*.kicad_prl
+kicad/*-backups/
+`,
+    },
   ];
 }

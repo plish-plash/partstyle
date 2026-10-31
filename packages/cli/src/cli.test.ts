@@ -111,6 +111,32 @@ describe("partstyle init", () => {
   });
 });
 
+describe("partstyle view and focus", () => {
+  it("serves the viewer until closed, and focus reports its URL", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-cli-view-"));
+    try {
+      const dir = path.join(tmp, "board");
+      await cli(["init", dir, "--name", "board"]);
+      const r = await cli(["-p", dir, "view", "--port", "0"]);
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toMatch(/^viewer for .* at http:\/\/127\.0\.0\.1:\d+\/ \(Ctrl-C to stop\)$/);
+      const focus = await cli(["-p", dir, "focus"]);
+      expect(focus.stdout).toMatch(
+        /^nothing selected in the viewer\nno open comments\nviewer: http/,
+      );
+      await r.close?.();
+      expect((await cli(["-p", dir, "focus"])).stdout).not.toContain("viewer:");
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a bad port and a folder that is not a project", async () => {
+    expect((await cli(["view", "--port", "x"])).exitCode).toBe(2);
+    expect((await cli(["-p", repo("library"), "view"])).exitCode).toBe(1);
+  });
+});
+
 describe("partstyle", () => {
   it("prints the grammar and the part-record JSON Schema", async () => {
     expect((await cli(["grammar"])).stdout).toMatch(/^# \.ckt grammar reference/);

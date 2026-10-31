@@ -1,0 +1,446 @@
+/* Colours follow KiCad's default schematic theme so the viewer and the export look alike. */
+:root {
+  --paper: #f5f4ef;
+  --wire: #009600;
+  --symbol: #840000;
+  --body: #ffffc2;
+  --pin: #840000;
+  --text: #006464;
+  --label: #000000;
+  --hier: #826400;
+  --power: #840000;
+  --sheet: #840084;
+  --hot: #1e6bff;
+  --error: #d32020;
+  --warning: #d98a00;
+  --comment: #7a3ff2;
+  --ui-bg: #ffffff;
+  --ui-fg: #1d1d1f;
+  --ui-muted: #6b6b70;
+  --ui-line: #e2e2e6;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  /* minmax(0, …) keeps the rows to the window: a sheet's SVG would otherwise size them from its
+     aspect ratio, growing the sidebar past the window so it never scrolls. */
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid var(--ui-line);
+  flex-wrap: wrap;
+}
+
+header h1 {
+  font-size: 1rem;
+  margin: 0 0.6rem 0 0;
+}
+
+nav {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-left: 1rem;
+}
+
+nav button {
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg);
+  border-radius: 4px;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+
+nav button.active {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+}
+
+.chip {
+  font-size: 0.8rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  background: #e9f6ea;
+}
+
+.chip.bad {
+  background: #fde2e2;
+}
+
+.chip.meh {
+  background: #fff1d6;
+}
+
+.live {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--wire);
+}
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.canvas {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #e9e8e2;
+}
+
+.canvas svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  user-select: none;
+}
+
+aside {
+  border-left: 1px solid var(--ui-line);
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+aside h2 {
+  font-size: 1.05rem;
+  margin: 0.2rem 0;
+}
+
+aside h2 small {
+  font-weight: normal;
+  color: var(--ui-muted);
+}
+
+aside h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ui-muted);
+  margin: 1rem 0 0.3rem;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem;
+  margin: 0.5rem 0;
+}
+
+dt {
+  color: var(--ui-muted);
+}
+
+dd {
+  margin: 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td {
+  padding: 0.1rem 0.3rem;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.issue-list ul,
+ul.issues,
+ul.pins {
+  list-style: none;
+  padding: 0;
+}
+
+.issue-list li {
+  margin: 0.25rem 0;
+  border-left: 3px solid var(--ui-line);
+  padding-left: 0.4rem;
+}
+
+li.error {
+  border-left-color: var(--error);
+}
+
+li.warning {
+  border-left-color: var(--warning);
+}
+
+li.comment-item {
+  border-left-color: var(--comment);
+}
+
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+button.link:hover:not(:disabled) {
+  color: var(--hot);
+  text-decoration: underline;
+}
+
+textarea {
+  width: 100%;
+  font: inherit;
+  margin-top: 0.4rem;
+}
+
+.muted,
+.hint {
+  color: var(--ui-muted);
+}
+
+.ok {
+  color: var(--wire);
+}
+
+.warn {
+  color: var(--warning);
+}
+
+.error {
+  color: var(--error);
+  padding: 1rem;
+}
+
+.comment {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-left: 3px solid var(--comment);
+  padding-left: 0.4rem;
+  margin: 0.3rem 0;
+}
+
+.comment.resolved {
+  opacity: 0.55;
+}
+
+.message {
+  color: var(--ui-muted);
+  font-size: 0.85rem;
+}
+
+/* Sheet drawing, in mm. */
+svg text {
+  font-family: "KiCad Font", "Segoe UI", sans-serif;
+  font-size: 1.27px;
+}
+
+.paper {
+  fill: var(--paper);
+  stroke: #c9c6bb;
+  stroke-width: 0.2;
+}
+
+.wire {
+  stroke: var(--wire);
+  stroke-width: 0.25;
+  stroke-linecap: round;
+  cursor: pointer;
+}
+
+.wire.hot,
+.junction.hot {
+  stroke: var(--hot);
+  fill: var(--hot);
+  stroke-width: 0.45;
+}
+
+.junction {
+  fill: var(--wire);
+}
+
+.outline {
+  stroke: var(--symbol);
+  stroke-width: 0.254;
+  vector-effect: none;
+}
+
+.pin {
+  stroke: var(--pin);
+  stroke-width: 0.15;
+}
+
+.pin-number {
+  fill: var(--pin);
+  font-size: 1px;
+}
+
+.pin-name {
+  fill: var(--text);
+  font-size: 1.1px;
+}
+
+.ref,
+.value,
+.sym-text {
+  fill: var(--text);
+}
+
+.unit {
+  cursor: pointer;
+}
+
+.unit .hitbox {
+  fill: transparent;
+  stroke: none;
+}
+
+.unit.hot .hitbox {
+  stroke: var(--hot);
+  stroke-width: 0.35;
+  stroke-dasharray: 0.8 0.5;
+}
+
+.pin-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.pin-hit.hot {
+  fill: var(--hot);
+}
+
+.power-symbol {
+  cursor: pointer;
+}
+
+.power-symbol .outline,
+.power-symbol .pin {
+  stroke: var(--power);
+}
+
+.power-symbol.hot .outline {
+  stroke: var(--hot);
+}
+
+.power-name {
+  fill: var(--text);
+}
+
+.power-name.flag {
+  fill: var(--power);
+}
+
+.label {
+  cursor: pointer;
+}
+
+.label text {
+  fill: var(--label);
+}
+
+.label.hier text {
+  fill: var(--hier);
+}
+
+.hier-shape {
+  fill: none;
+  stroke: var(--hier);
+  stroke-width: 0.15;
+}
+
+.label.hot text {
+  fill: var(--hot);
+}
+
+.nc {
+  stroke: #2c2cff;
+  stroke-width: 0.2;
+}
+
+.sheet {
+  cursor: pointer;
+}
+
+.sheet-box {
+  fill: rgba(255, 255, 255, 0.4);
+  stroke: var(--sheet);
+  stroke-width: 0.25;
+}
+
+.sheet.hot .sheet-box {
+  stroke: var(--hot);
+  stroke-width: 0.45;
+}
+
+.sheet-name {
+  fill: var(--sheet);
+  font-size: 1.5px;
+}
+
+.sheet-file {
+  fill: var(--hier);
+  font-size: 1.1px;
+}
+
+.sheet-pin {
+  fill: var(--sheet);
+}
+
+.marker {
+  cursor: pointer;
+}
+
+.marker circle {
+  stroke: white;
+  stroke-width: 0.25;
+}
+
+.marker text {
+  fill: white;
+  font-size: 1.6px;
+  font-weight: bold;
+}
+
+.marker.error circle {
+  fill: var(--error);
+}
+
+.marker.warning circle {
+  fill: var(--warning);
+}
+
+.marker.info circle {
+  fill: var(--ui-muted);
+}
+
+.marker.comment circle {
+  fill: var(--comment);
+}

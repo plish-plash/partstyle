@@ -12,6 +12,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@partstyle/engine": "workspace:*",
+    "@partstyle/server": "workspace:*",
     "zod": "^4.6.7"
   }
 }

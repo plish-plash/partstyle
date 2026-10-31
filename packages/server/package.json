@@ -1,0 +1,20 @@
+{
+  "name": "@partstyle/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local HTTP server for the partstyle viewer: model API, live reload, focus and comments",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@partstyle/engine": "workspace:*",
+    "@partstyle/viewer": "workspace:*"
+  }
+}

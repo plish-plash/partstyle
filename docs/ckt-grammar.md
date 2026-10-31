@@ -78,6 +78,7 @@ the issues they added or resolved. Use `dry_run` to preview.
 | `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`    | warning                            |                                                                   |
 | `elab.unused-block`, `elab.attr-conflict`, `waive.unused`        | warning                            |                                                                   |
 | `patch.error`                                                    | error                              | patch rejected; nothing was applied                               |
+| `layout.connectivity`, `layout.failed`                           | error                              | auto-layout bug: the drawing does not match the design            |
 | `part.footprint-pads`                                            | error                              | record's pins and footprint pads differ                           |
 | `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint |
 | `kicad.symbol-fallback`                                          | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated    |

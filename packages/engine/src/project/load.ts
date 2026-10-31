@@ -62,9 +62,12 @@ export async function loadProject(dir: string): Promise<ProjectSource> {
     partFiles.map(async ({ file, layer }) => ({ ...(await readText(root, file)), layer })),
   );
 
-  const context = await readText(root, path.join(root, "context.md")).catch((e) => {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw e;
-  });
-  return { config, circuits, parts, ...(context && { context }) };
+  const optional = (name: string) =>
+    readText(root, path.join(root, name)).catch((e) => {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw e;
+    });
+  const context = await optional("context.md");
+  const comments = await optional("comments.yaml");
+  return { config, circuits, parts, ...(context && { context }), ...(comments && { comments }) };
 }

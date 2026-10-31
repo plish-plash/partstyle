@@ -174,5 +174,15 @@ export function createServer(ws: Workspace, version = "0.0.0"): McpServer {
     async () => reply(await ws.bomExport()),
   );
 
+  server.registerTool(
+    "focus",
+    {
+      description:
+        "What the person has selected in the viewer (parts, pins, nets, sheets) and their open review comments. Call when they say 'this', 'here' or ask about the selection.",
+      annotations: readOnly,
+    },
+    async () => reply(await ws.focus()),
+  );
+
   return server;
 }

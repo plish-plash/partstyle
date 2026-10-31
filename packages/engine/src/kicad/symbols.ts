@@ -159,15 +159,21 @@ const groundName = /^(A|D|P)?(GND|VSS|VEE)[A-Z0-9_]*$/i;
 const natural = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
 const roundUp = (x: number, step: number) => Math.ceil(x / step - 1e-9) * step;
 
-/** Box symbol from a part record: inputs and supplies left, outputs and I/O right, grounds below. */
+/**
+ * Box symbol from a part record: supplies on top, grounds below, inputs left, outputs and I/O
+ * right. A part that supplies power itself (a regulator) takes its supply in on the left, so
+ * that power flows left to right through it.
+ */
 export function symbolForRecord(record: PartRecord): GeneratedSymbol {
   const pins = Object.entries(record.pins)
     .map(([number, p]) => ({ number, ...p }))
     .sort((a, b) => natural(a.number, b.number));
   const left: typeof pins = [];
   const right: typeof pins = [];
+  const top: typeof pins = [];
   const bottom: typeof pins = [];
   const allPassive = pins.every((p) => p.type === "passive");
+  const supplies = pins.some((p) => p.type === "power_out");
 
   if (allPassive && pins.length === 2) {
     left.push(pins[0] as (typeof pins)[number]);
@@ -176,6 +182,7 @@ export function symbolForRecord(record: PartRecord): GeneratedSymbol {
     const leftOrder: PinType[] = ["power_in", "input", "passive"];
     for (const p of pins) {
       if (p.type === "power_in" && groundName.test(p.name)) bottom.push(p);
+      else if (p.type === "power_in" && !supplies) top.push(p);
       else if (leftOrder.includes(p.type)) left.push(p);
       else right.push(p);
     }
@@ -188,9 +195,11 @@ export function symbolForRecord(record: PartRecord): GeneratedSymbol {
   const halfWidth = Math.max(
     2 * GRID,
     roundUp(nameSpace / 2, GRID),
-    roundUp(((bottom.length + 1) * GRID) / 2, GRID),
+    roundUp(((Math.max(top.length, bottom.length) + 1) * GRID) / 2, GRID),
   );
-  const rows = Math.max(left.length, right.length, 1);
+  // Tall enough for the names of top and bottom pins, which read downward and upward inside.
+  const vertical = showNames ? (longest(top) + longest(bottom)) * CHAR_WIDTH + GRID : 0;
+  const rows = Math.max(left.length, right.length, 1, Math.ceil(vertical / GRID) - 1);
   const topPin = GRID * Math.floor((rows - 1) / 2);
   const bodyTop = topPin + GRID;
   const bodyBottom = topPin - GRID * rows;
@@ -211,12 +220,16 @@ export function symbolForRecord(record: PartRecord): GeneratedSymbol {
   for (const [i, p] of bottom.entries()) {
     place(p, { x: firstBottom + GRID * i, y: bodyBottom - PIN_LENGTH, outward: 270 });
   }
+  const firstTop = -GRID * Math.floor((top.length - 1) / 2);
+  for (const [i, p] of top.entries()) {
+    place(p, { x: firstTop + GRID * i, y: bodyTop + PIN_LENGTH, outward: 90 });
+  }
 
   const box = {
     minX: -halfWidth - PIN_LENGTH,
     maxX: halfWidth + PIN_LENGTH,
     minY: bottom.length > 0 ? bodyBottom - PIN_LENGTH : bodyBottom,
-    maxY: bodyTop,
+    maxY: top.length > 0 ? bodyTop + PIN_LENGTH : bodyTop,
   };
   return {
     name: record.id,

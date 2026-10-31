@@ -14,6 +14,10 @@ Start each design with `partstyle init` (or ask Claude to). It writes a project 
 with the workflow, naming conventions and a worked example block, so Claude needs no example
 project to copy from. See the [CLI reference](cli.md) for every command.
 
+Run `partstyle view` in a second terminal and open the URL it prints to watch the design as
+Claude edits it. Select parts or nets there and refer to them as "this"; Claude reads your
+selection and comments with `partstyle focus`.
+
 ## MCP (chat clients, or Claude Code without shell access)
 
 The server speaks stdio and serves one project folder, which need not exist yet:
@@ -32,6 +36,9 @@ The server speaks stdio and serves one project folder, which need not exist yet:
 
 For Claude Code: `claude mcp add partstyle -- node <repo>/packages/mcp/dist/main.js --project .`
 
+The MCP server also starts the viewer in the same process (its URL goes to the client's log,
+and `focus` reports it). Pass `--viewer-port N` to pick the port or `--no-viewer` to skip it.
+
 Each tool calls the same `Workspace` method as the matching CLI command, so output is
 identical.
 
@@ -48,6 +55,8 @@ identical.
 | `part_put(record, scope)`           | `partstyle part put [FILE\|-] --scope ...` |
 | `kicad_export(check)`               | `partstyle kicad export [--no-check]`      |
 | `bom_export`                        | `partstyle bom export`                     |
+| `focus`                             | `partstyle focus`                          |
+| (viewer, started with the server)   | `partstyle view [--port N]`                |
 | resource `partstyle://grammar`      | `partstyle grammar`                        |
 
 `init_project` creates the project in the server's `--project` folder; `library_paths` are
