@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Workspace } from "@partstyle/engine/node";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startViewer, type ViewerServer } from "./index.js";
+import { relevantChange, startViewer, type ViewerServer } from "./index.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
 const viewerBuilt = existsSync(repo("packages/viewer/dist/index.html"));
@@ -91,6 +91,34 @@ describe("viewer server", () => {
     await writeFile(ckt, `${await readFile(ckt, "utf8")}\n# touched\n`);
     while (!seen.includes("event: change")) seen += decoder.decode((await reader.read()).value);
     await reader.cancel();
+  });
+
+  it("adds version state to the model, and reverts changesets", async () => {
+    const ckt = path.join(project, "circuit/power.ckt");
+    const before = await readFile(ckt, "utf8");
+    await writeFile(ckt, before.replace("part C2  cap(100n", "part C2  cap(220n"));
+    const model = (await (await fetch(new URL("api/model", viewer.url))).json()) as {
+      versions: { git: boolean; changesets: { id: string }[]; changed: unknown[] };
+    };
+    expect(model.versions.git).toBe(false);
+    expect(model.versions.changesets.map((c) => c.id)).toEqual(["C1"]);
+    expect(model.versions.changed).toEqual([{ block: "power", kind: "part", key: "C2", op: "~" }]);
+    const r = (await (await post("api/revert", { id: "C1" })).json()) as { ok: boolean };
+    expect(r.ok).toBe(true);
+    expect(await readFile(ckt, "utf8")).toContain("part C2 cap(100n");
+    expect((await fetch(new URL("api/model?variant=nope", viewer.url))).status).toBe(404);
+  });
+
+  it("wakes for project, variant and review-state changes only", () => {
+    expect(relevantChange("circuit/power.ckt")).toBe(true);
+    expect(relevantChange(".partstyle/focus.json")).toBe(false);
+    expect(relevantChange(".partstyle/pending.json")).toBe(true);
+    expect(relevantChange(".partstyle/history.json")).toBe(true);
+    expect(relevantChange(".partstyle\\variants\\buck\\examples\\b\\circuit\\power.ckt")).toBe(
+      true,
+    );
+    expect(relevantChange(".partstyle/variants/buck/.git")).toBe(false);
+    expect(relevantChange("kicad/x.kicad_sch")).toBe(false);
   });
 
   it.skipIf(!viewerBuilt)("serves the built web app", async () => {

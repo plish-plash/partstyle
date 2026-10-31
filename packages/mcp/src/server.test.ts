@@ -31,6 +31,8 @@ describe("MCP server", () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       "apply",
       "bom_export",
+      "checkpoint",
+      "diff",
       "focus",
       "init_project",
       "kicad_export",
@@ -41,9 +43,10 @@ describe("MCP server", () => {
       "query",
       "read_block",
       "validate",
+      "variant",
     ]);
-    // Tool definitions are paid on every turn; keep them short.
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(1500);
+    // Tool definitions are paid on every turn; keep them short (DESIGN.md plans ~16 tools).
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(1700);
   });
 
   it("returns exactly what the CLI's workspace returns", async () => {

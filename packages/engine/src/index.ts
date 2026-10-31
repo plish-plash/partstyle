@@ -54,8 +54,19 @@ export {
 export { parseQuantity, type Quantity } from "./units.js";
 export { applyWaivers, type ValidationResult, validateProject } from "./validate.js";
 export {
+  type ChangeOp,
+  describeChange,
+  diffCircuits,
+  formatChanges,
+  opOf,
+  type StatementChange,
+} from "./versions/diff.js";
+export { planRevert, type RevertPlan } from "./versions/revert.js";
+export {
   buildViewerModel,
+  type ChangeItem,
   type PartInfo,
+  type VersionState,
   type ViewerModel,
   type ViewerSheet,
 } from "./viewer-model.js";

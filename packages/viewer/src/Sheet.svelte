@@ -23,8 +23,21 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
     selection: string[];
     onselect: (subjects: string[], additive: boolean) => void;
     onenter: (prefix: string) => void;
+    /** Statements changed since the checkpoint (or by a previewed patch), to highlight. */
+    changes?: { block: string; kind: string; key: string; op: string }[];
   }
-  let { sheet, prefix, symbols, parts, issues, comments, selection, onselect, onenter }: Props = $props();
+  let { sheet, prefix, symbols, parts, issues, comments, selection, onselect, onenter, changes = [] }: Props =
+    $props();
+
+  /** Change class of a part or net of this sheet's block: "added" or "modified". */
+  const changeOf = $derived.by(() => {
+    const map = new Map<string, string>();
+    for (const c of changes) {
+      if (c.block !== sheet.block || c.op === "-") continue;
+      map.set(`${c.kind}|${c.key}`, c.op === "+" ? "added" : "modified");
+    }
+    return (kind: "part" | "net", key: string) => map.get(`${kind}|${key}`);
+  });
 
   const layout = $derived(sheet.layout);
   const instance = $derived(sheet.instances.find((i) => i.prefix === prefix) ?? sheet.instances[0]);
@@ -146,7 +159,7 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
       y1={w.a.y}
       x2={w.b.x}
       y2={w.b.y}
-      class="wire"
+      class={`wire ${changeOf("net", w.net) ?? ""}`}
       class:hot={selectedNets.has(flatNet(w.net))}
       role="button"
       tabindex="-1"
@@ -171,6 +184,16 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
       onclick={pick(path)}
       onkeydown={() => {}}
     >
+      {#if changeOf("part", u.ref)}
+        <rect
+          x={u.box.x - 1.2}
+          y={u.box.y - 1.2}
+          width={u.box.w + 2.4}
+          height={u.box.h + 2.4}
+          rx="0.8"
+          class={`change ${changeOf("part", u.ref)}`}
+        />
+      {/if}
       <rect x={u.box.x - 0.6} y={u.box.y - 0.6} width={u.box.w + 1.2} height={u.box.h + 1.2} class="hitbox" />
       <SymbolView graphics={symbols[u.libId]} unit={u.unit} at={u.at} rotation={u.rotation} mirror={u.mirror} />
       {#each [u.refField, u.valueField] as f, k (k)}

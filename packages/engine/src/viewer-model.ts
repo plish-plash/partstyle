@@ -1,3 +1,4 @@
+import type { StatementKind } from "./ckt/ast.js";
 import { printSpec } from "./ckt/print.js";
 import type { Issue } from "./diagnostics.js";
 import { type SymbolGraphics, symbolGraphics } from "./drawing/graphics.js";
@@ -6,6 +7,7 @@ import type { SheetLayout } from "./drawing/types.js";
 import type { PinType } from "./parts/schema.js";
 import type { Comment, Focus } from "./review.js";
 import type { ValidationResult } from "./validate.js";
+import type { ChangeOp } from "./versions/diff.js";
 import { countIssues } from "./views.js";
 
 export interface PartInfo {
@@ -47,6 +49,30 @@ export interface ViewerSheet {
   layout: SheetLayout;
 }
 
+/** A statement change, flattened for the viewer: `C3.2` in changeset `C3`. */
+export interface ChangeItem {
+  id: string;
+  block: string;
+  kind: StatementKind;
+  key: string;
+  op: ChangeOp;
+  /** One line, as `diff` prints it. */
+  text: string;
+}
+
+/** Checkpoint, changesets, pending changes and variants: what the review panel shows. */
+export interface VersionState {
+  /** Whether the project is in a git repository, so checkpoints and variants work. */
+  git: boolean;
+  mode: "auto" | "accept";
+  checkpoint?: { id: string; message: string; date: string };
+  changesets: { id: string; source: string; note?: string; time: string; items: ChangeItem[] }[];
+  pending: { id: string; created: string; log: string[] }[];
+  /** Everything changed since the checkpoint, for highlighting on the sheets. */
+  changed: Omit<ChangeItem, "id" | "text">[];
+  variants: string[];
+}
+
 /** Everything the viewer shows, as one JSON document. */
 export interface ViewerModel {
   project: string;
@@ -59,6 +85,12 @@ export interface ViewerModel {
   nets: Record<string, { pins: string[]; attrs: Record<string, string>; aliases: string[] }>;
   comments: Comment[];
   focus: Focus;
+  /** Review and versioning state; the server adds it fresh to every model it sends. */
+  versions?: VersionState;
+  /** The variant shown, when not the main line. */
+  variant?: string;
+  /** A pending change drawn as if accepted, with what it changes. */
+  preview?: { id: string; changed: Omit<ChangeItem, "id" | "text">[] };
 }
 
 /** Builds the viewer's data from a prepared drawing and the validation it came from. */

@@ -32,6 +32,22 @@ and comment there rather than typing refdes:
   they have selected and their open comments.
 - Answer open comments; the person resolves them in the viewer.
 
+## Review and versions
+
+The person reviews your edits in the viewer as changesets (each `apply`, or each burst of
+direct edits) and can revert any of them, whole or statement by statement. A checkpoint (a git
+commit of the project) is their approval.
+
+- Start each turn with `partstyle diff --since last`: what changed since you last looked,
+  including the person's reverts and edits. Don't redo a change they reverted; ask instead.
+- `partstyle diff` lists everything since the last checkpoint. Make a checkpoint
+  (`partstyle checkpoint "message"`) only when the person asks for one.
+- If `overview` says `review mode: accept`, edit only through `partstyle apply`: each patch
+  waits as a pending change (P1, P2, ...) until the person accepts it in the viewer.
+- To try an alternative (say an LDO against a buck stage), `partstyle variant create NAME`
+  makes a parallel copy under `.partstyle/variants/NAME`; edit it with `partstyle -p` that
+  folder and compare with `variant diff NAME`. The person adopts or removes it.
+
 ## Editing
 
 Edit `circuit/*.ckt` directly, or send a batched patch with `partstyle apply` (stdin), which

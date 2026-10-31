@@ -23,9 +23,13 @@ import {
   parseFocus,
 } from "../review.js";
 import { type ValidationResult, validateProject } from "../validate.js";
-import { buildViewerModel, type ViewerModel } from "../viewer-model.js";
+import { describeChange, diffCircuits, formatChanges, opOf } from "../versions/diff.js";
+import { planRevert, type RevertPlan } from "../versions/revert.js";
+import { buildViewerModel, type VersionState, type ViewerModel } from "../viewer-model.js";
 import { countIssues, formatValidation, issueSummary, overview, readBlock } from "../views.js";
 import { type ProjectConfig, parseProjectConfig } from "./config.js";
+import { filesAt, git, lastCommit, repoInfo } from "./git.js";
+import { type ChangeSource, changesOf, History, readCircuits, toFiles } from "./history.js";
 import {
   checkFootprints,
   findKicad,
@@ -36,8 +40,17 @@ import {
   runKicadCli,
 } from "./kicad.js";
 import { loadProject, ProjectLoadError } from "./load.js";
+import { addPending, readPending, removePending } from "./pending.js";
 import { projectSkeleton } from "./skeleton.js";
 import type { ProjectSource } from "./source.js";
+import {
+  adoptVariant,
+  checkVariantName,
+  createVariant,
+  listVariants,
+  removeVariant,
+  type Variant,
+} from "./variants.js";
 
 const fail = (text: string): TextResult => ({ ok: false, text });
 
@@ -68,9 +81,12 @@ export async function readGrammarReference(): Promise<string> {
  */
 export class Workspace {
   readonly root: string;
+  /** The changeset log since the last checkpoint. */
+  readonly history: History;
 
   constructor(dir: string) {
     this.root = path.resolve(dir);
+    this.history = new History(this.root);
   }
 
   private kicadInstall?: Promise<KicadInstall>;
@@ -86,6 +102,8 @@ export class Workspace {
   /** Loads and validates, adding footprint checks for the library parts in use when KiCad is installed. */
   private async load(): Promise<{ source: ProjectSource; result: ValidationResult }> {
     const source = await loadProject(this.root);
+    // Edits made since the last call (by anyone) become a changeset before anything else runs.
+    await this.history.record();
     const result = validateProject(source);
     const { footprints } = await this.kicad(result.config);
     if (footprints && result.netlist) {
@@ -199,6 +217,15 @@ export class Workspace {
     if (libraryPaths.length === 0) {
       lines.push("note: no global part library; part_put will write to parts/");
     }
+    // Checkpoints are git commits; a project already inside a repository uses that one.
+    if (!(await repoInfo(this.root))) {
+      try {
+        await git(this.root, ["init", "-q"]);
+        lines.push("initialized a git repository for checkpoints");
+      } catch (e) {
+        lines.push(`note: no git repository, so no checkpoints (${(e as Error).message})`);
+      }
+    }
     lines.push(
       "next: fill in context.md with the user, then add blocks (partstyle grammar shows how)",
     );
@@ -208,7 +235,7 @@ export class Workspace {
   overview(): Promise<TextResult> {
     return this.guard(async () => {
       const { source, result } = await this.load();
-      return { ok: true, text: overview(source, result) };
+      return { ok: true, text: overview(source, result, await this.versionLines()) };
     });
   }
 
@@ -243,37 +270,61 @@ export class Workspace {
     });
   }
 
-  /** Applies a patch atomically and reports only the issues it introduced or resolved. */
+  /**
+   * Applies a patch atomically and reports only the issues it introduced or resolved. The edit
+   * is logged as its own changeset; in accept mode it is held as a pending change instead.
+   */
   apply(patch: string, opts: { dryRun?: boolean } = {}): Promise<TextResult> {
-    return this.guard(async () => {
-      const { source, result: before } = await this.load();
-      const patched = applyPatch(source, patch);
-      if (patched.issues.length > 0) return fail(patched.issues.map(formatIssue).join("\n"));
-      if (patched.changed.length === 0) return { ok: true, text: "patch made no changes" };
+    return this.guard(() =>
+      this.applyPatchText(patch, { dryRun: opts.dryRun ?? false, hold: true, source: "apply" }),
+    );
+  }
 
-      const after = validateProject(patched.source);
-      const { added, resolved } = issueDelta(before.issues, after.issues);
-      if (!opts.dryRun) {
-        for (const f of patched.changed) {
-          const file = path.join(this.root, f.file);
-          await mkdir(path.dirname(file), { recursive: true });
-          await writeFile(file, f.text, "utf8");
-        }
+  private async applyPatchText(
+    patch: string,
+    opts: { dryRun: boolean; hold: boolean; source: ChangeSource; note?: string },
+  ): Promise<TextResult> {
+    const { source, result: before } = await this.load();
+    const patched = applyPatch(source, patch);
+    if (patched.issues.length > 0) return fail(patched.issues.map(formatIssue).join("\n"));
+    if (patched.changed.length === 0) return { ok: true, text: "patch made no changes" };
+
+    const after = validateProject(patched.source);
+    const { added, resolved } = issueDelta(before.issues, after.issues);
+    const held = opts.hold && !opts.dryRun && before.config?.review.mode === "accept";
+    let pendingId: string | undefined;
+    if (held) {
+      pendingId = await addPending(this.root, patch, patched.log);
+    } else if (!opts.dryRun) {
+      for (const f of patched.changed) {
+        const file = path.join(this.root, f.file);
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, f.text, "utf8");
       }
-      const n = patched.log.length;
-      const lines = [
-        `${opts.dryRun ? "dry run, would apply" : "applied"} ${n} edit${n === 1 ? "" : "s"} to ${patched.changed
-          .map((f) => f.file)
-          .join(", ")}`,
-        ...patched.log.map((l) => `  ${l}`),
-      ];
-      if (added.length > 0) lines.push("new issues:", ...added.map((i) => `  ${formatIssue(i)}`));
-      if (resolved.length > 0) {
-        lines.push("resolved:", ...resolved.map((i) => `  ${i.code} ${i.message}`));
-      }
+      await this.history.record(opts.source, opts.note ?? patched.log.join("\n"));
+    }
+    const n = patched.log.length;
+    const verb = opts.dryRun
+      ? "dry run, would apply"
+      : held
+        ? `held as ${pendingId} for review; would apply`
+        : "applied";
+    const lines = [
+      `${verb} ${n} edit${n === 1 ? "" : "s"} to ${patched.changed.map((f) => f.file).join(", ")}`,
+      ...patched.log.map((l) => `  ${l}`),
+    ];
+    if (added.length > 0) lines.push("new issues:", ...added.map((i) => `  ${formatIssue(i)}`));
+    if (resolved.length > 0) {
+      lines.push("resolved:", ...resolved.map((i) => `  ${i.code} ${i.message}`));
+    }
+    if (held) {
+      lines.push(
+        `the files are unchanged until the person accepts ${pendingId} in the viewer (review mode: accept)`,
+      );
+    } else {
       lines.push(`now: ${issueSummary(after)}`);
-      return { ok: true, text: lines.join("\n") };
-    });
+    }
+    return { ok: true, text: lines.join("\n") };
   }
 
   partSearch(query: string): Promise<TextResult> {
@@ -575,8 +626,34 @@ export class Workspace {
    * Everything the viewer draws: the laid-out sheets, symbols, parts, nets, issues and review
    * state. A design that does not elaborate still gets its issues, with no sheets.
    */
-  async viewerModel(): Promise<ViewerModel> {
-    const { result } = await this.load();
+  async viewerModel(opts: { preview?: string } = {}): Promise<ViewerModel> {
+    const loaded = await this.load();
+    let { result } = loaded;
+    // A pending change is previewed by drawing the design as if it were accepted.
+    let preview: ViewerModel["preview"];
+    const pending = opts.preview
+      ? (await readPending(this.root)).find((p) => p.id === opts.preview)
+      : undefined;
+    if (pending) {
+      const patched = applyPatch(loaded.source, pending.patch);
+      if (patched.issues.length === 0) {
+        result = validateProject(patched.source);
+        preview = {
+          id: pending.id,
+          changed: diffCircuits(loaded.source.circuits, patched.source.circuits).map((c) => ({
+            block: c.block,
+            kind: c.kind,
+            key: c.key,
+            op: opOf(c),
+          })),
+        };
+      }
+    }
+    const model = await this.drawModel(result);
+    return preview ? { ...model, preview } : model;
+  }
+
+  private async drawModel(result: ValidationResult): Promise<ViewerModel> {
     const review = await this.review();
     const { errors, warnings } = countIssues(result);
     const empty: ViewerModel = {
@@ -612,6 +689,391 @@ export class Workspace {
         ],
       };
     }
+  }
+
+  // --- Review and versioning -------------------------------------------------------------
+
+  /** The circuit at the last checkpoint, or where the change log starts when there is no git. */
+  private async baseCircuits(): Promise<{ files: Record<string, string>; label: string }> {
+    const cp = await lastCommit(this.root);
+    if (cp) {
+      return {
+        files: Object.fromEntries(await filesAt(this.root, cp.id, "circuit")),
+        label: `checkpoint ${cp.id.slice(0, 7)} "${cp.message}" (${cp.date.slice(0, 16).replace("T", " ")})`,
+      };
+    }
+    const { changesets } = await this.history.changesets();
+    const files: Record<string, string> = await readCircuits(this.root);
+    // Undo the log, newest first, so each file ends at its earliest recorded text.
+    for (const c of [...changesets].reverse()) {
+      for (const [p, t] of Object.entries(c.before)) {
+        if (t === null) delete files[p];
+        else files[p] = t;
+      }
+    }
+    return { files, label: "the start of the change log (no checkpoints: not a git repository)" };
+  }
+
+  /** Checkpoint, changesets, pending changes and variants, for the viewer's review panel. */
+  async versionState(): Promise<VersionState> {
+    const config = parseProjectConfig(await this.readOptional("project.toml"), "project.toml");
+    const info = await repoInfo(this.root);
+    const cp = await lastCommit(this.root);
+    const { changesets } = await this.history.changesets();
+    const base = await this.baseCircuits();
+    const now = await readCircuits(this.root);
+    return {
+      git: info !== undefined,
+      mode: config.config?.review.mode ?? "auto",
+      ...(cp && { checkpoint: { id: cp.id.slice(0, 7), message: cp.message, date: cp.date } }),
+      changesets: changesets.map((cs) => ({
+        id: cs.id,
+        source: cs.source,
+        ...(cs.note !== undefined && cs.source !== "apply" && { note: cs.note }),
+        time: cs.time,
+        items: changesOf(cs).map((c, i) => ({
+          id: `${cs.id}.${i + 1}`,
+          block: c.block,
+          kind: c.kind,
+          key: c.key,
+          op: opOf(c),
+          text: describeChange(c),
+        })),
+      })),
+      pending: (await readPending(this.root)).map((p) => ({
+        id: p.id,
+        created: p.created,
+        log: p.log,
+      })),
+      changed: diffCircuits(toFiles(base.files), toFiles(now)).map((c) => ({
+        block: c.block,
+        kind: c.kind,
+        key: c.key,
+        op: opOf(c),
+      })),
+      variants: info ? (await listVariants(this.root, info)).map((v) => v.name) : [],
+    };
+  }
+
+  /** The overview's lines about checkpoints, changes, pending patches and variants. */
+  private async versionLines(): Promise<string[]> {
+    const st = await this.versionState();
+    const n = st.changed.length;
+    const summary =
+      n === 0 ? "none" : `${n} statements in ${st.changesets.length} changesets (see diff)`;
+    const lines = [
+      !st.git
+        ? `changes: ${summary}; no checkpoints (not a git repository)`
+        : st.checkpoint
+          ? `changes since checkpoint ${st.checkpoint.id} "${st.checkpoint.message}": ${summary}`
+          : `changes: ${summary}; no checkpoint yet`,
+    ];
+    if (st.mode === "accept") {
+      lines.push("review mode: accept (edit only through apply; each patch waits for approval)");
+    }
+    if (st.pending.length > 0) {
+      lines.push(`pending review: ${st.pending.map((p) => p.id).join(", ")}`);
+    }
+    if (st.variants.length > 0) lines.push(`variants: ${st.variants.join(", ")}`);
+    return lines;
+  }
+
+  /**
+   * The circuit changes, statement by statement, since `since`: "checkpoint" (the last one),
+   * "last" (the previous diff call, to catch up between turns) or a checkpoint id.
+   */
+  diff(since = "checkpoint"): Promise<TextResult> {
+    return this.guard(async () => {
+      await this.load();
+      const now = await readCircuits(this.root);
+      const seen = await this.history.swapSeen(now);
+      let base: Record<string, string>;
+      let label: string;
+      if (since === "last" && seen) {
+        base = seen;
+        label = "the last diff";
+      } else if (since === "checkpoint" || since === "last") {
+        ({ files: base, label } = await this.baseCircuits());
+      } else {
+        try {
+          base = Object.fromEntries(await filesAt(this.root, since, "circuit"));
+        } catch (e) {
+          return fail(`unknown checkpoint '${since}': ${(e as Error).message}`);
+        }
+        label = `checkpoint ${since}`;
+      }
+      const changes = diffCircuits(toFiles(base), toFiles(now));
+      const lines =
+        changes.length === 0
+          ? [`no circuit changes since ${label}`]
+          : [`since ${label}:`, ...formatChanges(changes)];
+      if (since === "checkpoint" && (await lastCommit(this.root))) {
+        const other = await this.otherChangedFiles();
+        if (other.length > 0) lines.push(`other files changed: ${other.join(", ")}`);
+      }
+      return { ok: true, text: lines.join("\n") };
+    });
+  }
+
+  /** Files outside circuit/ changed since the checkpoint (context, parts, notes, locks). */
+  private async otherChangedFiles(): Promise<string[]> {
+    const spec = ["--", ".", ":(exclude)circuit", ":(exclude).partstyle", ":(exclude)kicad"];
+    const changed = await git(this.root, ["diff", "--name-only", "--relative", "HEAD", ...spec]);
+    const added = await git(this.root, ["ls-files", "-o", "--exclude-standard", ...spec]);
+    return [...new Set(`${changed}\n${added}`.split("\n").filter(Boolean))].sort();
+  }
+
+  /** The changesets since the last checkpoint with numbered statements, and pending patches. */
+  changes(): Promise<TextResult> {
+    return this.guard(async () => {
+      await this.load();
+      const st = await this.versionState();
+      const time = (t: string) => new Date(t).toTimeString().slice(0, 5);
+      const lines = [
+        st.checkpoint
+          ? `since checkpoint ${st.checkpoint.id} "${st.checkpoint.message}":`
+          : "since the start of the change log:",
+      ];
+      if (st.changesets.length === 0) lines.push("  no changesets");
+      for (const cs of st.changesets) {
+        lines.push(`${cs.id} ${cs.source} ${time(cs.time)}${cs.note ? ` (${cs.note})` : ""}`);
+        for (const i of cs.items) lines.push(`  ${i.id} ${i.block}: ${i.text}`);
+      }
+      if (st.pending.length > 0) {
+        lines.push(
+          "pending (accept or reject in the viewer, or: partstyle pending accept|reject ID):",
+        );
+        for (const p of st.pending) {
+          lines.push(`${p.id} ${time(p.created)}`, ...p.log.map((l) => `  ${l}`));
+        }
+      }
+      lines.push("revert with: partstyle revert C2 (a changeset) or C2.1 (one statement)");
+      return { ok: true, text: lines.join("\n") };
+    });
+  }
+
+  /** Writes a planned revert to disk; returns an error message if its patch does not apply. */
+  private async carryOut(plan: RevertPlan): Promise<string | undefined> {
+    if (plan.patch) {
+      const patched = applyPatch(await loadProject(this.root), plan.patch);
+      if (patched.issues.length > 0) return patched.issues.map(formatIssue).join("\n");
+      for (const f of patched.changed) {
+        await mkdir(path.dirname(path.join(this.root, f.file)), { recursive: true });
+        await writeFile(path.join(this.root, f.file), f.text, "utf8");
+      }
+    }
+    for (const f of plan.deleteFiles) await rm(path.join(this.root, f), { force: true });
+    for (const f of plan.writeFiles) {
+      await mkdir(path.dirname(path.join(this.root, f.file)), { recursive: true });
+      await writeFile(path.join(this.root, f.file), f.text, "utf8");
+    }
+    return undefined;
+  }
+
+  /**
+   * Undoes a changeset (`C3`) or one of its statements (`C3.2`). Statements changed again since
+   * are left alone and reported. The revert is itself a changeset, so it can be undone too.
+   */
+  revert(id: string): Promise<TextResult> {
+    return this.guard(async () => {
+      const m = /^(C\d+)(?:\.(\d+))?$/.exec(id.trim());
+      if (!m) return fail("usage: revert C3 (a changeset) or C3.2 (one statement); see changes");
+      await this.load();
+      const { changesets } = await this.history.changesets();
+      const cs = changesets.find((c) => c.id === m[1]);
+      if (!cs) return fail(`no changeset ${m[1]} since the last checkpoint (see changes)`);
+      const all = changesOf(cs);
+      const items = m[2] === undefined ? all : all.slice(Number(m[2]) - 1, Number(m[2]));
+      if (items.length === 0) return fail(`${cs.id} has no statement ${m[2]}`);
+
+      const plan = planRevert(items, toFiles(await readCircuits(this.root)), toFiles(cs.before));
+      const conflicts = plan.conflicts.map((c) => `  not reverted: ${c}`);
+      if (plan.reverted === 0) return fail(["nothing reverted", ...conflicts].join("\n"));
+      const error = await this.carryOut(plan);
+      if (error) return fail(`revert failed, nothing changed:\n${error}`);
+      const logged = await this.history.record("revert", `reverted ${id.trim()}`);
+      const n = plan.reverted;
+      return {
+        ok: true,
+        text: [
+          `reverted ${id.trim()}: ${n} statement${n === 1 ? "" : "s"}${logged ? ` (as ${logged.id})` : ""}`,
+          ...conflicts,
+        ].join("\n"),
+      };
+    });
+  }
+
+  /** Commits the project folder as a checkpoint: the person's approval of the changes so far. */
+  checkpoint(message: string): Promise<TextResult> {
+    return this.guard(async () => {
+      if (!message.trim()) return fail("a checkpoint needs a message");
+      await this.load();
+      if (!(await repoInfo(this.root))) {
+        return fail(
+          "not in a git repository: run 'git init' in the project (or a parent folder) to enable checkpoints",
+        );
+      }
+      const st = await this.versionState();
+      // Local state stays out of checkpoints; naming it when git already ignores it is an error.
+      const ignored = await git(this.root, ["check-ignore", "-q", ".partstyle"]).then(
+        () => true,
+        () => false,
+      );
+      const spec = ["--", ".", ...(ignored ? [] : [":(exclude).partstyle"])];
+      if (!(await git(this.root, ["status", "--porcelain", ...spec])).trim()) {
+        return { ok: true, text: "nothing to checkpoint: no changes since the last checkpoint" };
+      }
+      try {
+        await git(this.root, ["add", "-A", ...spec]);
+        await git(this.root, ["commit", "-q", "-m", message.trim(), ...spec]);
+      } catch (e) {
+        return fail(`git could not commit: ${(e as Error).message}`);
+      }
+      await this.history.restart();
+      const cp = await lastCommit(this.root);
+      const n = st.changed.length;
+      const what = st.checkpoint
+        ? `${n} statement change${n === 1 ? "" : "s"} in ${st.changesets.length} changeset${st.changesets.length === 1 ? "" : "s"}`
+        : "the project's first checkpoint";
+      return { ok: true, text: `checkpoint ${cp?.id.slice(0, 7)} "${message.trim()}": ${what}` };
+    });
+  }
+
+  /** The project's recent checkpoints, newest first. */
+  checkpoints(): Promise<TextResult> {
+    return this.guard(async () => {
+      await this.load();
+      if (!(await repoInfo(this.root))) return fail("not in a git repository: no checkpoints");
+      const out = await git(this.root, ["log", "-n", "20", "--format=%h%x09%cI%x09%s", "--", "."]);
+      const lines = out
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => {
+          const [id, date, ...msg] = l.split("\t");
+          return `${id} ${date?.slice(0, 16).replace("T", " ")} ${msg.join("\t")}`;
+        });
+      return { ok: true, text: lines.length > 0 ? lines.join("\n") : "no checkpoints yet" };
+    });
+  }
+
+  /** Accepts a pending patch: applies it now, as a changeset of its own. */
+  pendingAccept(id: string): Promise<TextResult> {
+    return this.guard(async () => {
+      const list = await readPending(this.root);
+      const p = list.find((x) => x.id === id);
+      if (!p) return fail(`no pending change ${id}`);
+      const r = await this.applyPatchText(p.patch, {
+        dryRun: false,
+        hold: false,
+        source: "accept",
+        note: `accepted ${id}`,
+      });
+      if (!r.ok) return fail(`${id} no longer applies, so it stays pending:\n${r.text}`);
+      await removePending(this.root, id);
+      return { ok: true, text: `accepted ${id}\n${r.text}` };
+    });
+  }
+
+  pendingReject(id: string): Promise<TextResult> {
+    return this.guard(async () => {
+      if (!(await removePending(this.root, id))) return fail(`no pending change ${id}`);
+      return { ok: true, text: `rejected ${id}` };
+    });
+  }
+
+  private async findVariant(name: string): Promise<Variant | string> {
+    const info = await repoInfo(this.root);
+    if (!info) return "not in a git repository: variants need git";
+    const v = (await listVariants(this.root, info)).find((x) => x.name === name);
+    return v ?? `no variant '${name}' (see variant list)`;
+  }
+
+  /** A workspace for a variant's working copy, for the viewer. */
+  async variantWorkspace(name: string): Promise<Workspace | undefined> {
+    const v = await this.findVariant(name);
+    return typeof v === "string" ? undefined : new Workspace(v.dir);
+  }
+
+  /**
+   * Variants are parallel versions of the design on their own git branches, each checked out
+   * under .partstyle/variants/. list, create NAME and diff NAME are for anyone; adopt NAME
+   * (copy a variant's design over the main line, as one changeset) and remove NAME are the
+   * person's decisions.
+   */
+  variant(op: "list" | "create" | "diff" | "adopt" | "remove", name?: string): Promise<TextResult> {
+    return this.guard(async () => {
+      await this.load();
+      const info = await repoInfo(this.root);
+      if (!info) return fail("not in a git repository: variants need git (run 'git init')");
+      if (op === "list") {
+        const vs = await listVariants(this.root, info);
+        if (vs.length === 0)
+          return { ok: true, text: "no variants (create one with: variant create NAME)" };
+        const now = toFiles(await readCircuits(this.root));
+        const lines = [];
+        for (const v of vs) {
+          const n = diffCircuits(now, toFiles(await readCircuits(v.dir))).length;
+          const rel = toPosix(path.relative(this.root, v.dir));
+          lines.push(
+            `${v.name}: ${n === 0 ? "same as main" : `${n} statements differ from main`} (${rel})`,
+          );
+        }
+        return { ok: true, text: lines.join("\n") };
+      }
+      if (name === undefined) return fail(`usage: variant ${op} NAME`);
+      if (op === "create") {
+        const bad = checkVariantName(name);
+        if (bad) return fail(bad);
+        if (typeof (await this.findVariant(name)) !== "string") {
+          return fail(`variant '${name}' already exists`);
+        }
+        try {
+          const { variant: v, ignoredNow } = await createVariant(this.root, info, name);
+          const cp = await lastCommit(this.root);
+          const rel = toPosix(path.relative(this.root, v.dir));
+          return {
+            ok: true,
+            text: [
+              `created variant ${name} at ${rel} (branch ${v.branch}) from checkpoint ${cp?.id.slice(0, 7) ?? "HEAD"}`,
+              "changes not yet checkpointed are not in it",
+              `edit it with: partstyle -p ${rel} ...; compare with: variant diff ${name}`,
+              ...(ignoredNow ? ["added .partstyle/ to .gitignore"] : []),
+            ].join("\n"),
+          };
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+      }
+      const v = await this.findVariant(name);
+      if (typeof v === "string") return fail(v);
+      if (op === "diff") {
+        const changes = diffCircuits(
+          toFiles(await readCircuits(this.root)),
+          toFiles(await readCircuits(v.dir)),
+        );
+        return {
+          ok: true,
+          text:
+            changes.length === 0
+              ? `variant ${name} has the same circuit as the main line`
+              : [`main line -> variant ${name}:`, ...formatChanges(changes)].join("\n"),
+        };
+      }
+      if (op === "adopt") {
+        const files = await adoptVariant(this.root, v);
+        if (files.length === 0) return { ok: true, text: `variant ${name} matches the main line` };
+        const logged = await this.history.record("adopt", `adopted variant ${name}`);
+        return {
+          ok: true,
+          text: [
+            `adopted variant ${name}${logged ? ` as ${logged.id}` : ""}: ${files.join(", ")}`,
+            "review it, then checkpoint (the variant itself is kept until removed)",
+          ].join("\n"),
+        };
+      }
+      await removeVariant(this.root, v);
+      return { ok: true, text: `removed variant ${name} and its branch ${v.branch}` };
+    });
   }
 
   /** Resolves generic parts against the library, writes bom.lock and a grouped bom.csv. */

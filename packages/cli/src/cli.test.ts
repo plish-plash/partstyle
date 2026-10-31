@@ -151,3 +151,37 @@ describe("partstyle", () => {
     expect((await cli(["--help"])).exitCode).toBe(0);
   });
 });
+
+describe("partstyle review commands", () => {
+  it("check their arguments", async () => {
+    for (const args of [
+      ["revert"],
+      ["checkpoint"],
+      ["pending", "keep", "P1"],
+      ["variant", "rename", "x"],
+      ["variant", "create"],
+      ["diff", "extra"],
+    ]) {
+      expect((await cli(["-p", example, ...args])).stderr).toMatch(/^usage: /);
+    }
+    expect((await cli(["-p", example, "revert", "nonsense"])).stderr).toMatch(/^usage: revert C3/);
+  });
+
+  it("diff and changes work without git, from the start of the change log", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-cli-"));
+    try {
+      const dir = path.join(tmp, "board");
+      await cli(["init", dir]);
+      await rm(path.join(dir, ".git"), { recursive: true, force: true });
+      expect((await cli(["-p", dir, "diff"])).stdout).toMatch(
+        /^no circuit changes since the start of the change log/,
+      );
+      expect((await cli(["-p", dir, "changes"])).stdout).toContain("no changesets");
+      expect((await cli(["-p", dir, "checkpoint", "x"])).stderr).toMatch(
+        /^not in a git repository/,
+      );
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});

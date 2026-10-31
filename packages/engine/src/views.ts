@@ -61,7 +61,12 @@ function contextLines(source: ProjectSource): string[] {
 }
 
 /** The cheap first read: blocks, part counts, issues and context in a few hundred tokens. */
-export function overview(source: ProjectSource, result: ValidationResult): string {
+export function overview(
+  source: ProjectSource,
+  result: ValidationResult,
+  /** Checkpoint, changes, pending and variant lines from the project's history. */
+  versions: string[] = [],
+): string {
   const name = result.config?.name ?? "(invalid project.toml)";
   const lines = [`project ${name} (top: ${result.config?.top ?? "?"})`, ...contextLines(source)];
 
@@ -97,7 +102,7 @@ export function overview(source: ProjectSource, result: ValidationResult): strin
     lines.push(`comments: ${open.length} open (see focus)`);
     for (const c of open.slice(0, 3)) lines.push(`  ${c.id} on ${c.subject}: ${c.text}`);
   }
-  lines.push("changes since checkpoint: not tracked yet");
+  lines.push(...versions);
   return lines.join("\n");
 }
 

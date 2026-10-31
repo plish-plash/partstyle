@@ -19,6 +19,15 @@ export const ProjectConfigSchema = z.object({
       distributors: z.array(z.enum(distributors)).default([]),
     })
     .default({ distributors: [] }),
+  review: z
+    .object({
+      /**
+       * auto: the AI's edits land at once as changesets the person can revert. accept: `apply`
+       * holds each patch as a pending change until the person accepts it.
+       */
+      mode: z.enum(["auto", "accept"]).default("auto"),
+    })
+    .default({ mode: "auto" }),
   /** Overrides for KiCad discovery; normally found automatically. */
   kicad: z
     .object({

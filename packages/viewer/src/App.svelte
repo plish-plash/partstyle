@@ -2,16 +2,25 @@
 import type { ViewerModel } from "@partstyle/engine";
 import { onMount } from "svelte";
 import * as api from "./api";
+import Changes from "./Changes.svelte";
 import Inspector from "./Inspector.svelte";
 import IssueList from "./IssueList.svelte";
 import Sheet from "./Sheet.svelte";
 
+const params = new URLSearchParams(location.search);
 let model = $state<ViewerModel | undefined>();
 let error = $state<string | undefined>();
 let prefix = $state("");
 let selection = $state<string[]>([]);
 let live = $state(false);
 let restored = false;
+/** The variant shown (?variant=NAME), and a pending patch drawn as if accepted. */
+let variant = $state<string | undefined>(params.get("variant") ?? undefined);
+let preview = $state<string | undefined>();
+let tab = $state<"inspect" | "changes">(params.get("tab") === "changes" ? "changes" : "inspect");
+const changeCount = $derived(
+  (model?.versions?.changesets.length ?? 0) + (model?.versions?.pending.length ?? 0),
+);
 
 /** Every sheet instance in page order: the top block first, then depth-first. */
 const pages = $derived(
@@ -23,8 +32,17 @@ const current = $derived(model?.sheets.find((s) => s.instances.some((i) => i.pre
 
 async function refresh() {
   try {
-    model = await api.fetchModel();
+    model = await api.fetchModel({
+      ...(variant && { variant }),
+      ...(preview && { preview }),
+    });
     error = undefined;
+    // A preview ends when its patch is accepted or rejected.
+    if (preview && !model.versions?.pending.some((p) => p.id === preview)) {
+      preview = undefined;
+      void refresh();
+      return;
+    }
     if (!restored) {
       restored = true;
       selection = model.focus.selection;
@@ -85,6 +103,34 @@ function show(subjects: string[]) {
 }
 const pageLabel = (p: { block: string; prefix: string }) =>
   p.prefix === "" ? p.block : `${p.prefix.slice(0, -1)} (${p.block})`;
+
+function setVariant(name: string | undefined) {
+  variant = name;
+  preview = undefined;
+  const url = new URL(location.href);
+  if (name) url.searchParams.set("variant", name);
+  else url.searchParams.delete("variant");
+  history.replaceState(null, "", url);
+  void refresh();
+}
+function setPreview(id: string | undefined) {
+  preview = id;
+  void refresh();
+}
+/** Shows a changed part or net: every instance of its block. */
+function showChange(c: { block: string; kind: string; key: string }) {
+  const sheet = model?.sheets.find((s) => s.block === c.block);
+  if (!sheet) return;
+  const subjects =
+    c.kind === "part"
+      ? sheet.instances.map((i) => i.prefix + c.key)
+      : c.kind === "net"
+        ? sheet.instances.flatMap((i) => (i.nets[c.key] ? [i.nets[c.key] as string] : []))
+        : [];
+  const first = sheet.instances[0];
+  if (first) prefix = first.prefix;
+  select(subjects, false);
+}
 </script>
 
 <header>
@@ -99,6 +145,10 @@ const pageLabel = (p: { block: string; prefix: string }) =>
       <button class:active={p.prefix === prefix} onclick={() => open(p.prefix)}>{pageLabel(p)}</button>
     {/each}
   </nav>
+  {#if variant}
+    <span class="chip variant-chip">variant {variant} <button class="link" onclick={() => setVariant(undefined)}>back to main</button></span>
+  {/if}
+  {#if preview}<span class="chip meh">previewing {preview}</span>{/if}
   <span class="live" title={live ? "Updates as the files change" : "Connecting…"}>{live ? "● live" : "○"}</span>
 </header>
 
@@ -119,6 +169,7 @@ const pageLabel = (p: { block: string; prefix: string }) =>
         {selection}
         onselect={select}
         onenter={open}
+        changes={tab === "changes" ? (model.preview?.changed ?? model.versions?.changed ?? []) : []}
       />
     {:else}
       <p class="error">Nothing to draw: fix the errors listed on the right.</p>
@@ -126,8 +177,26 @@ const pageLabel = (p: { block: string; prefix: string }) =>
   </div>
   <aside>
     {#if model}
-      <Inspector {model} {selection} onselect={select} />
-      <IssueList issues={model.issues} comments={model.comments} onshow={show} />
+      <div class="tabs">
+        <button class:active={tab === "inspect"} onclick={() => (tab = "inspect")}>Inspect</button>
+        <button class:active={tab === "changes"} onclick={() => (tab = "changes")}>
+          Changes{changeCount > 0 ? ` (${changeCount})` : ""}
+        </button>
+      </div>
+      {#if tab === "inspect"}
+        <Inspector {model} {selection} onselect={select} />
+        <IssueList issues={model.issues} comments={model.comments} onshow={show} />
+      {:else if model.versions}
+        <Changes
+          versions={model.versions}
+          {variant}
+          {preview}
+          onpreview={setPreview}
+          onvariant={setVariant}
+          onshow={showChange}
+          ondone={() => void refresh()}
+        />
+      {/if}
     {/if}
   </aside>
 </main>

@@ -22,7 +22,8 @@ class PatchError extends Error {}
 /** Statement order within a file; new statements go after the last one of the same or an earlier kind. */
 const kindOrder: StatementKind[] = ["block", "port", "part", "use", "net", "waive"];
 
-function keyOf(s: Statement): string {
+/** What identifies a statement within its block: a part's ref, a net's name, and so on. */
+export function keyOf(s: Statement): string {
   switch (s.kind) {
     case "block":
     case "port":
@@ -37,7 +38,8 @@ function keyOf(s: Statement): string {
   }
 }
 
-function statementsOf(ast: CktFile): Statement[] {
+/** A file's statements in canonical order: block, ports, parts, uses, nets, waivers. */
+export function statementsOf(ast: CktFile): Statement[] {
   return [
     { kind: "block", decl: ast.block },
     ...ast.ports.map((decl) => ({ kind: "port" as const, decl })),

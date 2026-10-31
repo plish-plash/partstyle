@@ -51,6 +51,11 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
     netlist; `drawing/prepare.ts` is the entry point. `kicad/schematic.ts` only serializes it.
   - Review: `review.ts` (comments.yaml, .partstyle/focus.json, `focus` text) and
     `viewer-model.ts` (the JSON the viewer renders).
+  - Versions: `versions/diff.ts` (semantic statement diff, pure) and `versions/revert.ts`
+    (revert plans as patches). Node side: `project/git.ts` (git CLI), `project/history.ts`
+    (changeset log in .partstyle/history.json, recorded on every `Workspace` load),
+    `project/pending.ts` (accept mode) and `project/variants.ts` (worktrees under
+    .partstyle/variants/). Tests needing git use `skipIf`.
 - `packages/server`: local HTTP server for the viewer (model API, SSE live reload, focus,
   comments, verify); 127.0.0.1 only, Host-header and custom-header checks. Started by
   `partstyle view` and by the MCP server.

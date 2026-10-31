@@ -30,6 +30,17 @@ const contentTypes: Record<string, string> = {
 /** Folders whose changes never affect what the viewer shows (exports, git, local state). */
 const ignored = /(^|[\\/])(\.git|node_modules|kicad|\.partstyle)([\\/]|$)|bom\.csv$/;
 
+/**
+ * Whether a change (path relative to the project) can change what the viewer shows: project
+ * files, a variant's files, or the pending and history state other processes write.
+ */
+export function relevantChange(file: string): boolean {
+  const f = file.replace(/\\/g, "/");
+  if (f === ".partstyle/pending.json" || f === ".partstyle/history.json") return true;
+  const variant = /^\.partstyle\/variants\/[^/]+\/(.+)$/.exec(f);
+  return !ignored.test(variant ? (variant[1] as string) : f);
+}
+
 function viewerDist(): string {
   const pkg = fileURLToPath(import.meta.resolve("@partstyle/viewer/package.json"));
   return path.join(path.dirname(pkg), "dist");
@@ -87,8 +98,17 @@ export async function startViewer(
 ): Promise<ViewerServer> {
   const dist = viewerDist();
   const clients = new Set<ServerResponse>();
-  let model: Promise<ViewerModel> | undefined;
+  /** Drawings by view ("" for the main line, a variant's name, or "|P1" to preview a patch). */
+  const models = new Map<string, Promise<ViewerModel>>();
   let port = opts.port ?? DEFAULT_PORT;
+
+  /** The workspace a request is about: the project, or one of its variants. */
+  const target = async (variant: string | null | undefined): Promise<Workspace> => {
+    if (!variant) return ws;
+    const v = await ws.variantWorkspace(variant);
+    if (!v) throw new HttpError(404, `no variant ${variant}`);
+    return v;
+  };
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     // Only answer requests addressed to this machine by name: blocks DNS-rebinding attacks.
@@ -103,13 +123,26 @@ export async function startViewer(
     };
 
     if (req.method === "GET" && url.pathname === "/api/model") {
-      // The drawing is cached until files change; review state is cheap and is read fresh, since
-      // focus can change from another process without touching watched files.
-      model ??= ws.viewerModel();
+      // The drawing is cached until files change; review and version state are cheap and read
+      // fresh, since focus can change from another process without touching watched files.
+      const variant = url.searchParams.get("variant") ?? "";
+      const preview = url.searchParams.get("preview") ?? "";
+      const key = `${variant}|${preview}`;
+      const w = await target(variant);
+      let model = models.get(key);
+      if (!model) {
+        model = w.viewerModel(preview ? { preview } : {});
+        models.set(key, model);
+      }
       try {
-        send(200, { ...(await model), ...(await ws.review()) });
+        send(200, {
+          ...(await model),
+          ...(await w.review()),
+          versions: await w.versionState(),
+          ...(variant && { variant }),
+        });
       } catch (e) {
-        model = undefined;
+        models.delete(key);
         throw e;
       }
       return;
@@ -149,6 +182,30 @@ export async function startViewer(
       }
       if (url.pathname === "/api/verify") {
         send(200, await ws.verifyPart(str(body.id, "id", 200)));
+        return;
+      }
+      // Review actions; each may name the variant it applies to.
+      const w = await target(typeof body.variant === "string" ? body.variant : undefined);
+      if (url.pathname === "/api/revert") {
+        send(200, await w.revert(str(body.id, "id", 40)));
+        return;
+      }
+      if (url.pathname === "/api/checkpoint") {
+        send(200, await w.checkpoint(str(body.message, "message", 500)));
+        return;
+      }
+      if (url.pathname === "/api/pending") {
+        const id = str(body.id, "id", 40);
+        if (body.op !== "accept" && body.op !== "reject") throw new HttpError(400, "bad op");
+        send(200, await (body.op === "accept" ? w.pendingAccept(id) : w.pendingReject(id)));
+        return;
+      }
+      if (url.pathname === "/api/variant") {
+        const op = body.op;
+        if (op !== "create" && op !== "adopt" && op !== "remove") {
+          throw new HttpError(400, "bad op");
+        }
+        send(200, await ws.variant(op, str(body.name, "name", 60)));
         return;
       }
       throw new HttpError(404, "not found");
@@ -202,10 +259,10 @@ export async function startViewer(
   // Live reload: any change to the project or its part libraries refreshes every viewer.
   let timer: NodeJS.Timeout | undefined;
   const changed = (file: string | null) => {
-    if (file && ignored.test(file)) return;
+    if (file && !relevantChange(file)) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
-      model = undefined;
+      models.clear();
       for (const c of clients) c.write("event: change\ndata: {}\n\n");
     }, 150);
   };

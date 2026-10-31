@@ -10,11 +10,33 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function fetchModel(): Promise<ViewerModel> {
-  const res = await fetch("api/model");
+/** Which version of the design to show: the main line or a variant, optionally with a pending patch. */
+export interface View {
+  variant?: string;
+  preview?: string;
+}
+
+export async function fetchModel(view: View = {}): Promise<ViewerModel> {
+  const q = new URLSearchParams();
+  if (view.variant) q.set("variant", view.variant);
+  if (view.preview) q.set("preview", view.preview);
+  const res = await fetch(`api/model${q.size > 0 ? `?${q}` : ""}`);
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as ViewerModel;
 }
+
+type Result = { ok: boolean; text: string };
+
+export const revert = (id: string, variant?: string) => post<Result>("api/revert", { id, variant });
+
+export const checkpoint = (message: string, variant?: string) =>
+  post<Result>("api/checkpoint", { message, variant });
+
+export const decidePending = (op: "accept" | "reject", id: string, variant?: string) =>
+  post<Result>("api/pending", { op, id, variant });
+
+export const variantOp = (op: "create" | "adopt" | "remove", name: string) =>
+  post<Result>("api/variant", { op, name });
 
 export const sendFocus = (focus: Focus) => post<{ ok: true }>("api/focus", focus);
 

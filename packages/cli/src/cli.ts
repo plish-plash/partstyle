@@ -43,6 +43,14 @@ commands:
   bom export                               resolve generics, write bom.lock and bom.csv
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
   focus                                    what is selected in the viewer, and open comments
+  diff [--since checkpoint|last|ID]        circuit changes, statement by statement
+  changes                                  changesets since the checkpoint, and pending patches
+  revert C3|C3.2                           undo a changeset or one of its statements
+  checkpoint MESSAGE...                    commit the project folder (the person's approval)
+  checkpoints                              recent checkpoints
+  pending accept|reject ID                 decide a patch held in accept mode
+  variant list|create|diff|adopt|remove [NAME]
+                                           parallel versions on git branches
   grammar                                  print the .ckt and patch reference
   schema part                              print the part-record JSON Schema
 
@@ -76,6 +84,7 @@ function parse(argv: string[]) {
       name: { type: "string" },
       library: { type: "string", multiple: true },
       port: { type: "string" },
+      since: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -205,6 +214,41 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
 
     case "focus":
       return fromText(await ws.focus());
+
+    case "diff":
+      if (args.length > 0) return usageError("usage: diff [--since checkpoint|last|ID]");
+      return fromText(await ws.diff(values.since ?? "checkpoint"));
+
+    case "changes":
+      if (args.length > 0) return usageError("usage: changes");
+      return fromText(await ws.changes());
+
+    case "revert":
+      if (args.length !== 1) return usageError("usage: revert C3|C3.2");
+      return fromText(await ws.revert(args[0] as string));
+
+    case "checkpoint":
+      if (args.length === 0) return usageError("usage: checkpoint MESSAGE...");
+      return fromText(await ws.checkpoint(args.join(" ")));
+
+    case "checkpoints":
+      return fromText(await ws.checkpoints());
+
+    case "pending": {
+      const [op, id] = args;
+      if ((op !== "accept" && op !== "reject") || id === undefined || args.length > 2) {
+        return usageError("usage: pending accept|reject ID");
+      }
+      return fromText(await (op === "accept" ? ws.pendingAccept(id) : ws.pendingReject(id)));
+    }
+
+    case "variant": {
+      const op = oneOf(args[0], ["list", "create", "diff", "adopt", "remove"] as const);
+      if (!op || args.length > 2 || (op !== "list" && args.length !== 2)) {
+        return usageError("usage: variant list | variant create|diff|adopt|remove NAME");
+      }
+      return fromText(await ws.variant(op, args[1]));
+    }
 
     case "grammar":
       return { stdout: await readGrammarReference(), exitCode: 0 };

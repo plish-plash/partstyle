@@ -2,3 +2,5 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+# Local viewer and history state of projects in this repo (examples, fixtures)
+.partstyle/

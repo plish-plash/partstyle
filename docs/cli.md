@@ -323,6 +323,81 @@ viewer: http://127.0.0.1:7766/
 Review state lives in two files: `comments.yaml` (versioned with the design) and
 `.partstyle/focus.json` (local, git-ignored). `overview` lists open comments too.
 
+## Versions
+
+Git is the storage engine; these commands give it schematic vocabulary. The project may be its
+own repository or a folder inside a larger one (`init` runs `git init` when it is in neither);
+checkpoints commit only the project folder.
+
+- **Changeset:** one unit of change since the last checkpoint. Each `apply` is one; direct file
+  edits become one per burst (edits less than a minute apart merge, roughly one turn of the
+  AI's work). Changesets are recorded whenever any command or the viewer runs, compare
+  statements rather than text (formatting, comments and pin order don't count), and live in
+  `.partstyle/history.json`.
+- **Checkpoint:** a commit of the project folder, the person's approval of the changes so far.
+  It starts a new changeset log.
+- **Variant:** a parallel version on its own branch, checked out as a git worktree under
+  `.partstyle/variants/NAME` (git-ignored).
+
+The viewer's Changes tab shows all of this: changes since the checkpoint are highlighted on the
+sheets (added green, modified amber), and each changeset or single statement can be reverted,
+pending patches previewed, accepted or rejected, checkpoints made and variants opened, adopted
+or removed.
+
+### `diff [--since checkpoint|last|ID]`
+
+Circuit changes statement by statement, grouped by block. `checkpoint` (default) compares with
+the last checkpoint and also lists other changed files (context, part records, notes); `last`
+compares with the previous `diff` call, which is how the AI catches up on the person's reverts
+and edits at the start of a turn; an ID compares with that checkpoint.
+
+```
+since checkpoint 9aeabc8 "initial bench-sensor design" (2026-10-31 11:31):
+power:
+  ~ part C2 cap(220n, 16V, X7R, 0603) (was cap(100n, 16V, X7R, 0603))
+sensor_afe:
+  + part R9 res(1M, 1%, 0603) @ bleed SENSE to ground when the cable is unplugged
+  ~ net SENSE +R9.1
+```
+
+A block added or removed as a whole is one line: `+ block mcu (circuit/mcu.ckt: 12 parts, 9 nets)`.
+
+### `changes`
+
+The changesets since the checkpoint with numbered statements (`C2.1`), and any pending patches.
+
+### `revert C3|C3.2`
+
+Undoes a changeset or one of its statements. A statement changed again since is left alone and
+reported, so a revert never discards later work. The revert is itself a changeset.
+
+### `checkpoint MESSAGE...` / `checkpoints`
+
+`checkpoint` commits the project folder (everything git does not ignore) with the message.
+`checkpoints` lists the last 20.
+
+### Accept-before-apply: `pending accept|reject ID`
+
+With `[review] mode = "accept"` in `project.toml`, `apply` does not write: it holds the patch as
+a pending change (`P1`, `P2`, ...) and reports what it would do. The person previews it in the
+viewer and accepts it (then it applies, as a changeset) or rejects it. Direct file edits still
+land immediately; the project's CLAUDE.md tells the AI to edit only through `apply` in this mode.
+
+### `variant list|create|diff|adopt|remove [NAME]`
+
+| Op            | Does                                                                                |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `list`        | variants and how many statements each differs from the main line                    |
+| `create NAME` | a new branch from the last checkpoint, checked out under `.partstyle/variants/NAME` |
+| `diff NAME`   | main line → variant, statement by statement                                         |
+| `adopt NAME`  | copies the variant's design files over the main line's, as one changeset            |
+| `remove NAME` | deletes the worktree and its branch                                                 |
+
+Work on a variant like any project: `partstyle -p .partstyle/variants/NAME/<project path> ...`,
+including its own checkpoints. The viewer opens it with `?variant=NAME`. Uncheckpointed changes
+on the main line are not carried into a new variant. The MCP `variant` tool offers only `list`,
+`create` and `diff`: adopting and removing are the person's decisions.
+
 ## Reference
 
 | Command       | Prints                                                            |

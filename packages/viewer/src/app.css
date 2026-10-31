@@ -317,6 +317,131 @@ svg text {
   cursor: pointer;
 }
 
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.tabs button {
+  border: none;
+  background: none;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tabs button.active {
+  border-bottom-color: var(--ui-fg);
+  font-weight: 600;
+}
+
+.changes .row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.changes .row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.changeset {
+  border: 1px solid var(--ui-line);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.changeset.pending {
+  border-color: #d48c00;
+}
+
+.changeset.previewing {
+  background: #fff8e8;
+}
+
+.changeset .head,
+.changes .variant {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.changeset .actions,
+.changes .variant .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.changeset ul {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+}
+
+.changeset li {
+  display: flex;
+  gap: 0.3rem;
+  align-items: baseline;
+  border-left: 3px solid transparent;
+  padding-left: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.changeset li.added {
+  border-left-color: #2ea44f;
+}
+
+.changeset li.modified {
+  border-left-color: #d48c00;
+}
+
+.changeset li.removed {
+  border-left-color: #cf222e;
+}
+
+.changeset li.removed code {
+  text-decoration: line-through;
+}
+
+.changeset li .block {
+  color: #666;
+}
+
+.changeset li .undo {
+  margin-left: auto;
+}
+
+.variant-chip {
+  background: #e8eefc;
+}
+
+/* Changes since the checkpoint (or by a previewed patch): added green, modified amber. */
+.change.added {
+  fill: rgba(46, 164, 79, 0.18);
+  stroke: rgba(46, 164, 79, 0.8);
+  stroke-width: 0.25;
+}
+
+.change.modified {
+  fill: rgba(212, 140, 0, 0.18);
+  stroke: rgba(212, 140, 0, 0.85);
+  stroke-width: 0.25;
+}
+
+.wire.added {
+  filter: drop-shadow(0 0 0.4px #2ea44f) drop-shadow(0 0 0.4px #2ea44f);
+}
+
+.wire.modified {
+  filter: drop-shadow(0 0 0.4px #d48c00) drop-shadow(0 0 0.4px #d48c00);
+}
+
 .unit .hitbox {
   fill: transparent;
   stroke: none;

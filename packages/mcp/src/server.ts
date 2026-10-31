@@ -184,5 +184,37 @@ export function createServer(ws: Workspace, version = "0.0.0"): McpServer {
     async () => reply(await ws.focus()),
   );
 
+  server.registerTool(
+    "diff",
+    {
+      description:
+        "Circuit changes by statement since: checkpoint (default; not yet approved), last (your previous diff; use at the start of a turn), or a checkpoint id.",
+      inputSchema: { since: z.string().optional() },
+      annotations: readOnly,
+    },
+    async ({ since }) => reply(await ws.diff(since ?? "checkpoint")),
+  );
+
+  server.registerTool(
+    "checkpoint",
+    {
+      description: "Commit the project as a checkpoint (the person's approval). Only when asked.",
+      inputSchema: { message: z.string() },
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    async ({ message }) => reply(await ws.checkpoint(message)),
+  );
+
+  server.registerTool(
+    "variant",
+    {
+      description:
+        "Parallel design versions on git branches: list, create NAME (from the last checkpoint; edit it in .partstyle/variants/NAME), diff NAME.",
+      inputSchema: { op: z.enum(["list", "create", "diff"]), name: z.string().optional() },
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    async ({ op, name }) => reply(await ws.variant(op, name)),
+  );
+
   return server;
 }
