@@ -6,8 +6,8 @@ package: SOD-323
 footprint: Diode_SMD:D_SOD-323
 kicad_symbol: Device:D_TVS
 pins:
-  1: { name: "1", type: passive }
-  2: { name: "2", type: passive }
+  1: { name: "1", type: passive, vmax: 5V, note: "VRWM; conducts hard above about 6 V" }
+  2: { name: "2", type: passive, vmax: 5V, note: VRWM }
 ratings:
   vrwm: 5V
   esd_contact: 30kV

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseQuantity } from "../units.js";
 import { parseGenericText } from "./generic.js";
 
 export const pinTypes = [
@@ -15,11 +16,69 @@ export const pinTypes = [
 ] as const;
 export type PinType = (typeof pinTypes)[number];
 
+const quantity = (unit: string, example: string) =>
+  z.string().refine((v) => {
+    const q = parseQuantity(v);
+    return q !== undefined && (q.unit === unit || q.unit === "");
+  }, `must be a quantity in ${unit}, e.g. ${example}`);
+
 export const PinSchema = z.strictObject({
   name: z.string().min(1).describe("Pin name as printed in the datasheet, e.g. IN, PB3, ~RESET"),
   type: z.enum(pinTypes).describe("Electrical type, used by ERC"),
+  vmax: quantity("V", "6V")
+    .optional()
+    .describe(
+      "Absolute maximum voltage on this pin relative to ground; checked against the net's voltage",
+    ),
   note: z.string().optional(),
 });
+
+const pinOrNet = z
+  .string()
+  .min(1)
+  .describe("A pin name or number of this part, or a net name; omitted means ground");
+
+/**
+ * A datasheet requirement: text for people and design review, plus optionally one check the
+ * engine verifies on every change.
+ */
+export const RequirementSchema = z.union([
+  z.string(),
+  z
+    .strictObject({
+      text: z.string().min(1),
+      cap: z
+        .strictObject({
+          from: pinOrNet,
+          to: pinOrNet.optional(),
+          min: quantity("F", "100n"),
+          each: z.boolean().optional().describe("One capacitor per pin with this name"),
+        })
+        .optional()
+        .describe("A capacitor of at least min between the pin and ground (or `to`)"),
+      res: z
+        .strictObject({
+          from: pinOrNet,
+          to: pinOrNet.optional(),
+          min: quantity("Ω", "4.7k").optional(),
+          max: quantity("Ω", "10k").optional(),
+        })
+        .optional()
+        .describe("A resistor between the pin and ground (or `to`), within min..max"),
+      tie: z
+        .strictObject({ from: pinOrNet, to: pinOrNet })
+        .optional()
+        .describe("The pin must be on the same net as `to` (a pin or net, e.g. VIN or GND)"),
+    })
+    .refine(
+      (r) => [r.cap, r.res, r.tie].filter((c) => c !== undefined).length <= 1,
+      "a requirement has at most one check (cap, res or tie)",
+    ),
+]);
+
+export type Requirement = z.infer<typeof RequirementSchema>;
+
+export const requirementText = (r: Requirement) => (typeof r === "string" ? r : r.text);
 
 export const PartRecordSchema = z
   .strictObject({
@@ -47,10 +106,16 @@ export const PartRecordSchema = z
       .record(z.string(), z.union([z.string(), z.number()]))
       .optional()
       .describe("Absolute maximum and key ratings, e.g. vin_max: 35V"),
-    requirements: z
-      .array(z.string())
+    temp_c: z
+      .tuple([z.number(), z.number()])
       .optional()
-      .describe("External components and conditions the datasheet requires"),
+      .describe("Operating temperature range in °C, checked against context.md"),
+    requirements: z
+      .array(RequirementSchema)
+      .optional()
+      .describe(
+        "External components and conditions the datasheet requires: text, or {text, cap|res|tie} to have it checked",
+      ),
     notes: z.array(z.string()).optional().describe("Gotchas and application notes"),
     generic: z
       .string()

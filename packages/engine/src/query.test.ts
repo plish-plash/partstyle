@@ -113,7 +113,7 @@ describe("overview and readBlock", () => {
     );
     expect(text).toContain("  power (circuit/power.ckt): 11 parts; ports +5V +3V3 GND");
     expect(text).toContain("parts: 30 (10 library, 20 generic; 9 of 9 records unverified)");
-    expect(text).toContain("issues: 0 errors, 0 warnings (17 waived)");
+    expect(text).toContain("issues: 0 errors, 0 warnings (19 waived)");
     // Rough budget check: ~4 characters per token.
     expect(text.length / 4).toBeLessThan(800);
   });
@@ -124,7 +124,7 @@ describe("overview and readBlock", () => {
     const summary = readBlock(source, result, "mcu", "summary").text.split("\n");
     expect(summary[1]).toBe("ports: +3V3 power_in, GND ground, AIN input");
     expect(summary).toContain("  R5 res(10k, 1%, 0603) @ RESET pull-up");
-    expect(summary.at(-1)).toBe("waivers: 4");
+    expect(summary.at(-1)).toBe("waivers: 5");
     expect(readBlock(source, result, "nope", "full")).toEqual({
       ok: false,
       text: "no block 'nope' (blocks: main, mcu, power, sensor_afe)",
@@ -147,11 +147,15 @@ describe("part search and get", () => {
   it("reads records by tier", () => {
     const summary = describePart(result.library, "L7805CV", "summary").text;
     expect(summary).toContain("ratings: vin_max=35V iout_max=1.5A dropout=2V");
-    expect(summary).toContain("requirements: 1 (tier pins)");
+    expect(summary).toContain("requirements: 2 (tier pins)");
     expect(summary).not.toContain("pins:");
     const pins = describePart(result.library, "L7805CV", "pins").text;
+    expect(pins).toContain("  1 IN power_in max 35V");
     expect(pins).toContain("  2 GND power_in (tab is GND)");
-    expect(pins).toContain("requires: 0.33 uF on IN, 0.1 uF on OUT, close to pins");
+    expect(pins).toContain("requires: 0.33 uF on IN, close to the pin [checked]");
+    expect(describePart(result.library, "MCP6002-I_SN", "pins").text).toContain(
+      "requires: tie unused amplifier halves off (e.g. follower with input at a defined level)",
+    );
     expect(describePart(result.library, "L7805CV", "full").text).toMatch(
       /^# \.\.\/\.\.\/library\/L7805CV\.yaml\nid: L7805CV\n/,
     );

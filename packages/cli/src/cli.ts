@@ -3,8 +3,11 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   countIssues,
+  findPrompt,
   formatValidation,
+  type PromptDef,
   partRecordJsonSchema,
+  prompts,
   queryUsage,
   type TextResult,
   type ValidationResult,
@@ -53,6 +56,8 @@ commands:
   pending accept|reject ID                 decide a patch held in accept mode
   variant list|create|diff|adopt|remove [NAME]
                                            parallel versions on git branches
+  prompt [NAME [ARGS...]]                  list or print a procedure (design-review, ingest-part,
+                                           prepare-handoff)
   grammar                                  print the .ckt and patch reference
   schema part                              print the part-record JSON Schema
 
@@ -262,6 +267,31 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         return usageError("usage: variant list | variant create|diff|adopt|remove NAME");
       }
       return fromText(await ws.variant(op, args[1]));
+    }
+
+    case "prompt": {
+      const [name, ...rest] = args;
+      const synopsis = (p: PromptDef) =>
+        [
+          p.name.replace(/_/g, "-"),
+          ...p.args.map((a) => (a.required ? a.name.toUpperCase() : `[${a.name.toUpperCase()}]`)),
+        ].join(" ");
+      if (name === undefined) {
+        return {
+          stdout: prompts.map((p) => `${synopsis(p)}: ${p.description}`).join("\n"),
+          exitCode: 0,
+        };
+      }
+      const p = findPrompt(name);
+      if (!p) return usageError(`unknown prompt '${name}' (partstyle prompt lists them)`);
+      const required = p.args.filter((a) => a.required).length;
+      if (rest.length < required || rest.length > p.args.length) {
+        return usageError(`usage: prompt ${synopsis(p)}`);
+      }
+      return {
+        stdout: p.render(Object.fromEntries(p.args.map((a, i) => [a.name, rest[i]]))),
+        exitCode: 0,
+      };
     }
 
     case "grammar":

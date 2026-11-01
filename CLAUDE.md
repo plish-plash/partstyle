@@ -31,7 +31,11 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
 - `packages/engine`: pure core in `src/index.ts` (no fs; must stay browser-safe for the viewer);
   node-only code is behind `src/node.ts` (`@partstyle/engine/node`).
   - Pipeline: `ckt/parser` → `parts/library` → `netlist/elaborate` (hierarchy flattening,
-    union-find net joining) → `erc/rules` → waivers in `validate.ts`.
+    union-find net joining) → `erc/rules`, `checks/parts` (pin `vmax`, capacitor derating,
+    requirement checks) and `checks/context` (context.md hazards, temperature, assembly;
+    `checks/nets` has net voltages) → waivers in `validate.ts`.
+  - Procedures: `prompts.ts` (design_review, ingest_part, prepare_handoff) feeds the MCP
+    prompts, `partstyle prompt` and the `.claude/commands/` files `init` writes.
   - AI operations: `views.ts` (overview, read_block), `query.ts`, `patch.ts` (apply),
     `parts/search.ts`. `project/workspace.ts` wraps them over a folder, reloading per call.
 - `packages/cli` and `packages/mcp`: thin shells over `Workspace`. Every MCP tool has a CLI

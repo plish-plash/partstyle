@@ -4,7 +4,7 @@ import type { Issue } from "./diagnostics.js";
 import { type SymbolGraphics, symbolGraphics } from "./drawing/graphics.js";
 import type { Drawing } from "./drawing/prepare.js";
 import type { SheetLayout } from "./drawing/types.js";
-import type { PinType } from "./parts/schema.js";
+import { type PinType, requirementText } from "./parts/schema.js";
 import type { Comment, Focus } from "./review.js";
 import type { ValidationResult } from "./validate.js";
 import type { ChangeOp } from "./versions/diff.js";
@@ -157,7 +157,7 @@ export function buildViewerModel(
           ratings: Object.fromEntries(
             Object.entries(r.ratings ?? {}).map(([k, v]) => [k, String(v)]),
           ),
-          requirements: r.requirements ?? [],
+          requirements: (r.requirements ?? []).map(requirementText),
           notes: r.notes ?? [],
           file: libEntry?.file ?? "",
         },

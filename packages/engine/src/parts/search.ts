@@ -1,5 +1,6 @@
 import type { TextResult } from "../query.js";
 import type { LibraryEntry, PartLibrary } from "./library.js";
+import { requirementText } from "./schema.js";
 
 export type PartTier = "summary" | "pins" | "full";
 
@@ -48,14 +49,19 @@ export function describePart(library: PartLibrary, id: string, tier: PartTier): 
     lines.push(
       "pins:",
       ...Object.entries(r.pins).map(
-        ([n, p]) => `  ${n} ${p.name} ${p.type}${p.note ? ` (${p.note})` : ""}`,
+        ([n, p]) =>
+          `  ${n} ${p.name} ${p.type}${p.vmax ? ` max ${p.vmax}` : ""}${p.note ? ` (${p.note})` : ""}`,
       ),
     );
   }
   const ratings = Object.entries(r.ratings ?? {});
   if (ratings.length > 0) lines.push(`ratings: ${ratings.map(([k, v]) => `${k}=${v}`).join(" ")}`);
+  if (r.temp_c) lines.push(`temperature: ${r.temp_c[0]} to ${r.temp_c[1]} °C`);
   if (tier === "pins") {
-    for (const req of r.requirements ?? []) lines.push(`requires: ${req}`);
+    // Checked requirements are marked: the engine verifies those; the rest need judgement.
+    for (const req of r.requirements ?? []) {
+      lines.push(`requires: ${requirementText(req)}${typeof req === "string" ? "" : " [checked]"}`);
+    }
     for (const note of r.notes ?? []) lines.push(`note: ${note}`);
   } else if (r.requirements?.length) {
     lines.push(`requirements: ${r.requirements.length} (tier pins)`);

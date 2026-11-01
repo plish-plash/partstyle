@@ -7,13 +7,17 @@ footprint: Package_TO_SOT_SMD:SOT-23
 pins:
   1: { name: GND, type: power_in }
   2: { name: VOUT, type: power_out }
-  3: { name: VIN, type: power_in }
+  3: { name: VIN, type: power_in, vmax: 6.5V }
 ratings:
   vin_max: 6V
   iout_max: 250mA
   dropout: 178mV
+temp_c: [-40, 125]
 requirements:
-  - 1 uF ceramic on VIN and on VOUT
+  - text: 1 uF ceramic on VIN
+    cap: { from: VIN, min: 1u }
+  - text: 1 uF ceramic on VOUT
+    cap: { from: VOUT, min: 1u }
 notes:
   - VIN absolute maximum is 6.5 V; never feed it from the 12 V rail
 sourcing: { lifecycle: active }

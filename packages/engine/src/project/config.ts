@@ -28,6 +28,12 @@ export const ProjectConfigSchema = z.object({
       mode: z.enum(["auto", "accept"]).default("auto"),
     })
     .default({ mode: "auto" }),
+  checks: z
+    .object({
+      /** A capacitor's rated voltage should be at least this many times what it sees. */
+      cap_derating: z.number().min(1).default(1.5),
+    })
+    .default({ cap_derating: 1.5 }),
   /** Overrides for KiCad discovery; normally found automatically. */
   kicad: z
     .object({

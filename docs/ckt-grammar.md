@@ -83,3 +83,9 @@ the issues they added or resolved. Use `dry_run` to preview.
 | `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint |
 | `kicad.symbol-fallback`                                          | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated    |
 | `part.draft`                                                     | warning                            | a KiCad import draft record is in use; complete or replace it     |
+| `part.overvoltage`                                               | error                              | a pin's `vmax` is below its net's voltage                         |
+| `part.cap-voltage`                                               | error over rating, else warning    | capacitor rated below the voltage across it, or under derating    |
+| `part.requirement`                                               | warning                            | a datasheet requirement with a check is not met                   |
+| `context.hazard`                                                 | warning                            | an external interface's hazard is not handled at its connector    |
+| `context.temperature`, `context.assembly`                        | warning                            | part outside context's temperature range; hard to hand-solder     |
+| `context.unknown-connector`, `context.invalid`                   | warning                            | interface names no part; context.md front matter is malformed     |

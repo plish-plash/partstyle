@@ -6,9 +6,9 @@ package: THT barrel jack
 footprint: Connector_BarrelJack:BarrelJack_CUI_PJ-102AH_Horizontal
 kicad_symbol: Connector:Barrel_Jack_Switch
 pins:
-  1: { name: TIP, type: passive, note: center pin }
-  2: { name: SLEEVE, type: passive }
-  3: { name: SWITCH, type: passive, note: opens when a plug is inserted }
+  1: { name: TIP, type: passive, vmax: 24V, note: center pin }
+  2: { name: SLEEVE, type: passive, vmax: 24V }
+  3: { name: SWITCH, type: passive, vmax: 24V, note: opens when a plug is inserted }
 ratings:
   v_max: 24V
   i_max: 2.5A

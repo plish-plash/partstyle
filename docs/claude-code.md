@@ -42,27 +42,28 @@ and `focus` reports it). Pass `--viewer-port N` to pick the port or `--no-viewer
 Each tool calls the same `Workspace` method as the matching CLI command, so output is
 identical.
 
-| MCP tool                            | CLI                                                                              |
-| ----------------------------------- | -------------------------------------------------------------------------------- |
-| `init_project(name, library_paths)` | `partstyle init [DIR] --name --library`                                          |
-| `overview`                          | `partstyle overview`                                                             |
-| `read_block(block, detail)`         | `partstyle read-block BLOCK --detail ...`                                        |
-| `query(expr)`                       | `partstyle query EXPR`                                                           |
-| `apply(patch, dry_run)`             | `partstyle apply [FILE\|-] [--dry-run]`                                          |
-| `validate`                          | `partstyle validate [--json]`                                                    |
-| `part_search(q)`                    | `partstyle part search Q`                                                        |
-| `part_get(id, tier)`                | `partstyle part get ID --tier ...`                                               |
-| `part_put(record, scope)`           | `partstyle part put [FILE\|-] --scope ...`                                       |
-| `kicad_export(check)`               | `partstyle kicad export [--no-check]`                                            |
-| `kicad_import(path)`                | `partstyle kicad import PATH` (`--replace` is CLI only)                          |
-| `bom_export`                        | `partstyle bom export`                                                           |
-| `focus`                             | `partstyle focus`                                                                |
-| `diff(since)`                       | `partstyle diff [--since ...]`                                                   |
-| `checkpoint(message)`               | `partstyle checkpoint MESSAGE`                                                   |
-| `variant(op, name)`                 | `partstyle variant list\|create\|diff NAME`                                      |
-| (person only: viewer and CLI)       | `partstyle changes`, `revert`, `pending`, `variant adopt\|remove`, `checkpoints` |
-| (viewer, started with the server)   | `partstyle view [--port N]`                                                      |
-| resource `partstyle://grammar`      | `partstyle grammar`                                                              |
+| MCP tool                                                                          | CLI                                                                              |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `init_project(name, library_paths)`                                               | `partstyle init [DIR] --name --library`                                          |
+| `overview`                                                                        | `partstyle overview`                                                             |
+| `read_block(block, detail)`                                                       | `partstyle read-block BLOCK --detail ...`                                        |
+| `query(expr)`                                                                     | `partstyle query EXPR`                                                           |
+| `apply(patch, dry_run)`                                                           | `partstyle apply [FILE\|-] [--dry-run]`                                          |
+| `validate`                                                                        | `partstyle validate [--json]`                                                    |
+| `part_search(q)`                                                                  | `partstyle part search Q`                                                        |
+| `part_get(id, tier)`                                                              | `partstyle part get ID --tier ...`                                               |
+| `part_put(record, scope)`                                                         | `partstyle part put [FILE\|-] --scope ...`                                       |
+| `kicad_export(check)`                                                             | `partstyle kicad export [--no-check]`                                            |
+| `kicad_import(path)`                                                              | `partstyle kicad import PATH` (`--replace` is CLI only)                          |
+| `bom_export`                                                                      | `partstyle bom export`                                                           |
+| `focus`                                                                           | `partstyle focus`                                                                |
+| `diff(since)`                                                                     | `partstyle diff [--since ...]`                                                   |
+| `checkpoint(message)`                                                             | `partstyle checkpoint MESSAGE`                                                   |
+| `variant(op, name)`                                                               | `partstyle variant list\|create\|diff NAME`                                      |
+| (person only: viewer and CLI)                                                     | `partstyle changes`, `revert`, `pending`, `variant adopt\|remove`, `checkpoints` |
+| (viewer, started with the server)                                                 | `partstyle view [--port N]`                                                      |
+| resource `partstyle://grammar`                                                    | `partstyle grammar`                                                              |
+| prompts `design_review(block)`, `ingest_part(part, datasheet)`, `prepare_handoff` | `partstyle prompt NAME [ARGS...]`, and `/design-review` etc. in Claude Code      |
 
 `init_project` creates the project in the server's `--project` folder; `library_paths` are
 relative to that folder.

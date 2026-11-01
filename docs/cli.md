@@ -39,6 +39,7 @@ if needed. Fails if DIR already has a `project.toml`. Existing files are never o
 | `notes/decisions.md` | design rationale, keyed to refdes and nets                                  |
 | `notes/pcb.md`       | layout notes for the KiCad hand-off                                         |
 | `CLAUDE.md`          | instructions for Claude Code: workflow, conventions, an example block       |
+| `.claude/commands/`  | Claude Code slash commands for the procedures (see `prompt`)                |
 
 Later commands add `annotation.lock` and `bom.lock` (commit both), `bom.csv`, and the
 generated KiCad project in `kicad/`.
@@ -104,6 +105,30 @@ Parses, connects and checks the project. Prints one line per unwaived issue,
 prints `{errors, warnings, waived, issues}`. Issue codes are listed in
 [ckt-grammar.md](ckt-grammar.md#issue-codes).
 
+Besides structural ERC, every validate (and so every `apply`) runs:
+
+- **Pin limits.** A pin with `vmax` in its part record is checked against its net's voltage:
+  the `voltage` attribute (`5V`, `12V ±10%`, `0-3.3V`), else 0 V for ground nets, else what a
+  rail's name says (`+3V3` is 3.3 V). A net with none of these is not checked.
+- **Capacitor ratings.** A capacitor with a voltage (a generic's argument, or its record's
+  `generic` field) is an error when the voltage across it exceeds the rating, and a warning when
+  the rating is under `[checks] cap_derating` (default 1.5) times that voltage.
+- **Datasheet requirements** that carry a check in the part record: `cap` (at least one
+  capacitor of at least `min` from the pin to ground or `to`, or one per pin with `each`), `res`
+  (a resistor within `min`..`max`) and `tie` (the pin on the same net as `to`). `to` is a pin of
+  the part or a net name. Text-only requirements are left for design review.
+- **context.md** front matter, for each external interface's connector (its instance path):
+  - `ESD` in its hazards: every signal net on the connector (not power or ground) needs an
+    ESD/TVS part (`diode(tvs)`, or a record whose summary says ESD or TVS) to ground.
+  - a hazard naming a voltage (`miswiring to 12 V`): no part pin with a lower `vmax`, and no
+    capacitor rated lower, may sit directly on those signal nets.
+  - `reverse polarity`: a diode or FET on one of the connector's non-ground nets.
+  - Records with `temp_c` must cover `environment.temp_c`, and with a hand-only
+    `assembly.method` (no service or reflow) fine-pitch packages (QFN, BGA, 0201, ...) are
+    flagged.
+
+Overview counts records not yet verified by a person; validate does not repeat it.
+
 ## Editing
 
 ### `apply [FILE|-] [--dry-run]`
@@ -149,6 +174,21 @@ respin); if the footprint is not in the libraries, it is written with a warning.
 
 A record for a concrete passive can carry `generic: cap(100n, 50V, X7R, 10%, 0603)`, the
 generic it satisfies, so `bom export` and `kicad export` can resolve generics to it.
+
+Fields the checks read (see `validate`): `vmax` on a pin (its absolute maximum relative to
+ground), `temp_c: [min, max]`, and requirements with a check:
+
+```yaml
+pins:
+  1: { name: IN, type: power_in, vmax: 35V }
+temp_c: [0, 125]
+requirements:
+  - text: 0.33 uF on IN, close to the pin
+    cap: { from: IN, min: 330n }
+  - text: 4.7k-10k pull-up on SDA
+    res: { from: SDA, to: VDD, min: 4.7k, max: 10k }
+  - keep the feedback trace short # text only: for design review
+```
 
 ## Outputs
 
@@ -451,8 +491,19 @@ on the main line are not carried into a new variant. The MCP `variant` tool offe
 
 ## Reference
 
-| Command       | Prints                                                            |
-| ------------- | ----------------------------------------------------------------- |
-| `grammar`     | the `.ckt` and patch reference ([ckt-grammar.md](ckt-grammar.md)) |
-| `schema part` | the part-record JSON Schema                                       |
-| `--help`      | the command summary                                               |
+| Command                 | Prints                                                            |
+| ----------------------- | ----------------------------------------------------------------- |
+| `prompt`                | the procedures, with their arguments                              |
+| `prompt NAME [ARGS...]` | a procedure for the AI to follow (below)                          |
+| `grammar`               | the `.ckt` and patch reference ([ckt-grammar.md](ckt-grammar.md)) |
+| `schema part`           | the part-record JSON Schema                                       |
+| `--help`                | the command summary                                               |
+
+The procedures are the MCP server's prompts, printed for clients without prompt support. `init`
+also writes them as Claude Code slash commands in `.claude/commands/`:
+
+| Procedure                      | Slash command      | What the AI does                                                      |
+| ------------------------------ | ------------------ | --------------------------------------------------------------------- |
+| `design-review [BLOCK]`        | `/design-review`   | reviews against context and datasheets; findings to notes/review.md   |
+| `ingest-part PART [DATASHEET]` | `/ingest-part`     | reads the datasheet once and writes the record (or completes a draft) |
+| `prepare-handoff`              | `/prepare-handoff` | BOM, notes/pcb.md, KiCad export                                       |

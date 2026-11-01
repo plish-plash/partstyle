@@ -35,6 +35,9 @@ describe("loadProject", () => {
       "erc.undriven-input",
       "erc.unsourced-power",
       "parse.syntax",
+      "part.cap-voltage",
+      "part.overvoltage",
+      "part.requirement",
     ]);
   });
 

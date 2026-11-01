@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { queryUsage, type TextResult } from "@partstyle/engine";
+import { prompts, queryUsage, type TextResult } from "@partstyle/engine";
 import { readGrammarReference, type Workspace } from "@partstyle/engine/node";
 import { z } from "zod";
 
@@ -227,6 +227,26 @@ export function createServer(ws: Workspace, version = "0.0.0"): McpServer {
     },
     async ({ op, name }) => reply(await ws.variant(op, name)),
   );
+
+  // Procedures, fetched only when needed (the CLI prints the same text: partstyle prompt NAME).
+  for (const p of prompts) {
+    const argsSchema = Object.fromEntries(
+      p.args.map((a) => [
+        a.name,
+        a.required
+          ? z.string().describe(a.description)
+          : z.string().optional().describe(a.description),
+      ]),
+    );
+    server.registerPrompt(p.name, { description: p.description, argsSchema }, (args) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: { type: "text" as const, text: p.render(args as Record<string, string>) },
+        },
+      ],
+    }));
+  }
 
   return server;
 }

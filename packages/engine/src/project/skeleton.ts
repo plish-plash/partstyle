@@ -1,3 +1,4 @@
+import { slashCommands } from "../prompts.js";
 import type { TextFile } from "./source.js";
 
 export interface SkeletonOptions {
@@ -80,6 +81,12 @@ and fix or explain every issue.
 - Record design rationale in \`notes/decisions.md\` and layout constraints in \`notes/pcb.md\`.
 - Waive an issue only with a real reason in the waiver.
 
+## Procedures
+
+For these, follow the procedure exactly: \`/design-review [block]\`, \`/ingest-part <mpn>
+[datasheet]\` and \`/prepare-handoff\` in Claude Code, or print it with \`partstyle prompt NAME\`.
+Use ingest-part whenever you add a part record.
+
 ## Hand-off to KiCad
 
 - \`partstyle bom export\` resolves generics to library parts and writes \`bom.csv\`. A generic
@@ -101,8 +108,11 @@ and fix or explain every issue.
 - Each block declares a port for everything crossing its boundary: \`ground\` for GND,
   \`power_out\` for rails it supplies, \`power_in\` for rails it consumes, and
   \`input\`/\`output\`/\`bidir\`/\`passive\` for signals.
-- Add \`{voltage: ...}\` to rails and to signals with a known range. A rail fed from a connector
-  or through a passive part (fuse, diode) has no \`power_out\` pin, so add \`{source: ...}\`.
+- Add \`{voltage: ...}\` to rails and to signals with a known range (\`5V\`, \`12V ±10%\`,
+  \`0-3.3V\`); a rail named like \`+3V3\` is assumed to be that voltage. Checks compare it with
+  pin limits (\`vmax\`) and capacitor ratings. A rail fed from a connector or through a passive
+  part (fuse, diode) has no \`power_out\` pin, so add \`{source: ...}\`.
+- Give passives a voltage or power rating where it matters: \`cap(10u, 25V, X5R, 0805)\`.
 
 ## Example block
 
@@ -148,6 +158,10 @@ distributors = []
 # auto: the AI's edits land at once, as changesets you can revert in the viewer.
 # accept: each patch the AI applies waits for you to accept it.
 mode = "auto"
+
+[checks]
+# A capacitor's rated voltage should be at least this many times the voltage across it.
+cap_derating = 1.5
 `,
     },
     {
@@ -194,6 +208,7 @@ Layout guidance for the KiCad hand-off: layer count, keep-outs, placement constr
 `,
     },
     { file: "CLAUDE.md", text: projectClaudeMd(name) },
+    ...slashCommands(),
     {
       file: ".gitignore",
       text: `# Local viewer state and KiCad's per-user files. Commit everything else, including

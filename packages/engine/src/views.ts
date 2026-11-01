@@ -1,4 +1,4 @@
-import { parse as parseYaml } from "yaml";
+import { contextFrontMatter } from "./checks/context.js";
 import { printSpec } from "./ckt/print.js";
 import { formatIssue } from "./diagnostics.js";
 import type { ProjectSource } from "./project/source.js";
@@ -27,20 +27,6 @@ export function issueSummary(result: ValidationResult): string {
 export function formatValidation(result: ValidationResult, fallbackName: string): string {
   const name = result.config?.name ?? fallbackName;
   return [...result.issues.map(formatIssue), `${name}: ${issueSummary(result)}`].join("\n");
-}
-
-/** Front matter of context.md, or undefined if absent or malformed. */
-function contextFrontMatter(text: string): Record<string, unknown> | undefined {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-  if (!m) return undefined;
-  try {
-    const data = parseYaml(m[1] as string);
-    return typeof data === "object" && data !== null
-      ? (data as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function contextLines(source: ProjectSource): string[] {

@@ -5,15 +5,19 @@ summary: 5 V 1.5 A linear regulator, TO-220
 package: TO-220-3
 footprint: Package_TO_SOT_THT:TO-220-3_Vertical
 pins:
-  1: { name: IN, type: power_in }
+  1: { name: IN, type: power_in, vmax: 35V }
   2: { name: GND, type: power_in, note: tab is GND }
   3: { name: OUT, type: power_out }
 ratings:
   vin_max: 35V
   iout_max: 1.5A
   dropout: 2V
+temp_c: [0, 125]
 requirements:
-  - 0.33 uF on IN, 0.1 uF on OUT, close to pins
+  - text: 0.33 uF on IN, close to the pin
+    cap: { from: IN, min: 330n }
+  - text: 0.1 uF on OUT, close to the pin
+    cap: { from: OUT, min: 100n }
 sourcing: { lifecycle: active }
 provenance:
   extracted_by: ai

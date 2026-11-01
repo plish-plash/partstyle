@@ -103,7 +103,7 @@ describe("Workspace review", () => {
     expect(m.project).toBe("bench-sensor");
     expect(m.sheets.map((s) => s.block)).toEqual(["main", "power", "sensor_afe", "mcu"]);
     expect(m.sheets.find((s) => s.block === "power")?.instances[0]?.nets["+12V"]).toBe("PWR/+12V");
-    expect(m.parts["MCU/U4"]?.record?.requirements).toHaveLength(3);
+    expect(m.parts["MCU/U4"]?.record?.requirements).toHaveLength(4);
     expect(m.parts["PWR/C1"]?.ref).toBe("C1");
     for (const s of m.sheets) {
       for (const u of s.layout.units) expect(m.symbols[u.libId]).toBeDefined();

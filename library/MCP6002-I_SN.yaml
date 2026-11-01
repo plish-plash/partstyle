@@ -12,13 +12,15 @@ pins:
   5: { name: VINB+, type: input }
   6: { name: VINB-, type: input }
   7: { name: OUTB, type: output }
-  8: { name: VDD, type: power_in }
+  8: { name: VDD, type: power_in, vmax: 7V }
 ratings:
   vdd_max: 7V
   vdd_min: 1.8V
   gbw: 1MHz
+temp_c: [-40, 85]
 requirements:
-  - 0.1 uF bypass from VDD to VSS, close to pin 8
+  - text: 0.1 uF bypass from VDD to VSS, close to pin 8
+    cap: { from: VDD, to: VSS, min: 100n }
   - tie unused amplifier halves off (e.g. follower with input at a defined level)
 sourcing: { lifecycle: active }
 provenance:

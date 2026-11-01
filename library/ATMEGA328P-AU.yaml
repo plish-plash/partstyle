@@ -8,9 +8,9 @@ pins:
   1: { name: PD3, type: bidir }
   2: { name: PD4, type: bidir }
   3: { name: GND, type: power_in }
-  4: { name: VCC, type: power_in }
+  4: { name: VCC, type: power_in, vmax: 6V }
   5: { name: GND, type: power_in }
-  6: { name: VCC, type: power_in }
+  6: { name: VCC, type: power_in, vmax: 6V }
   7: { name: PB6, type: bidir, note: XTAL1 }
   8: { name: PB7, type: bidir, note: XTAL2 }
   9: { name: PD5, type: bidir }
@@ -22,7 +22,7 @@ pins:
   15: { name: PB3, type: bidir, note: MOSI }
   16: { name: PB4, type: bidir, note: MISO }
   17: { name: PB5, type: bidir, note: SCK }
-  18: { name: AVCC, type: power_in }
+  18: { name: AVCC, type: power_in, vmax: 6V }
   19: { name: ADC6, type: input }
   20: { name: AREF, type: passive }
   21: { name: GND, type: power_in }
@@ -33,7 +33,7 @@ pins:
   26: { name: PC3, type: bidir }
   27: { name: PC4, type: bidir }
   28: { name: PC5, type: bidir }
-  29: { name: RESET, type: input, note: "PC6, active low" }
+  29: { name: RESET, type: input, vmax: 13V, note: "PC6, active low" }
   30: { name: PD0, type: bidir, note: RXD }
   31: { name: PD1, type: bidir, note: TXD }
   32: { name: PD2, type: bidir }
@@ -41,8 +41,12 @@ ratings:
   vcc_max: 6V
   vcc_min: 1.8V
   f_max_3v3: 10MHz
+temp_c: [-40, 85]
 requirements:
-  - 0.1 uF on each VCC pin and on AVCC
+  - text: 0.1 uF on each VCC pin
+    cap: { from: VCC, min: 100n, each: true }
+  - text: 0.1 uF on AVCC
+    cap: { from: AVCC, min: 100n }
   - AVCC within 0.3 V of VCC
   - 0.1 uF on AREF when using the internal reference
 sourcing: { lifecycle: active }

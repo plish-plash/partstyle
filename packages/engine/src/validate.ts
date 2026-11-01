@@ -1,3 +1,5 @@
+import { contextChecks } from "./checks/context.js";
+import { partChecks } from "./checks/parts.js";
 import type { CktFile } from "./ckt/ast.js";
 import { parseCkt } from "./ckt/parser.js";
 import { compareIssues, dedupeIssues, type Issue } from "./diagnostics.js";
@@ -43,6 +45,8 @@ export function validateProject(source: ProjectSource): ValidationResult {
     ...elaborated.issues,
     ...runErc(elaborated.netlist),
     ...draftIssues(elaborated.netlist, library),
+    ...partChecks(elaborated.netlist, { capDerating: config.checks.cap_derating }),
+    ...contextChecks(elaborated.netlist, source.context),
   );
 
   const { kept, waived } = applyWaivers(dedupeIssues(issues), elaborated.waiverScopes);

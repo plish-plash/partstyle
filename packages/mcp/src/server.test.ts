@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { findPrompt } from "@partstyle/engine";
 import { Workspace } from "@partstyle/engine/node";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
@@ -60,6 +61,14 @@ describe("MCP server", () => {
     expect((await call("part_get", { id: "L7805CV", tier: "pins" })).text).toBe(
       (await ws.partGet("L7805CV", "pins")).text,
     );
+  });
+
+  it("serves the procedures as prompts, with the CLI's text", async () => {
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((p) => p.name)).toEqual(["design_review", "ingest_part", "prepare_handoff"]);
+    const r = await client.getPrompt({ name: "ingest_part", arguments: { part: "TPS7A02" } });
+    const text = (r.messages[0]?.content as { text: string } | undefined)?.text;
+    expect(text).toBe(findPrompt("ingest-part")?.render({ part: "TPS7A02" }));
   });
 
   it("flags failures as tool errors", async () => {

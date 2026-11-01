@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { slashCommands } from "../prompts.js";
 import { findKicad } from "./kicad.js";
 import { projectClaudeMd } from "./skeleton.js";
 import { Workspace } from "./workspace.js";
@@ -40,7 +41,7 @@ describe("Workspace.apply", () => {
         "  power: net +12V += C13.1",
         "new issues:",
         "  circuit/power.ckt:18:1 warning erc.unconnected-pin PWR/C13.2 (pin 2, passive) is not connected; connect it or waive it",
-        "now: 0 errors, 1 warning (17 waived)",
+        "now: 0 errors, 1 warning (19 waived)",
       ].join("\n"),
     });
     expect(await read("circuit/power.ckt")).toContain("part C13 cap(47u, 25V) @ bulk\n");
@@ -137,6 +138,9 @@ describe("Workspace.init", () => {
       "  notes/decisions.md",
       "  notes/pcb.md",
       "  CLAUDE.md",
+      "  .claude/commands/design-review.md",
+      "  .claude/commands/ingest-part.md",
+      "  .claude/commands/prepare-handoff.md",
       "  .gitignore",
       "initialized a git repository for checkpoints",
       "next: fill in context.md with the user, then add blocks (partstyle grammar shows how)",
@@ -202,8 +206,11 @@ it("the CLAUDE.md template's example block validates clean against the seed libr
   expect((await fresh.validate()).text).toBe("template-check: 0 errors, 0 warnings");
 });
 
-it("keeps the example project's CLAUDE.md in sync with the init template", async () => {
+it("keeps the example project's CLAUDE.md and slash commands in sync with the init template", async () => {
   expect(await readFile(repo("examples/bench-sensor/CLAUDE.md"), "utf8")).toBe(
     projectClaudeMd("bench-sensor"),
   );
+  for (const c of slashCommands()) {
+    expect(await readFile(repo(`examples/bench-sensor/${c.file}`), "utf8")).toBe(c.text);
+  }
 });

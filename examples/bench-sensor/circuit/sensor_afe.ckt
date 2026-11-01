@@ -23,3 +23,5 @@ net SPARE_B   : U3.OUTB U3.VINB-          @ unused half as a grounded follower
 net +5V       : J2.2                      -> port +5V
 net +3V3      : U3.VDD C8.1               -> port +3V3
 net GND       : J2.3 D3.2 R4.2 C6.2 C7.2 C8.2 U3.VSS U3.VINB+ -> port GND
+
+waive J2 context.hazard "12 V miswire accepted on a bench tool: it may destroy D3, but R2 keeps it out of U3"

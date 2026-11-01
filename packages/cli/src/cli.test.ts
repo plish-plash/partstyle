@@ -15,7 +15,7 @@ const cli = (args: string[], stdin?: string) => run(args, io(stdin));
 describe("partstyle validate", () => {
   it("prints a summary and exits 0 for a clean design", async () => {
     expect(await cli(["validate", example])).toEqual({
-      stdout: "bench-sensor: 0 errors, 0 warnings (17 waived)",
+      stdout: "bench-sensor: 0 errors, 0 warnings (19 waived)",
       exitCode: 0,
     });
     expect((await cli(["-p", example, "validate"])).exitCode).toBe(0);
@@ -26,7 +26,7 @@ describe("partstyle validate", () => {
     expect(r.exitCode).toBe(1);
     const lines = r.stdout.split("\n");
     expect(lines).toContain(
-      "circuit/main.ckt:13:1 error erc.output-conflict +5V: U1.OUT, U2.OUT all drive this net",
+      "circuit/main.ckt:14:1 error erc.output-conflict +5V: U1.OUT, U2.OUT all drive this net",
     );
     expect(lines.at(-1)).toMatch(/^broken: \d+ errors, \d+ warnings$/);
   });
@@ -142,6 +142,25 @@ describe("partstyle", () => {
     expect((await cli(["grammar"])).stdout).toMatch(/^# \.ckt grammar reference/);
     const r = await cli(["schema", "part"]);
     expect(JSON.parse(r.stdout).required).toContain("pins");
+  });
+
+  it("lists and prints procedures, checking their arguments", async () => {
+    expect((await cli(["prompt"])).stdout.split("\n")).toEqual([
+      "design-review [BLOCK]: Structured review of the design against its context and part requirements",
+      "ingest-part PART [DATASHEET]: Read a datasheet once and write its part record",
+      "prepare-handoff: Resolve the BOM, write PCB notes and export to KiCad",
+    ]);
+    const r = await cli(["prompt", "ingest-part", "TPS7A02", "https://ti.com/x.pdf"]);
+    expect(r.stdout).toMatch(
+      /^Create the part record for TPS7A02 from https:\/\/ti\.com\/x\.pdf\./,
+    );
+    expect((await cli(["prompt", "design_review", "power"])).stdout).toMatch(
+      /^Review block power of this partstyle design/,
+    );
+    expect((await cli(["prompt", "ingest-part"])).stderr).toMatch(
+      /^usage: prompt ingest-part PART \[DATASHEET\]/,
+    );
+    expect((await cli(["prompt", "nope"])).exitCode).toBe(2);
   });
 
   it("rejects unknown commands and options with usage", async () => {
