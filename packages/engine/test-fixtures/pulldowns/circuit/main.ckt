@@ -1,0 +1,14 @@
+block main "pull-downs on neighbouring MCU pins: too crowded to hang from a pin, so laid out normally"
+
+part U1 lib:ATMEGA328P-AU
+part J1 lib:TSW-103-07-G-D        @ button header
+part R1 res(10k, 1%, 0603)        @ pull-down PB0
+part R2 res(10k, 1%, 0603)        @ pull-down PB1
+part R3 res(10k, 1%, 0603)        @ pull-down PB2
+part C1 cap(100n, 16V, X7R, 0603) @ decoupling
+
+net +3V3 : U1.VCC U1.AVCC C1.1 J1.2 {source: bench supply}
+net GND  : U1.GND C1.2 R1.2 R2.2 R3.2 J1.6 {source: bench supply}
+net BTN0 : U1.PB0 J1.1 R1.1
+net BTN1 : U1.PB1 J1.3 R2.1
+net BTN2 : U1.PB2 J1.5 R3.1

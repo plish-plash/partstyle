@@ -42,10 +42,12 @@ const rootOptions: LayoutOptions = {
   "elk.edgeRouting": "ORTHOGONAL",
   // Clear of KiCad's sheet frame and its coordinate band.
   "elk.padding": "[top=25.4,left=25.4,bottom=12.7,right=12.7]",
-  "elk.spacing.nodeNode": "7.62",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "10.16",
+  // Tight: the room power symbols and labels need is reserved as port labels already, and the
+  // odd overlapping reference or value text is a fair price for compact sheets.
+  "elk.spacing.nodeNode": "2.54",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "7.62",
   "elk.spacing.edgeEdge": "2.54",
-  "elk.spacing.edgeNode": "2.54",
+  "elk.spacing.edgeNode": "1.27",
   "elk.layered.spacing.edgeEdgeBetweenLayers": "2.54",
   "elk.layered.spacing.edgeNodeBetweenLayers": "2.54",
   "elk.spacing.componentComponent": "10.16",
@@ -245,14 +247,18 @@ const lexLess = (a: number[], b: number[]) => {
 
 /** Clear of KiCad's sheet frame and its coordinate band. */
 const PAD = { top: 15.24, left: 15.24 };
-const COMPONENT_GAP = 10.16;
+const COMPONENT_GAP = 5.08;
 
 /**
  * Rearranges ELK's connected components (moving each rigidly, wires included) into rows that
  * fit the smallest paper possible, tallest first. ELK's own packing tends to stack small groups
  * above the main circuit and leave the sheet tall and half empty.
  */
-function packComponents(out: ElkNode): void {
+function packComponents(
+  out: ElkNode,
+  /** Declaration order of the nodes, which the packing follows. */
+  declared: Map<string, number>,
+): void {
   const nodes = out.children ?? [];
   const nodeOfPort = new Map<string, string>();
   for (const n of nodes) for (const p of n.ports ?? []) nodeOfPort.set(p.id, n.id);
@@ -306,16 +312,17 @@ function packComponents(out: ElkNode): void {
   }
   // Room for the power symbols and text drawn around the parts.
   const order = new Map<string, number>();
-  nodes.forEach((n, i) => {
+  for (const n of nodes) {
     const root = find(n.id);
+    const i = declared.get(n.id) ?? 0;
     order.set(root, Math.min(order.get(root) ?? i, i));
-  });
+  }
   const comps = [...boxes].map(([root, b]) => ({
     root,
-    x: b.minX - GRID,
-    y: b.minY - 2 * GRID,
-    w: b.maxX - b.minX + 2 * GRID,
-    h: b.maxY - b.minY + 4 * GRID,
+    x: b.minX - CHAR,
+    y: b.minY - GRID,
+    w: b.maxX - b.minX + 2 * CHAR,
+    h: b.maxY - b.minY + 2 * GRID,
   }));
   // In declaration order, so the sheet reads in the order the circuit was written.
   comps.sort((a, b) => (order.get(a.root) ?? 0) - (order.get(b.root) ?? 0));
@@ -435,10 +442,13 @@ async function layoutOnce(
     const text = tagText(net);
     if (text === undefined) return [];
     const power = planOf(net as string).kind === "power";
-    // A power symbol beside a side pin points out of it or stands on a stub with its name over it.
-    if (power && !vertical) return [{ text, width: textWidth(text) + 2 * GRID, height: 3 * GRID }];
+    // A power symbol beside a side pin usually stands on a stub with its name centred over it;
+    // sized for that (where it points sideways instead, its name may overhang a little).
+    if (power && !vertical) {
+      return [{ text, width: GRID + textWidth(text) / 2 + CHAR, height: 3 * GRID }];
+    }
     // Above or below a pin it points straight out, its name level and centred.
-    if (power) return [{ text, width: GRID, height: 3 * GRID }];
+    if (power) return [{ text, width: GRID, height: 2 * GRID }];
     const width = textWidth(text) + (power ? 2 * GRID : GRID);
     return [vertical ? { text, width: GRID, height: width } : { text, width, height: GRID }];
   };
@@ -543,6 +553,17 @@ async function layoutOnce(
       n.slots.flatMap((s) => (roleOf(s.net) === "rail" ? [s.net as string] : [])),
     );
     const here = declIndex(n);
+    // Parts with a supply pin on the rail (an IC's input or a regulator's output) come before
+    // ones that merely carry it (a connector), then the nearest declared.
+    const consumes = (o: UnitNode) =>
+      o.slots.some(
+        (s) =>
+          s.net !== undefined &&
+          rails.has(s.net) &&
+          (s.anchor.type === "power_in" || s.anchor.type === "power_out"),
+      )
+        ? 0
+        : 1;
     const owner = unitNodes
       .filter(
         (o) =>
@@ -550,7 +571,11 @@ async function layoutOnce(
           (edgeFree(o, 270) || edgeFree(o, 90)) &&
           o.slots.some((s) => s.net !== undefined && rails.has(s.net)),
       )
-      .sort((a, b) => Math.abs(declIndex(a) - here) - Math.abs(declIndex(b) - here))[0];
+      .sort(
+        (a, b) =>
+          consumes(a) - consumes(b) ||
+          Math.abs(declIndex(a) - here) - Math.abs(declIndex(b) - here),
+      )[0];
     if (owner) satellites.set(owner.id, [...(satellites.get(owner.id) ?? []), n]);
   }
   // Riders are drawn at a fixed place beside another part (their host) rather than laid out by
@@ -578,13 +603,13 @@ async function layoutOnce(
     const rowH = Math.max(...row.map((s) => s.unit.box.maxY - s.unit.box.minY));
     const below = edgeFree(n, 270);
     const pins = n.slots.some((s) => s.anchor.outward === (below ? 270 : 90));
-    const gap = (pins ? 4 * GRID : 2 * GRID) + (below ? 0 : 2 * GRID); // owner's tags and text
-    const rowTop = below ? -minY + gap + 3 * GRID : -maxY - gap - 3 * GRID - rowH;
+    const gap = (pins ? 3 * GRID : GRID) + (below ? 0 : 2 * GRID); // owner's tags and text
+    const rowTop = below ? -minY + gap + 2 * GRID : -maxY - gap - 2 * GRID - rowH;
     let x = minX;
     for (const s of row) {
       rides.set(s.id, { owner, x: x - s.unit.box.minX, y: rowTop + s.unit.box.maxY });
       const w = s.unit.box.maxX - s.unit.box.minX + textRoom(s);
-      addArea(owner, { x, y: rowTop - 3 * GRID, w, h: rowH + 6 * GRID });
+      addArea(owner, { x, y: rowTop - 2 * GRID, w, h: rowH + 4 * GRID });
       x += w + GRID;
     }
   }
@@ -897,9 +922,44 @@ async function layoutOnce(
     }
   }
 
+  // A two-terminal part to ground goes at the bottom of its column, so its wire drops into its
+  // top pin instead of hooking over it; one to a rail goes at the top. Listing them last (or
+  // first) is a hint ELK follows where crossings don't decide; a second pass enforces it.
+  const nodeRank = new Map<string, number>();
+  for (const n of unitNodes) {
+    if (rides.has(n.id) || !turnable.test(n.ref) || n.slots.length !== 2) continue;
+    const roles = n.slots.map((s) => roleOf(s.net));
+    if (roles.includes("ground")) nodeRank.set(n.id, 2);
+    else if (roles.includes("rail")) nodeRank.set(n.id, 0);
+  }
+  const rankOf = (id: string) => nodeRank.get(id) ?? 1;
+  const declared = new Map(children.map((c, i) => [c.id, i]));
+  const edgeRank = (e: ElkExtendedEdge) => {
+    const ranks = [...e.sources, ...e.targets].map((p) => rankOf(p.slice(0, p.lastIndexOf(":"))));
+    return ranks.includes(2) ? 2 : ranks.includes(0) ? 0 : 1;
+  };
+  children.sort((a, b) => rankOf(a.id) - rankOf(b.id));
+  edges.sort((a, b) => edgeRank(a) - edgeRank(b));
+
   const graph: ElkNode = { id: name, layoutOptions: rootOptions, children, edges };
-  const out = await elk.layout(graph);
-  packComponents(out);
+  let out = await elk.layout(graph);
+  if (nodeRank.size > 0) {
+    // Lay out again keeping each column's order from the first pass, except that grounded
+    // parts move to the bottom of theirs and rail-connected ones to the top.
+    const first = new Map((out.children ?? []).map((c) => [c.id, c]));
+    const shift = (id: string) => (rankOf(id) - 1) * 1e5;
+    out = await elk.layout({
+      id: name,
+      layoutOptions: { ...rootOptions, "elk.layered.crossingMinimization.strategy": "INTERACTIVE" },
+      children: children.map((c) => ({
+        ...c,
+        x: first.get(c.id)?.x ?? 0,
+        y: (first.get(c.id)?.y ?? 0) + shift(c.id),
+      })),
+      edges: edges.map((e) => ({ id: e.id, sources: e.sources, targets: e.targets })),
+    });
+  }
+  packComponents(out, declared);
   const placed = new Map((out.children ?? []).map((c) => [c.id, c]));
   const portPoint = new Map<string, Pt>();
 

@@ -216,7 +216,9 @@ Parts are placed to read like a hand-drawn schematic:
   end up on the wrong side is reversed, so no wire loops around it.
 - **Shunt parts** (two-terminal parts from a wired net to ground or a rail: filter caps,
   pull-downs, clamps) hang under the net's wire (or stand over it, for a rail) beside the pin
-  that drives it, instead of taking a place in the signal path.
+  that drives it, instead of taking a place in the signal path. Where no pin has room for them
+  (crowded neighbouring pins), they are laid out like other parts but kept at the bottom of
+  their column (or the top, for a rail), so their wire drops straight into them.
 - **Other parts may be mirrored** left to right when their pins face away from what they
   connect to (an input connector with its pins on the left). Each candidate is tried and kept
   only if the sheet then needs less wiring.

@@ -7,7 +7,7 @@ import { checkConnectivity } from "./connectivity.js";
 import { gridRoute, paperFor, papers } from "./layout.js";
 import { mirrorUnit, type NetRole, orient, rotateUnit } from "./orient.js";
 import { type Drawing, prepareDrawing } from "./prepare.js";
-import type { Rect, SheetLayout } from "./types.js";
+import type { PlacedPin, Rect, SheetLayout } from "./types.js";
 import { normalizeWires } from "./wires.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
@@ -328,6 +328,24 @@ describe("prepareDrawing", () => {
   it("is deterministic", async () => {
     const again = await prepareDrawing(result, { annotation: "", bom: "" });
     expect([...again.sheets.values()]).toEqual([...drawing.sheets.values()]);
+  });
+
+  it("puts grounded parts laid out on their own below the wire that feeds them", async () => {
+    const r = validateProject(await loadProject(repo("packages/engine/test-fixtures/pulldowns")));
+    const d = await prepareDrawing(r, { annotation: "", bom: "" });
+    const sheet = d.sheets.get("main") as SheetLayout;
+    expect(checkConnectivity(sheet)).toEqual([]);
+    const pin = (ref: string, net: string) =>
+      sheet.units.find((u) => u.ref === ref)?.pins.find((p) => p.net === net) as PlacedPin;
+    for (const [ref, net] of [
+      ["R1", "BTN0"],
+      ["R2", "BTN1"],
+      ["R3", "BTN2"],
+    ] as const) {
+      // Below the MCU pin driving it, so its wire drops into its top pin: no hook over it.
+      expect(pin(ref, net).outward).toBe(90);
+      expect(pin(ref, net).at.y).toBeGreaterThan(pin("U1", net).at.y);
+    }
   });
 
   it("lays out a block used twice", async () => {
