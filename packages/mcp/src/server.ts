@@ -168,6 +168,8 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       },
       async ({ name, path: folder, library_paths }) => {
         const target = new Workspace(projects.resolve(folder ?? name));
+        const refused = projects.refuseNew(target.root);
+        if (refused) return reply({ ok: false, text: refused });
         if (library_paths === undefined) await projects.ensureLibrary();
         const created = await target.init({
           name,
@@ -351,9 +353,10 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     async ({ path: source, new_project }) => {
       if (projects && typeof new_project === "string") {
         const target = new Workspace(projects.resolve(new_project));
-        if (await isProject(target.root)) {
-          return reply({ ok: false, text: `${target.root} is already a project` });
-        }
+        const refused = (await isProject(target.root))
+          ? `${target.root} is already a project`
+          : projects.refuseNew(target.root);
+        if (refused) return reply({ ok: false, text: refused });
         await projects.ensureLibrary();
         const imported = await target.kicadImport(path.resolve(projects.dir, source), {
           libraryPaths: [projects.libraryDir],

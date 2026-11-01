@@ -1,6 +1,7 @@
-# Builds the standalone partstyle executables (scripts/standalone.mjs) for each platform,
-# smoke-tests the one each runner can execute, and on a v* tag publishes them with checksums as
-# a GitHub release. Run it by hand (workflow_dispatch) to get the executables as artifacts only.
+# Builds the standalone partstyle executables (scripts/standalone.mjs) for each platform and
+# the Claude Desktop extension (partstyle.mcpb), smoke-tests them, zips the seed part library,
+# and on a v* tag publishes them with checksums as a GitHub release. Run it by hand
+# (workflow_dispatch) to get them as artifacts only.
 name: Release
 
 on:
@@ -60,9 +61,60 @@ jobs:
             !packages/cli/standalone/out/*.map
           if-no-files-found: error
 
+  # The Claude Desktop extension: one Node bundle for every platform (Claude Desktop runs it
+  # with its own Node.js), checked under Node 22 while packing and again under Node 20, the
+  # oldest its manifest accepts.
+  mcpb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4 # version from packageManager in package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Build the extension
+        shell: bash
+        run: |
+          # v1.2.3 -> 1.2.3; a manual run without a tag gets a dev version.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export PARTSTYLE_VERSION="${GITHUB_REF_NAME#v}"; fi
+          pnpm mcpb
+      - name: Smoke-test its server
+        env:
+          PARTSTYLE_BINARY: ${{ github.workspace }}/packages/cli/standalone/out/mcpb/server/index.mjs
+        run: pnpm vitest run packages/cli/src/standalone.test.ts
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: Check it under Node 20
+        run: node scripts/standalone.mjs --check-mcpb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: partstyle-mcpb
+          path: packages/cli/standalone/out/partstyle.mcpb
+          if-no-files-found: error
+
+  # The seed part library, with library/ at the top of the zip: unzipped in the projects folder,
+  # it is the shared library new projects use.
+  library:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: zip -r -X partstyle-library.zip library
+      - uses: actions/upload-artifact@v4
+        with:
+          name: partstyle-library
+          path: partstyle-library.zip
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, mcpb, library]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,7 +126,7 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: out
-        run: sha256sum partstyle-* > SHA256SUMS && cat SHA256SUMS
+        run: sha256sum partstyle* > SHA256SUMS && cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: out/*

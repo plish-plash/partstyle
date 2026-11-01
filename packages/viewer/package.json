@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser viewer for partstyle designs; built to dist/ and served by @partstyle/server",
+  "description": "Browser viewer for Partstyle designs; built to dist/ and served by @partstyle/server",
   "files": [
     "dist"
   ],

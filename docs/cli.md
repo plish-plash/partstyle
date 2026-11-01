@@ -1,4 +1,4 @@
-# partstyle CLI reference
+# `partstyle` CLI reference
 
 ```
 partstyle [-p DIR] <command> [args] [options]
@@ -14,7 +14,7 @@ Every MCP tool has a matching command with identical output (see
 **Exit codes:** `0` success; `1` the command failed (unknown block, rejected patch, validation
 errors); `2` usage error, or not a project folder for `validate`.
 
-To install partstyle, see [install.md](install.md).
+To install Partstyle, see [INSTALL.md](../INSTALL.md).
 
 ## Projects
 
@@ -299,7 +299,7 @@ Refdes come from `annotation.lock`, which maps instance paths to flat references
 keeps its local refdes when free; a clash (two blocks both with `C1`) takes the next free
 number. Edit the lock to renumber. UUIDs are derived from names, so re-exporting the same
 design produces identical files and "Update PCB from Schematic" keeps placement. The PCB file is
-never written; stale sheets are removed only if partstyle wrote them.
+never written; stale sheets are removed only if Partstyle wrote them.
 
 Unless `--no-check` is given and when kicad-cli is found, the export is then verified:
 
@@ -336,10 +336,10 @@ How KiCad maps onto blocks:
 - **PWR_FLAG** on a net becomes `{source: KiCad PWR_FLAG}`.
 - **No-connect flags**: pins KiCad's ERC accepts as unconnected get
   `waive REF.PIN erc.unconnected-pin "no-connect flag in KiCad"`.
-- **Parts** are matched in order: partstyle's own Spec field (a design exported from here), the
+- **Parts** are matched in order: Partstyle's own Spec field (a design exported from here), the
   MPN field (also "Manufacturer Part Number" and similar), the LCSC field, then plain R, C, L
   and coloured LED symbols become generics (`res(10k, 1%, 0603)`) when the value parses and the
-  footprint is partstyle's standard chip footprint, then the value as an MPN or record id. A
+  footprint is Partstyle's standard chip footprint, then the value as an MPN or record id. A
   library record must have every pin number of the KiCad symbol.
 - **Everything else** becomes a draft record per distinct symbol, value, footprint and MPN, built
   from KiCad's pin table (`~{RESET}` becomes `~RESET`), with `provenance.extracted_by: kicad`
@@ -424,7 +424,8 @@ its URL to stderr) in the same process. Must be the first argument: `-p` does no
 - `--project DIR`: serves that folder only.
 - Otherwise, global mode: serves any project, opened by name with `open_project`. New projects
   go in `--projects-dir` (default `~/Documents/partstyle`), using its `library/` subfolder as
-  their part library. The viewer starts with the first project opened and follows later ones.
+  their part library. `${HOME}`, `${DOCUMENTS}`, `${DESKTOP}` and `${DOWNLOADS}` in it are
+  expanded; an empty value or any other `${...}` means the default. The viewer starts with the first project opened and follows later ones.
 - `--viewer-port N` picks the viewer's port (0: any free port); `--no-viewer` skips it.
 
 See [claude-code.md](claude-code.md) for the tools and client setup.
@@ -445,12 +446,12 @@ opened recently, elsewhere:
 
 ## Versions
 
-Git is the storage engine; these commands give it schematic vocabulary. partstyle reads and
+Git is the storage engine; these commands give it schematic vocabulary. Partstyle reads and
 writes the repository itself, so git need not be installed, and the result is an ordinary
 repository the git CLI can also drive. The project may be its own repository or a
 folder inside a larger one (`init` creates a repository when it is in neither); checkpoints
 commit only the project folder. The commit author is `user.name` and `user.email` from the
-repository's or the global git config, else `partstyle`. Git worktrees (a `.git` file pointing
+repository's or the global git config, else `Partstyle`. Git worktrees (a `.git` file pointing
 at another repository's worktree list) are not supported.
 
 - **Changeset:** one unit of change since the last checkpoint. Each `apply` is one; direct file
@@ -462,7 +463,7 @@ at another repository's worktree list) are not supported.
   It starts a new changeset log.
 - **Variant:** a parallel version on its own branch, with a working copy of that branch under
   `.partstyle/variants/NAME` (git-ignored). The copy is a plain folder marked by
-  `.partstyle-variant.json`; partstyle's checkpoints there commit to the variant's branch (the
+  `.partstyle-variant.json`; Partstyle's checkpoints there commit to the variant's branch (the
   git CLI run inside it sees the main repository instead).
 
 The viewer's Changes tab shows all of this: changes since the checkpoint are highlighted on the

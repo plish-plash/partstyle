@@ -1,6 +1,6 @@
-# partstyle
+# Partstyle
 
-AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
+AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.ckt` text
 ([grammar](docs/ckt-grammar.md)), parts are YAML records, and geometry is never part of the AI's view.
 
 ## Commands
@@ -22,10 +22,15 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
   defines a global `self`, which `drawing/layout.ts` hides while constructing ELK. CI
   (`.github/workflows/ci.yml`) and tag releases (`release.yml`) build and smoke-test these
   with `PARTSTYLE_BINARY` set, which makes a missing executable fail rather than skip.
+- `pnpm mcpb` (after a build, needs Bun): the Claude Desktop extension
+  `packages/cli/standalone/out/partstyle.mcpb`, the same entry bundled for Node, with the
+  manifest template `packages/cli/mcpb/manifest.json` (tools filled in from the server). Building
+  it runs the bundle under the current Node first; `node scripts/standalone.mjs --check-mcpb`
+  repeats that (the manifest promises Node >= 20). The smoke test also runs the bundle.
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
   [docs/cli.md](docs/cli.md), and keep it updated when commands change. cli.md is a man page:
   command syntax and behaviour only. Installing, building, the standalone executable, CI and
-  releases go in [docs/install.md](docs/install.md); MCP client setup in docs/claude-code.md.
+  releases go in [INSTALL.md](INSTALL.md); MCP client setup in docs/claude-code.md.
 - KiCad: `kicad-cli` is often not on PATH. On Windows look in
   `C:\Program Files\KiCad\<version>\bin\kicad-cli.exe` (10.0 on this machine) before concluding
   KiCad is missing (`project/kicad.ts` `findKicad` checks there). Tests that need kicad-cli
@@ -91,6 +96,10 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
   `packages/engine/test-fixtures/broken/`: one fault per check.
 
 ## Conventions
+
+- Naming: the tool is "Partstyle" in docs, manifests, generated text and UI; lowercase
+  `partstyle` only for the executable/CLI and literal identifiers (package names, file and
+  folder names, `partstyle://` URIs, the MCP server key, KiCad's generator and library names).
 
 - Issues carry a stable `code`, a `file:line:col` location and flat-path `subjects`; waivers
   match subjects. Add new codes to the table in `docs/ckt-grammar.md`.

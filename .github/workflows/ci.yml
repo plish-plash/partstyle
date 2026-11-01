@@ -42,3 +42,11 @@ jobs:
           ext=$([ "$RUNNER_OS" = Windows ] && echo .exe || true)
           export PARTSTYLE_BINARY="$PWD/packages/cli/standalone/out/partstyle-$os-x64$ext"
           pnpm vitest run packages/cli/src/standalone.test.ts
+      # Builds the Node bundle and checks it under this Node before packing.
+      - name: Build the Claude Desktop extension
+        run: pnpm mcpb
+      - name: Smoke-test the extension's server
+        shell: bash
+        run: |
+          export PARTSTYLE_BINARY="$PWD/packages/cli/standalone/out/mcpb/server/index.mjs"
+          pnpm vitest run packages/cli/src/standalone.test.ts

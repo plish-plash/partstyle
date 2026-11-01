@@ -74,7 +74,7 @@ commands:
 options:
   -p, --project DIR   project folder (default: current directory)
 
-Full reference: docs/cli.md in the partstyle repository.`;
+Full reference: docs/cli.md in the Partstyle repository.`;
 
 const usageError = (message: string): CommandResult => ({
   stdout: "",

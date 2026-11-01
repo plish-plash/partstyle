@@ -144,7 +144,7 @@ function showChange(c: { block: string; kind: string; key: string }) {
 </script>
 
 <header>
-  <h1>{model?.project ?? "partstyle"}</h1>
+  <h1>{model?.project ?? "Partstyle"}</h1>
   {#if model}
     <span class="chip" class:bad={model.summary.errors > 0}>{model.summary.errors} errors</span>
     <span class="chip" class:meh={model.summary.warnings > 0}>{model.summary.warnings} warnings</span>

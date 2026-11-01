@@ -1,7 +1,7 @@
 /** Instance path (`PWR/C1`) → flat KiCad refdes (`C1`). */
 export type Annotation = Map<string, string>;
 
-const header = `# partstyle annotation.lock: instance path -> KiCad reference designator.
+const header = `# Partstyle annotation.lock: instance path -> KiCad reference designator.
 # Kept stable across exports so the PCB keeps its parts; edit a refdes here to renumber it.
 `;
 

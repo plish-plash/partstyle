@@ -15,9 +15,11 @@
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "partstyle": "node packages/cli/dist/main.js",
-    "standalone": "node scripts/standalone.mjs"
+    "standalone": "node scripts/standalone.mjs",
+    "mcpb": "node scripts/standalone.mjs --mcpb"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@biomejs/biome": "^2.6.4",
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2",

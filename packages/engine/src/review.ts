@@ -24,7 +24,7 @@ export interface Focus {
 export const COMMENTS_FILE = "comments.yaml";
 export const FOCUS_FILE = ".partstyle/focus.json";
 
-const commentsHeader = `# Review comments from the partstyle viewer, versioned with the design.
+const commentsHeader = `# Review comments from the Partstyle viewer, versioned with the design.
 # The AI sees open ones through \`partstyle focus\` and \`partstyle overview\`.
 `;
 

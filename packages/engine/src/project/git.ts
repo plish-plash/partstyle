@@ -301,7 +301,7 @@ async function author(r: RepoInfo): Promise<{ name: string; email: string }> {
     ((await iso.getConfig({ fs, gitdir: r.gitdir, path: key })) as string | undefined) ??
     global[key];
   return {
-    name: (await get("user.name")) ?? "partstyle",
+    name: (await get("user.name")) ?? "Partstyle",
     email: (await get("user.email")) ?? "partstyle@localhost",
   };
 }

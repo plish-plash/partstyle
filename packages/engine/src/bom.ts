@@ -35,7 +35,7 @@ export interface BomResult {
   issues: Issue[];
 }
 
-const lockHeader = `# partstyle bom.lock: how generic parts resolved to library parts (MPNs).
+const lockHeader = `# Partstyle bom.lock: how generic parts resolved to library parts (MPNs).
 # Kept until the part's spec changes or the record no longer fits; delete a line to re-resolve.
 `;
 

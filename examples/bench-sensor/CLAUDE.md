@@ -1,10 +1,10 @@
 # Circuit project: bench-sensor
 
-This is a partstyle schematic project. The circuit is stored as connectivity (parts, pins, nets
+This is a Partstyle schematic project. The circuit is stored as connectivity (parts, pins, nets
 and intent) in `circuit/*.ckt`. Never add coordinates, wires or label positions; the schematic
 drawing is generated.
 
-Commands below are the `partstyle` CLI; the partstyle MCP server has a tool for each.
+Commands below are the `partstyle` CLI; the Partstyle MCP server has a tool for each.
 
 ## Before the first edit
 

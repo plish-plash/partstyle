@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Projects, Workspace } from "@partstyle/engine/node";
+import { Projects, projectsDirFrom, Workspace } from "@partstyle/engine/node";
 import { startViewer, type ViewerServer } from "@partstyle/server";
 import { createServer } from "./server.js";
 
@@ -23,7 +23,7 @@ export async function serveMcp(argv: string[]): Promise<void> {
   });
   const port = values["viewer-port"] === undefined ? {} : { port: Number(values["viewer-port"]) };
 
-  // The viewer runs in the same process (DESIGN.md), so an AI edit shows as soon as it is
+  // The viewer runs in the same process (docs/design.md), so an AI edit shows as soon as it is
   // written. It is optional: the MCP tools work without it. stdout belongs to MCP, so log to
   // stderr. In global mode it starts with the first project opened and follows later ones.
   let viewer: ViewerServer | undefined;
@@ -47,7 +47,8 @@ export async function serveMcp(argv: string[]): Promise<void> {
     await show(ws);
     server = createServer(ws);
   } else {
-    const projects = new Projects(values["projects-dir"]);
+    const dir = projectsDirFrom(values["projects-dir"], (m) => process.stderr.write(`${m}\n`));
+    const projects = new Projects(dir);
     server = createServer(undefined, { projects, onOpen: show });
   }
   await server.connect(new StdioServerTransport());

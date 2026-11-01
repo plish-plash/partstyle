@@ -1,16 +1,16 @@
-# Using partstyle with Claude Code, Claude Desktop and other MCP clients
+# Using Partstyle with Claude Code, Claude Desktop and other MCP clients
 
-partstyle works with Claude Code, where Claude also has file and shell tools, and with Claude
-Desktop or any other MCP client, where it works through the partstyle MCP server alone.
+Partstyle works with Claude Code, where Claude also has file and shell tools, and with Claude
+Desktop or any other MCP client, where it works through the Partstyle MCP server alone.
 
-Install partstyle first: the standalone executable or a build from source
-([install.md](install.md)). Putting it on your PATH is optional. MCP clients can be given its
-full path, and PATH matters only for running `partstyle` commands from a shell, as with the CLI
-in Claude Code.
+Install Partstyle first ([INSTALL.md](../INSTALL.md)): the Claude Desktop extension, or the
+standalone executable or a build from source for everything else. Putting the `partstyle`
+command on your PATH is optional. MCP clients can be given its full path, and PATH matters only
+for running `partstyle` commands from a shell, as with the CLI in Claude Code.
 
 ## Claude Code
 
-Claude Code can use partstyle two ways, alone or together:
+Claude Code can use Partstyle two ways, alone or together:
 
 - **CLI:** Claude edits the `.ckt` files with its own file tools and runs `partstyle` commands
   (on PATH) to read, query, validate and patch. Start each design with `partstyle init` (or ask
@@ -28,8 +28,13 @@ selection and comments with `focus`.
 
 ## Claude Desktop
 
-Claude Desktop has no file or shell tools, so it works only through the MCP server. In
-Settings → Developer → Edit Config (`claude_desktop_config.json`), add:
+Claude Desktop has no file or shell tools, so it works only through the MCP server, in global
+mode. The easy way to install it is the extension, `partstyle.mcpb`: open it, choose Install,
+and set the projects folder if you want one other than `Documents/partstyle` (see
+[INSTALL.md](../INSTALL.md#claude-desktop-extension)).
+
+Alternatively, with the standalone executable, add the server by hand in Settings → Developer →
+Edit Config (`claude_desktop_config.json`):
 
 ```json
 {
@@ -48,13 +53,13 @@ Restart Claude Desktop afterwards.
 
 Then, in a chat:
 
-- "Start a partstyle project for a 12 V bench supply": Claude calls `init_project`, fills in
+- "Start a Partstyle project for a 12 V bench supply": Claude calls `init_project`, fills in
   `context.md` with you (`write_doc`), then designs block by block with `apply`.
-- "Open bench-sensor" or "what partstyle projects do I have?": `open_project`, `list_projects`.
+- "Open bench-sensor" or "what Partstyle projects do I have?": `open_project`, `list_projects`.
 - Open the viewer URL Claude gives you. Select parts or nets there and say "this"; Claude calls
   `focus`. Revert changes, accept pending patches and checkpoint in the viewer's Changes tab.
 - The procedures are in the prompt menu: design review, ingest part, prepare hand-off.
-- A Claude Desktop project per design, with an instruction like "use the partstyle project
+- A Claude Desktop project per design, with an instruction like "use the Partstyle project
   bench-sensor", keeps its chats together.
 
 `kicad_export` and `kicad_import` need KiCad installed on the same machine.
@@ -128,8 +133,9 @@ identical.
 Until a project is open in global mode, the project tools answer with how to open one.
 
 `init_project`: in global mode it creates `<projects dir>/NAME` (or the folder `path`, absolute
-or relative to the projects folder) using the shared library, then opens it. With `--project`
-it creates the project in that folder; `library_paths` are relative to it.
+or relative to the projects folder) using the shared library, then opens it. The library folder
+itself, and anything inside it, is refused (also for `kicad_import`'s `new_project`). With
+`--project` it creates the project in that folder; `library_paths` are relative to it.
 
 `kicad_import`: `path` is relative to the open project, or with `new_project` (global mode) to
 the projects folder, importing into a new project of that name, which then opens.

@@ -1,0 +1,37 @@
+{
+  "manifest_version": "0.3",
+  "name": "partstyle",
+  "display_name": "Partstyle",
+  "version": "0.0.0",
+  "description": "AI-first schematic editor: design circuits in chat and watch them in a live viewer.",
+  "long_description": "Partstyle stores a circuit as connectivity (parts, pins, nets and intent) in plain text and draws the schematic itself. Claude creates and edits projects through these tools, checks them against part ratings and the board's context, and hands them off to KiCad. The live viewer (a local web page) shows each change as it lands; select things there and refer to them as \"this\". KiCad export and import need KiCad installed.",
+  "author": { "name": "Elliot Segal" },
+  "keywords": ["schematic", "electronics", "circuit", "kicad", "pcb"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.mjs",
+        "mcp",
+        "--projects-dir",
+        "${user_config.projects_dir}"
+      ]
+    }
+  },
+  "user_config": {
+    "projects_dir": {
+      "type": "directory",
+      "title": "Projects folder",
+      "description": "New projects go here; its library/ subfolder is the part library they share.",
+      "default": "${DOCUMENTS}/partstyle",
+      "required": false
+    }
+  },
+  "tools": [],
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=20.0.0" }
+  }
+}

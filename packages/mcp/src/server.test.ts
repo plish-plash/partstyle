@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -217,6 +217,20 @@ describe("MCP server for many projects", () => {
       'paths = ["../library"]',
     );
     expect((await text("validate")).text).toBe("psu: 0 errors, 0 warnings");
+    // Not in the shared library, nor inside it (nor Library where case is ignored).
+    const caseless = process.platform === "win32" || process.platform === "darwin";
+    for (const args of [
+      { name: "library" },
+      { name: "x", path: "library/x" },
+      ...(caseless ? [{ name: "Library" }] : []),
+    ]) {
+      const refused = await text("init_project", args);
+      expect(refused.isError).toBe(true);
+      expect(refused.text).toMatch(
+        /is the shared part library .* or inside it: choose another name$/,
+      );
+    }
+    expect(await readdir(path.join(tmp, "designs", "library"))).toEqual([]);
     await text("init_project", { name: "amp", path: path.join(tmp, "elsewhere", "amp") });
     expect((await text("list_projects")).text).toBe(
       [

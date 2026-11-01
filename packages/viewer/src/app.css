@@ -483,6 +483,23 @@ svg text {
   fill: var(--power);
 }
 
+/* Issue and comment markers. Their base rules come before the label rules: both style `text`,
+   and Biome wants less specific selectors first (they never apply to the same element). */
+.marker {
+  cursor: pointer;
+}
+
+.marker circle {
+  stroke: white;
+  stroke-width: 0.25;
+}
+
+.marker text {
+  fill: white;
+  font-size: 1.6px;
+  font-weight: bold;
+}
+
 .label {
   cursor: pointer;
 }
@@ -537,21 +554,6 @@ svg text {
 
 .sheet-pin {
   fill: var(--sheet);
-}
-
-.marker {
-  cursor: pointer;
-}
-
-.marker circle {
-  stroke: white;
-  stroke-width: 0.25;
-}
-
-.marker text {
-  fill: white;
-  font-size: 1.6px;
-  font-weight: bold;
 }
 
 .marker.error circle {

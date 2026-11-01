@@ -166,7 +166,7 @@ describe("partstyle", () => {
       /^Create the part record for TPS7A02 from https:\/\/ti\.com\/x\.pdf\./,
     );
     expect((await cli(["prompt", "design_review", "power"])).stdout).toMatch(
-      /^Review block power of this partstyle design/,
+      /^Review block power of this Partstyle design/,
     );
     expect((await cli(["prompt", "ingest-part"])).stderr).toMatch(
       /^usage: prompt ingest-part PART \[DATASHEET\]/,

@@ -4,18 +4,39 @@
 // needed to run it. Run after `pnpm build`.
 //
 //   node scripts/standalone.mjs [TARGET...]
+//   node scripts/standalone.mjs --mcpb
+//   node scripts/standalone.mjs --check-mcpb
 //
 // TARGET is a Bun target such as bun-linux-x64, bun-linux-arm64, bun-darwin-arm64,
 // bun-darwin-x64 or bun-windows-x64 (default: this machine's). Executables go to
 // packages/cli/standalone/out/partstyle-<os>-<arch>[.exe]. Set BUN to pick the bun binary.
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+//
+// --mcpb builds the Claude Desktop extension instead: the same entry bundled for Node (Claude
+// Desktop runs it with its own Node.js) into out/mcpb/server/index.mjs, with the manifest from
+// packages/cli/mcpb/manifest.json (version from PARTSTYLE_VERSION, tools from the server
+// itself), packed as out/partstyle.mcpb. Building it also checks the bundle under this Node:
+// MCP handshake, the grammar, and the viewer drawing a copy of examples/bench-sensor.
+// --check-mcpb repeats only that check, e.g. under the oldest Node the manifest allows.
+import { execFileSync, spawn } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const dir = path.join(root, "packages", "cli", "standalone");
 const viewerDist = path.join(root, "packages", "viewer", "dist");
+const mcpbDir = path.join(dir, "out", "mcpb");
+const mcpbServer = path.join(mcpbDir, "server", "index.mjs");
 
 // standalone.test.ts in packages/cli finds the native executable the same way.
 const nativeTarget = () =>
@@ -63,13 +84,116 @@ await import("../dist/main.js");
   return file;
 }
 
-const entry = writeEntry();
-const targets = process.argv.slice(2);
-for (const target of targets.length > 0 ? targets : [nativeTarget()]) {
-  const out = outFile(target);
-  execFileSync(
-    process.env.BUN ?? "bun",
-    [
+const bun = (args) => execFileSync(process.env.BUN ?? "bun", args, { stdio: "inherit", cwd: dir });
+
+/**
+ * Runs the bundled MCP server under this Node and exercises it the way Claude Desktop would;
+ * returns its tools.
+ */
+async function checkServer(server) {
+  const tmp = mkdtempSync(path.join(tmpdir(), "partstyle-mcpb-"));
+  // The example's library path is ../../library.
+  cpSync(path.join(root, "examples", "bench-sensor"), path.join(tmp, "examples", "bench-sensor"), {
+    recursive: true,
+    filter: (src) => !src.includes(".partstyle"),
+  });
+  cpSync(path.join(root, "library"), path.join(tmp, "library"), { recursive: true });
+  const args = [server, "mcp", "--projects-dir", path.join(tmp, "examples"), "--viewer-port", "0"];
+  const child = spawn(process.execPath, args, {
+    env: { ...process.env, PARTSTYLE_STATE_DIR: path.join(tmp, "state") },
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+  const waiting = new Map();
+  let buffer = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk) => {
+    buffer += chunk;
+    for (let i = buffer.indexOf("\n"); i >= 0; i = buffer.indexOf("\n")) {
+      const line = buffer.slice(0, i).trim();
+      buffer = buffer.slice(i + 1);
+      if (line) {
+        const message = JSON.parse(line);
+        waiting.get(message.id)?.(message);
+      }
+    }
+  });
+  const send = (message) =>
+    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+  let next = 0;
+  const request = (method, params = {}) =>
+    new Promise((resolve, reject) => {
+      const id = ++next;
+      const timer = setTimeout(() => reject(new Error(`${method}: no answer`)), 60_000);
+      waiting.set(id, (m) => {
+        clearTimeout(timer);
+        if (m.error) reject(new Error(`${method}: ${m.error.message}`));
+        else resolve(m.result);
+      });
+      send({ id, method, params });
+    });
+  const call = async (name, args = {}) => {
+    const r = await request("tools/call", { name, arguments: args });
+    const text = r.content.map((c) => c.text).join("");
+    if (r.isError) throw new Error(`${name}: ${text}`);
+    return text;
+  };
+  try {
+    await request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "standalone.mjs", version: "0" },
+    });
+    send({ method: "notifications/initialized" });
+    const { tools } = await request("tools/list");
+    if (!(await call("grammar")).startsWith("# .ckt grammar")) throw new Error("grammar missing");
+    const opened = await call("open_project", { project: "bench-sensor" });
+    const url = /^viewer: (\S+)\?/m.exec(opened)?.[1];
+    if (!url) throw new Error(`no viewer:\n${opened}`);
+    const model = await (await fetch(new URL("api/model", url))).json();
+    const failed = model.issues.find((i) => i.code === "layout.failed");
+    if (failed || model.sheets.length === 0) {
+      throw new Error(`viewer cannot draw: ${failed?.message ?? "no sheets"}`);
+    }
+    console.log(`${server} works under Node ${process.version} (${tools.length} tools)`);
+    return tools;
+  } finally {
+    child.stdin.end();
+    child.kill();
+    await new Promise((resolve) => child.once("exit", resolve));
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+async function buildMcpb(entry) {
+  rmSync(mcpbDir, { recursive: true, force: true });
+  bun(["build", entry, "--target=node", "--minify", "--outfile", mcpbServer]);
+  const tools = await checkServer(mcpbServer);
+
+  const manifest = JSON.parse(
+    readFileSync(path.join(root, "packages", "cli", "mcpb", "manifest.json"), "utf8"),
+  );
+  manifest.version = process.env.PARTSTYLE_VERSION ?? "0.0.0-dev";
+  manifest.tools = tools.map((t) => ({ name: t.name, description: t.description }));
+  writeFileSync(path.join(mcpbDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+
+  // The mcpb CLI (a root devDependency), run with this Node: its .bin shim is a .cmd on Windows.
+  const pkg = path.join(root, "node_modules", "@anthropic-ai", "mcpb");
+  const cli = path.join(pkg, JSON.parse(readFileSync(path.join(pkg, "package.json"), "utf8")).bin);
+  const out = path.join(dir, "out", "partstyle.mcpb");
+  execFileSync(process.execPath, [cli, "pack", mcpbDir, out], { stdio: "inherit" });
+  console.log(`built ${path.relative(root, out)} (version ${manifest.version})`);
+}
+
+const args = process.argv.slice(2);
+if (args.includes("--check-mcpb")) {
+  if (!existsSync(mcpbServer)) throw new Error(`${mcpbServer} is missing: build it with --mcpb`);
+  await checkServer(mcpbServer);
+} else if (args.includes("--mcpb")) {
+  await buildMcpb(writeEntry());
+} else {
+  const entry = writeEntry();
+  for (const target of args.length > 0 ? args : [nativeTarget()]) {
+    const out = outFile(target);
+    bun([
       "build",
       entry,
       "--compile",
@@ -78,8 +202,7 @@ for (const target of targets.length > 0 ? targets : [nativeTarget()]) {
       `--target=${target}`,
       "--outfile",
       out,
-    ],
-    { stdio: "inherit", cwd: dir },
-  );
-  console.log(`built ${path.relative(root, out)}`);
+    ]);
+    console.log(`built ${path.relative(root, out)}`);
+  }
 }

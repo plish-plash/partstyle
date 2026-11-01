@@ -3,7 +3,7 @@ description: Structured review of the design against its context and part requir
 argument-hint: [block]
 ---
 
-Review this partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
+Review this Partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
 
 1. Gather: `partstyle overview`, `partstyle validate`, context.md, notes/decisions.md, then each block with `partstyle read-block`. For every library part, `partstyle part get ID --tier pins`.
 2. Check, citing refdes and nets:

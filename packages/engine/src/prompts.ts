@@ -23,7 +23,7 @@ const designReview: PromptDef = {
   args: [{ name: "block", description: "Review only this block (default: all)", required: false }],
   render: ({
     block,
-  }) => `Review ${block ? `block ${block} of ` : ""}this partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
+  }) => `Review ${block ? `block ${block} of ` : ""}this Partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
 
 1. Gather: \`partstyle overview\`, \`partstyle validate\`, context.md, notes/decisions.md, then ${
     block ? `\`partstyle read-block ${block}\`` : "each block with `partstyle read-block`"
