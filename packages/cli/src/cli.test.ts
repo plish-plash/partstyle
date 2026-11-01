@@ -105,6 +105,17 @@ describe("partstyle init", () => {
         exitCode: 0,
       });
       expect((await cli(["-p", dir, "init"])).exitCode).toBe(1);
+
+      // (Projects opened recently elsewhere may follow, from this user's MCP sessions.)
+      expect((await cli(["projects", "--dir", tmp])).stdout).toMatch(
+        new RegExp(`^projects in ${tmp.replace(/[\\.]/g, "\\$&")}:\n {2}board(\n|$)`),
+      );
+      expect(await cli(["-p", dir, "doc", "write", "notes/power.md"], "# Power")).toEqual({
+        stdout: "wrote notes/power.md (1 line)",
+        exitCode: 0,
+      });
+      expect((await cli(["-p", dir, "doc", "read", "notes/power.md"])).stdout).toBe("# Power\n");
+      expect((await cli(["-p", dir, "doc", "read", "project.toml"])).exitCode).toBe(1);
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }

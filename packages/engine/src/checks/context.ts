@@ -53,7 +53,18 @@ export function contextChecks(netlist: Netlist, context: TextFile | undefined): 
     subjects,
   });
   const fm = contextFrontMatter(context.text);
-  if (!fm) return [];
+  if (!fm) {
+    // Front matter that does not parse would otherwise skip every check without a word.
+    return /^---\r?\n/.test(context.text)
+      ? [
+          issue(
+            "context.invalid",
+            "context.md front matter is not a YAML mapping; its checks were skipped",
+            [],
+          ),
+        ]
+      : [];
+  }
   const parsed = ContextSchema.safeParse(fm);
   if (!parsed.success) {
     const first = parsed.error.issues[0];

@@ -6,7 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  getDefaultEnvironment,
+  StdioClientTransport,
+} from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Workspace } from "@partstyle/engine/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -84,6 +87,35 @@ describe.skipIf(!process.env.PARTSTYLE_BINARY && !existsSync(binary))(
         };
         expect(model.issues.map((i) => i.code)).not.toContain("layout.failed");
         expect(model.sheets.length).toBeGreaterThan(0);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("serves many projects, the viewer following the open one", async () => {
+      const transport = new StdioClientTransport({
+        command: binary,
+        args: ["mcp", "--projects-dir", path.join(tmp, "examples"), "--viewer-port", "0"],
+        // Keep the recently opened list out of this user's ~/.partstyle.
+        env: { ...getDefaultEnvironment(), PARTSTYLE_STATE_DIR: path.join(tmp, "state") },
+      });
+      const client = new Client({ name: "test", version: "0" });
+      await client.connect(transport);
+      const call = async (name: string, args: Record<string, unknown> = {}) =>
+        ((await client.callTool({ name, arguments: args })).content as { text: string }[])[0]
+          ?.text ?? "";
+      const project = async (url: string) =>
+        ((await (await fetch(new URL("api/model", url))).json()) as { project: string }).project;
+      try {
+        const created = await call("init_project", { name: "fresh" });
+        const url = /^viewer: (\S+)\?project=fresh$/m.exec(created)?.[1] as string;
+        expect(url).toBeDefined();
+        expect(await project(url)).toBe("fresh");
+        expect(await call("open_project", { project: "bench-sensor" })).toContain(
+          `viewer: ${url}?project=bench-sensor`,
+        );
+        expect(await project(url)).toBe("bench-sensor");
+        expect(await call("list_projects")).toMatch(/^ {2}bench-sensor \(open\)$/m);
       } finally {
         await client.close();
       }

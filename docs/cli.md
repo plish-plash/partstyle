@@ -123,6 +123,14 @@ Overview counts records not yet verified by a person; validate does not repeat i
 
 ## Editing
 
+### `doc read FILE` / `doc write FILE [SRC|-]`
+
+Reads or replaces a project document: `context.md` or a Markdown file under `notes/`, by its
+path in the project (other paths are refused). `write` takes the text from SRC or stdin,
+creates folders under `notes/` as needed, and for `context.md` also lists the issues it now has
+(or `context.md: no issues`). These exist for MCP clients without file tools (`read_doc`,
+`write_doc`); from a shell, editing the files directly is the same.
+
 ### `apply [FILE|-] [--dry-run]`
 
 Applies a patch from FILE, or from stdin when FILE is `-` or omitted. Patches are all-or-nothing:
@@ -408,12 +416,32 @@ Review state lives in two files: `comments.yaml` (versioned with the design) and
 
 ## MCP server
 
-### `mcp [--project DIR] [--viewer-port N] [--no-viewer]`
+### `mcp [--project DIR | --projects-dir DIR] [--viewer-port N] [--no-viewer]`
 
-Runs the MCP server for DIR (default: the current directory) on stdio until the client
-disconnects, with the viewer (as `view`, logging its URL to stderr) in the same process.
-`--viewer-port` picks the viewer's port; `--no-viewer` skips it. Must be the first argument:
-`-p` does not apply. See [claude-code.md](claude-code.md) for client setup and the tools.
+Runs the MCP server on stdio until the client disconnects, with the viewer (as `view`, logging
+its URL to stderr) in the same process. Must be the first argument: `-p` does not apply.
+
+- `--project DIR`: serves that folder only.
+- Otherwise, global mode: serves any project, opened by name with `open_project`. New projects
+  go in `--projects-dir` (default `~/Documents/partstyle`), using its `library/` subfolder as
+  their part library. The viewer starts with the first project opened and follows later ones.
+- `--viewer-port N` picks the viewer's port (0: any free port); `--no-viewer` skips it.
+
+See [claude-code.md](claude-code.md) for the tools and client setup.
+
+### `projects [--dir DIR]`
+
+Lists the projects in DIR (default `~/Documents/partstyle`), then projects the MCP server has
+opened elsewhere, most recent first (kept in `~/.partstyle/recent.json`, or in the folder
+`PARTSTYLE_STATE_DIR` names).
+
+```
+projects in C:\Users\you\Documents\partstyle:
+  bench-sensor
+  psu
+opened recently, elsewhere:
+  D:\work\amp
+```
 
 ## Versions
 

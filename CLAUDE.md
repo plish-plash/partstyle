@@ -48,7 +48,12 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
   - AI operations: `views.ts` (overview, read_block), `query.ts`, `patch.ts` (apply),
     `parts/search.ts`. `project/workspace.ts` wraps them over a folder, reloading per call.
 - `packages/cli` and `packages/mcp`: thin shells over `Workspace` (`partstyle mcp` runs
-  `serveMcp` from `packages/mcp/src/serve.ts`). Every MCP tool has a CLI
+  `serveMcp` from `packages/mcp/src/serve.ts`). Without `--project` the MCP server is in global
+  mode: `project/projects.ts` (`Projects`: projects folder, shared `library/`, recent list in
+  `~/.partstyle` or `PARTSTYLE_STATE_DIR`; tests must pass a temporary state dir),
+  `list_projects`/`open_project`, and the viewer's `switchTo`. Its instructions are
+  `mcpInstructions` in `project/skeleton.ts`, sharing the conventions with the project
+  CLAUDE.md template; keep the two workflows in step. Every MCP tool has a CLI
   command with identical output; add both together (see [docs/claude-code.md](docs/claude-code.md)).
   - KiCad hand-off: `bom.ts` (generic → MPN resolution, bom.lock), `kicad/` (S-expressions,
     annotation, schematic and netlist writers; pure). Symbols: `kicad/libsym.ts` matches and

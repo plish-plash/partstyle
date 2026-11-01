@@ -48,9 +48,15 @@ export const resolveComment = (id: string) =>
 
 export const verifyPart = (id: string) => post<{ ok: boolean; text: string }>("api/verify", { id });
 
-/** Calls `onChange` whenever the project's files change; returns an unsubscribe function. */
-export function subscribe(onChange: () => void): () => void {
+/**
+ * Calls `onChange` whenever the project's files change, and `onProject` with the name when the
+ * server switches to another project; returns an unsubscribe function.
+ */
+export function subscribe(onChange: () => void, onProject: (name: string) => void): () => void {
   const events = new EventSource("api/events");
   events.addEventListener("change", onChange);
+  events.addEventListener("project", (e) => {
+    onProject((JSON.parse((e as MessageEvent<string>).data) as { project: string }).project);
+  });
   return () => events.close();
 }

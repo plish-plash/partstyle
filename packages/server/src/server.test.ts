@@ -109,6 +109,27 @@ describe("viewer server", () => {
     expect((await fetch(new URL("api/model?variant=nope", viewer.url))).status).toBe(404);
   });
 
+  it("switches to another project, telling open pages", async () => {
+    const other = new Workspace(path.join(tmp, "other"));
+    await other.init({ name: "other" });
+    const res = await fetch(new URL("api/events", viewer.url));
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("no event stream");
+    const decoder = new TextDecoder();
+    let seen = decoder.decode((await reader.read()).value);
+    await viewer.switchTo(other);
+    while (!seen.includes("event: project")) seen += decoder.decode((await reader.read()).value);
+    await reader.cancel();
+    expect(seen).toContain('data: {"project":"other"}');
+    const model = (await (await fetch(new URL("api/model", viewer.url))).json()) as {
+      project: string;
+    };
+    expect(model.project).toBe("other");
+    // Where the viewer runs moves with it.
+    expect(existsSync(path.join(project, ".partstyle/viewer.json"))).toBe(false);
+    expect(existsSync(path.join(other.root, ".partstyle/viewer.json"))).toBe(true);
+  });
+
   it("wakes for project, variant and review-state changes only", () => {
     expect(relevantChange("circuit/power.ckt")).toBe(true);
     expect(relevantChange(".partstyle/focus.json")).toBe(false);

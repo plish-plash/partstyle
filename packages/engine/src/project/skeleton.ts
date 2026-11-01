@@ -100,7 +100,11 @@ Use ingest-part whenever you add a part record.
 - Keep \`annotation.lock\` and \`bom.lock\` under version control: they hold refdes and part
   choices stable across exports.
 
-## Conventions
+${conventions}`;
+}
+
+/** Naming, ports, ratings and a worked block: the same for CLI and MCP clients. */
+const conventions = `## Conventions
 
 - Refdes prefixes: R, C, L, D (diodes and LEDs), Q, U (ICs), J (connectors), Y (crystals),
   F (fuses), SW, TP. Unique within a block.
@@ -136,6 +140,47 @@ net GND     : J1.SLEEVE J1.SWITCH U1.GND C1.2 C2.2 -> port GND
 
 and in \`main.ckt\`: \`use power as PWR\`, then \`net +5V : PWR.+5V MCU.+5V\`.
 `;
+
+/**
+ * The MCP server's instructions: the project CLAUDE.md's workflow in tool terms, for clients
+ * that have only the tools (Claude Desktop) and never read a project's CLAUDE.md. `global`:
+ * the server works on several projects, opened by name.
+ */
+export function mcpInstructions(global: boolean): string {
+  const start = global
+    ? `Work on one project at a time: list_projects, then open_project NAME, or init_project NAME
+for a new one. open_project returns the overview and the viewer URL: give the URL to the
+person, who watches the drawing update and points at things there.
+
+`
+    : "";
+  return `partstyle is a schematic editor for AI. A design is connectivity (parts, pins, nets and
+intent) in .ckt text; the drawing is generated, so never think in coordinates or wires.
+
+${start}## Workflow
+
+1. Call grammar before writing .ckt text or patches, and follow it exactly.
+2. New project: fill in context.md with the person (read_doc, write_doc): use case,
+   environment, power source, assembly and every external interface with its hazards. Then
+   plan one block per functional area; apply creates each ('+ block NAME' first) and main
+   joins them with 'use'.
+3. Read cheap first: overview, read_block (detail=summary, then full), query, part_get.
+4. Edit with apply: batched and atomic, it reports only the issues the edit added or
+   resolved. Fix or explain every issue; waive one only with a real reason.
+5. "this", "here", "the selected part": call focus. Answer open comments; the person resolves
+   them in the viewer.
+6. Start each turn with diff since=last: it shows the person's reverts and edits. Don't redo a
+   change they reverted; ask. checkpoint only when asked. If overview says review mode:
+   accept, each patch waits for the person to accept it.
+7. Generics for passives: res(10k, 1%, 0603), cap(100n, 16V, X7R, 0603), led(red, 0603);
+   lib:ID for everything else. part_search first; add a missing record with part_put,
+   following the ingest_part prompt (pinouts from the datasheet, verified_by null).
+8. Put an @ intent on every part and on nets whose purpose is not obvious. Record rationale in
+   notes/decisions.md and layout constraints in notes/pcb.md.
+9. Hand-off: bom_export, then kicad_export. Never edit the kicad/ output: change the design
+   and export again.
+
+${conventions}`;
 }
 
 /** Files for a new, empty project that validates clean. */

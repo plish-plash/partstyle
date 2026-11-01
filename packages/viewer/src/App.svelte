@@ -60,10 +60,20 @@ onMount(() => {
   void refresh();
   // ?live=0 shows a snapshot without the update stream (screenshots, embedding).
   if (new URLSearchParams(location.search).get("live") === "0") return;
-  const unsubscribe = api.subscribe(() => {
-    live = true;
-    void refresh();
-  });
+  const unsubscribe = api.subscribe(
+    () => {
+      live = true;
+      void refresh();
+    },
+    // The server now shows another project: start over on it (sheets, variants and selection
+    // belonged to the old one).
+    (name) => {
+      const url = new URL(location.href);
+      url.search = "";
+      url.searchParams.set("project", name);
+      location.replace(url);
+    },
+  );
   live = true;
   return unsubscribe;
 });
@@ -149,6 +159,9 @@ function showChange(c: { block: string; kind: string; key: string }) {
     <span class="chip variant-chip">variant {variant} <button class="link" onclick={() => setVariant(undefined)}>back to main</button></span>
   {/if}
   {#if preview}<span class="chip meh">previewing {preview}</span>{/if}
+  {#if model && params.get("project") && params.get("project") !== model.project}
+    <span class="chip meh" title="The MCP server has opened another project since this page was opened">now showing {model.project}, not {params.get("project")}</span>
+  {/if}
   <span class="live" title={live ? "Updates as the files change" : "Connecting…"}>{live ? "● live" : "○"}</span>
 </header>
 

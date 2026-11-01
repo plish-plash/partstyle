@@ -146,7 +146,7 @@ External interfaces are first-class: each names a connector, what is on the othe
 
 ## AI integration
 
-Claude Code is the primary AI surface: it reads and edits the plain-text files directly and calls the CLI to validate, query, diff and export. An MCP server with about 16 coarse-grained tools serves chat clients, and the CLI mirrors every MCP tool (including viewer state such as focus), so nothing is chat-only. Both go through the same engine, so validation results are identical.
+Claude Code and chat clients such as Claude Desktop are equally supported AI surfaces. Claude Code can read and edit the plain-text files directly and call the CLI to validate, query, diff and export. An MCP server with about 20 coarse-grained tools serves every client, including those without file tools, and can be configured once for all projects; the CLI mirrors every MCP tool (including viewer state such as focus), so nothing is chat-only. Both go through the same engine, so validation results are identical.
 
 ### MCP tool surface
 

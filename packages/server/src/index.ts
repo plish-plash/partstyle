@@ -10,6 +10,8 @@ import type { Workspace } from "@partstyle/engine/node";
 export interface ViewerServer {
   url: string;
   port: number;
+  /** Shows another project from now on; open pages reload onto it. */
+  switchTo(ws: Workspace): Promise<void>;
   /** Stops the server and the file watchers. */
   close(): Promise<void>;
 }
@@ -98,14 +100,16 @@ const str = (v: unknown, name: string, max = 2000): string => {
 };
 
 /**
- * Serves the viewer for one project on 127.0.0.1: the built web app, the drawing model, live
- * change events, and the few writes the viewer makes (focus, comments, part verification).
- * Tries successive ports when the default is taken (several projects can be viewed at once).
+ * Serves the viewer for one project at a time on 127.0.0.1: the built web app, the drawing
+ * model, live change events, and the few writes the viewer makes (focus, comments, part
+ * verification). Tries successive ports when the default is taken (several projects can be
+ * viewed at once).
  */
 export async function startViewer(
-  ws: Workspace,
+  first: Workspace,
   opts: { port?: number } = {},
 ): Promise<ViewerServer> {
+  let ws = first;
   const dist = embeddedViewer ? "" : viewerDist();
   const clients = new Set<ServerResponse>();
   /** Drawings by view ("" for the main line, a variant's name, or "|P1" to preview a patch). */
@@ -282,14 +286,19 @@ export async function startViewer(
       for (const c of clients) c.write("event: change\ndata: {}\n\n");
     }, 150);
   };
-  const watchers: FSWatcher[] = [];
-  for (const dir of [ws.root, ...(await ws.libraryDirs())]) {
-    try {
-      watchers.push(watch(dir, { recursive: true }, (_event, file) => changed(file)));
-    } catch {
-      // A missing library folder is reported by validation; nothing to watch.
+  let watchers: FSWatcher[] = [];
+  const watchProject = async () => {
+    for (const w of watchers) w.close();
+    watchers = [];
+    for (const dir of [ws.root, ...(await ws.libraryDirs())]) {
+      try {
+        watchers.push(watch(dir, { recursive: true }, (_event, file) => changed(file)));
+      } catch {
+        // A missing library folder is reported by validation; nothing to watch.
+      }
     }
-  }
+  };
+  await watchProject();
   const heartbeat = setInterval(() => {
     for (const c of clients) c.write(": ping\n\n");
   }, 25_000);
@@ -299,6 +308,16 @@ export async function startViewer(
   return {
     url,
     port,
+    switchTo: async (next) => {
+      if (next.root === ws.root) return;
+      await ws.setViewerUrl(undefined);
+      ws = next;
+      models.clear();
+      await watchProject();
+      await ws.setViewerUrl(url);
+      const data = JSON.stringify({ project: await ws.name() });
+      for (const c of clients) c.write(`event: project\ndata: ${data}\n\n`);
+    },
     close: async () => {
       clearInterval(heartbeat);
       clearTimeout(timer);

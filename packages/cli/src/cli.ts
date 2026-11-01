@@ -12,7 +12,12 @@ import {
   type TextResult,
   type ValidationResult,
 } from "@partstyle/engine";
-import { ProjectLoadError, readGrammarReference, Workspace } from "@partstyle/engine/node";
+import {
+  ProjectLoadError,
+  Projects,
+  readGrammarReference,
+  Workspace,
+} from "@partstyle/engine/node";
 import { startViewer } from "@partstyle/server";
 
 export interface CommandResult {
@@ -34,11 +39,14 @@ Every command mirrors an MCP tool and gives the same output.
 commands:
   init [DIR] [--name NAME] [--library PATH]...
                                            create a project skeleton (DIR defaults to -p or .)
+  projects [--dir DIR]                     projects in DIR (default ~/Documents/partstyle)
+                                           and ones the MCP server opened elsewhere
   overview                                 project summary: blocks, parts, issues, context
   read-block BLOCK [--detail summary|full] a block's .ckt text, or ports + parts only
   query EXPR...                            targeted lookup; 'partstyle query help' for syntax
   validate [DIR] [--json]                  parse, connect and ERC-check (exit 1 on errors)
   apply [FILE|-] [--dry-run]               apply a .ckt patch from FILE or stdin
+  doc read FILE | doc write FILE [SRC|-]   read or replace context.md or a notes/*.md file
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
@@ -47,7 +55,7 @@ commands:
                                            import a KiCad project (creates the project if needed)
   bom export                               resolve generics, write bom.lock and bom.csv
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
-  mcp [--project DIR] [--viewer-port N] [--no-viewer]
+  mcp [--project DIR | --projects-dir DIR] [--viewer-port N] [--no-viewer]
                                            run the MCP server on stdio (first argument only)
   focus                                    what is selected in the viewer, and open comments
   diff [--since checkpoint|last|ID]        circuit changes, statement by statement
@@ -95,6 +103,7 @@ function parse(argv: string[]) {
       library: { type: "string", multiple: true },
       port: { type: "string" },
       since: { type: "string" },
+      dir: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -133,6 +142,10 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         }),
       );
     }
+
+    case "projects":
+      if (args.length > 0) return usageError("usage: projects [--dir DIR]");
+      return fromText(await new Projects(values.dir).list());
 
     case "overview":
       return fromText(await ws.overview());
@@ -173,6 +186,17 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
       if (args.length > 1) return usageError("usage: apply [FILE|-] [--dry-run]");
       const patch = await readInput(args[0], io);
       return fromText(await ws.apply(patch, { dryRun: values["dry-run"] ?? false }));
+    }
+
+    case "doc": {
+      const [op, file, source] = args;
+      if (op === "read" && file !== undefined && args.length === 2) {
+        return fromText(await ws.readDoc(file));
+      }
+      if (op === "write" && file !== undefined && args.length <= 3) {
+        return fromText(await ws.writeDoc(file, await readInput(source, io)));
+      }
+      return usageError("usage: doc read FILE | doc write FILE [SRC|-]");
     }
 
     case "part": {

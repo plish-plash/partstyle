@@ -69,6 +69,10 @@ const toPosix = (p: string) => p.split(path.sep).join("/");
 
 const CLAUDE_SIDECAR = "CLAUDE.partstyle.md";
 
+/** context.md and Markdown files under notes/ (no hidden or parent segments). */
+const isDoc = (f: string) =>
+  f === "context.md" || /^notes\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/.test(f);
+
 async function exists(file: string): Promise<boolean> {
   try {
     await stat(file);
@@ -160,6 +164,56 @@ export class Workspace {
       comments: parseComments(await this.readOptional(COMMENTS_FILE)),
       focus: parseFocus(await this.readOptional(FOCUS_FILE)),
     };
+  }
+
+  /** The project's name from project.toml, else its folder's. */
+  async name(): Promise<string> {
+    const text = await this.readOptional("project.toml");
+    return parseProjectConfig(text, "project.toml").config?.name ?? path.basename(this.root);
+  }
+
+  /** The docs (context.md, notes/*.md) that exist, by path. */
+  private async docs(): Promise<string[]> {
+    const notes = await readdir(path.join(this.root, "notes"), { recursive: true }).catch(() => []);
+    const found = notes.map((f) => `notes/${toPosix(String(f))}`).filter((f) => isDoc(f));
+    return [
+      ...((await exists(path.join(this.root, "context.md"))) ? ["context.md"] : []),
+      ...found,
+    ];
+  }
+
+  /** context.md or a notes/ file, for clients without file tools. */
+  readDoc(file: string): Promise<TextResult> {
+    return this.guard(async () => {
+      const f = toPosix(file).replace(/^\.\//, "");
+      if (!isDoc(f)) return fail(`docs are context.md and notes/*.md (got ${file})`);
+      const text = await this.readOptional(f);
+      if (text) return { ok: true, text };
+      const docs = await this.docs();
+      return fail(`no ${f}${docs.length > 0 ? `; docs: ${docs.join(", ")}` : ""}`);
+    });
+  }
+
+  /** Replaces context.md or a notes/ file; for context.md, reports the issues it now has. */
+  writeDoc(file: string, text: string): Promise<TextResult> {
+    return this.guard(async () => {
+      const f = toPosix(file).replace(/^\.\//, "");
+      if (!isDoc(f)) return fail(`docs are context.md and notes/*.md (got ${file})`);
+      if (!(await exists(path.join(this.root, "project.toml")))) {
+        return fail(`${this.root} is not a project (no project.toml)`);
+      }
+      const full = path.join(this.root, f);
+      await mkdir(path.dirname(full), { recursive: true });
+      await writeFile(full, text.endsWith("\n") ? text : `${text}\n`, "utf8");
+      const n = text.replace(/\n$/, "").split("\n").length;
+      const lines = [`wrote ${f} (${n} line${n === 1 ? "" : "s"})`];
+      if (f === "context.md") {
+        const { result } = await this.load();
+        const issues = result.issues.filter((i) => i.location?.file === "context.md");
+        lines.push(...(issues.length > 0 ? issues.map(formatIssue) : ["context.md: no issues"]));
+      }
+      return { ok: true, text: lines.join("\n") };
+    });
   }
 
   private async readOptional(file: string): Promise<string> {

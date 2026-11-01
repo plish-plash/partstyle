@@ -44,7 +44,12 @@ export * from "./parts/schema.js";
 export { describePart, type PartTier, searchParts } from "./parts/search.js";
 export { applyPatch, type PatchResult } from "./patch.js";
 export * from "./project/config.js";
-export { projectClaudeMd, projectSkeleton, type SkeletonOptions } from "./project/skeleton.js";
+export {
+  mcpInstructions,
+  projectClaudeMd,
+  projectSkeleton,
+  type SkeletonOptions,
+} from "./project/skeleton.js";
 export type { ProjectSource, TextFile } from "./project/source.js";
 export { findPrompt, type PromptDef, prompts, slashCommands } from "./prompts.js";
 export { queryUsage, runQuery, type TextResult } from "./query.js";

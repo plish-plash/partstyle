@@ -1,12 +1,13 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { findPrompt } from "@partstyle/engine";
-import { Workspace } from "@partstyle/engine/node";
-import { beforeAll, describe, expect, it } from "vitest";
+import { Projects, readGrammarReference, Workspace } from "@partstyle/engine/node";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
 
 const example = fileURLToPath(new URL("../../../examples/bench-sensor", import.meta.url));
@@ -35,6 +36,7 @@ describe("MCP server", () => {
       "checkpoint",
       "diff",
       "focus",
+      "grammar",
       "init_project",
       "kicad_export",
       "kicad_import",
@@ -44,11 +46,50 @@ describe("MCP server", () => {
       "part_search",
       "query",
       "read_block",
+      "read_doc",
       "validate",
       "variant",
+      "write_doc",
     ]);
-    // Tool definitions are paid on every turn; keep them short (DESIGN.md plans ~16 tools).
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(1750);
+    // Tool definitions are paid on every turn; keep them short. (grammar, read_doc and
+    // write_doc serve clients without file tools, such as Claude Desktop.)
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(2100);
+  });
+
+  it("sends the workflow as instructions", () => {
+    const text = client.getInstructions() ?? "";
+    expect(text).toContain("diff since=last");
+    expect(text).not.toContain("open_project");
+    expect(text.length / 4).toBeLessThan(1000);
+  });
+
+  it("reads and writes context.md and notes", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-mcp-"));
+    try {
+      const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+      const w = new Workspace(tmp);
+      await w.init({ name: "docs" });
+      await createServer(w).connect(serverSide);
+      const c = new Client({ name: "test", version: "0" });
+      await c.connect(clientSide);
+      const text = async (name: string, args: Record<string, unknown>) =>
+        ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]?.text;
+      expect(await text("read_doc", { file: "context.md" })).toMatch(/^---\nuse_case: TODO/);
+      expect(await text("write_doc", { file: "notes/power.md", text: "# Power\n" })).toBe(
+        "wrote notes/power.md (1 line)",
+      );
+      expect(await text("read_doc", { file: "notes/nope.md" })).toBe(
+        "no notes/nope.md; docs: context.md, notes/decisions.md, notes/pcb.md, notes/power.md",
+      );
+      expect(await text("write_doc", { file: "../escape.md", text: "x" })).toMatch(
+        /^docs are context.md and notes\/\*.md/,
+      );
+      expect(
+        await text("write_doc", { file: "context.md", text: "---\nnot: [valid\n---\n" }),
+      ).toMatch(/^wrote context.md \(3 lines\)\ncontext.md:1:1 warning context.invalid /);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 
   it("returns exactly what the CLI's workspace returns", async () => {
@@ -99,10 +140,103 @@ describe("MCP server", () => {
     }
   });
 
-  it("serves the grammar reference as a resource", async () => {
+  it("serves the grammar reference as a resource and a tool", async () => {
     const { resources } = await client.listResources();
     expect(resources.map((r) => r.uri)).toEqual(["partstyle://grammar"]);
     const r = await client.readResource({ uri: "partstyle://grammar" });
     expect((r.contents[0] as { text: string }).text).toMatch(/^# \.ckt grammar reference/);
+    expect((await call("grammar")).text).toBe(await readGrammarReference());
+  });
+});
+
+describe("MCP server for many projects", () => {
+  let tmp: string;
+  let projects: Projects;
+  let opened: string[];
+
+  beforeAll(async () => {
+    tmp = await mkdtemp(path.join(tmpdir(), "partstyle-global-"));
+    projects = new Projects(path.join(tmp, "designs"), path.join(tmp, "state"));
+  });
+  afterAll(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  async function connect(roots: string[] = []) {
+    opened = [];
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await createServer(undefined, {
+      projects,
+      onOpen: async (w) => {
+        opened.push(w.root);
+        return "http://127.0.0.1:7766/";
+      },
+    }).connect(serverSide);
+    const c = new Client({ name: "test", version: "0" }, { capabilities: { roots: {} } });
+    c.setRequestHandler(ListRootsRequestSchema, async () => ({
+      roots: roots.map((r) => ({ uri: pathToFileURL(r).href })),
+    }));
+    await c.connect(clientSide);
+    const text = async (name: string, args: Record<string, unknown> = {}) => {
+      const r = await c.callTool({ name, arguments: args });
+      return {
+        text: (r.content as { text: string }[])[0]?.text ?? "",
+        isError: r.isError === true,
+      };
+    };
+    return { c, text };
+  }
+
+  it("needs a project opened first, and says how", async () => {
+    const { c, text } = await connect();
+    expect(c.getInstructions()).toContain("open_project NAME");
+    const { tools } = await c.listTools();
+    expect(tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(["list_projects", "open_project"]),
+    );
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(2300);
+    expect(await text("overview")).toEqual({
+      text: "no project open: list_projects shows them; open_project NAME opens one, init_project NAME creates one",
+      isError: true,
+    });
+    expect((await text("list_projects")).text).toBe(
+      `no projects in ${path.join(tmp, "designs")} yet`,
+    );
+  });
+
+  it("creates projects in its folder, with the shared library, and opens them", async () => {
+    const { text } = await connect();
+    const r = await text("init_project", { name: "psu" });
+    const root = path.join(tmp, "designs", "psu");
+    expect(r.text).toMatch(/^created project psu in /);
+    expect(r.text).toContain(
+      `\nopened psu (${root})\nviewer: http://127.0.0.1:7766/?project=psu\n\nproject psu (top: main)`,
+    );
+    expect(opened).toEqual([root]);
+    expect(await readFile(path.join(root, "project.toml"), "utf8")).toContain(
+      'paths = ["../library"]',
+    );
+    expect((await text("validate")).text).toBe("psu: 0 errors, 0 warnings");
+    await text("init_project", { name: "amp", path: path.join(tmp, "elsewhere", "amp") });
+    expect((await text("list_projects")).text).toBe(
+      [
+        `projects in ${path.join(tmp, "designs")}:`,
+        "  psu",
+        "opened recently, elsewhere:",
+        `  ${path.join(tmp, "elsewhere", "amp")} (open)`,
+      ].join("\n"),
+    );
+  });
+
+  it("opens projects by name or path, and the client's root folder by itself", async () => {
+    const { text } = await connect([path.join(tmp, "designs", "psu")]);
+    // The root is a project, so it is open without asking.
+    expect((await text("validate")).text).toBe("psu: 0 errors, 0 warnings");
+    expect((await text("open_project", { project: "nope" })).text).toMatch(/^no project at /);
+    expect((await text("open_project", { project: "../elsewhere/amp" })).text).toMatch(
+      /^opened amp /,
+    );
+    expect(opened.map((p) => path.basename(p))).toEqual(["psu", "amp"]);
+    expect((await text("overview")).text).toMatch(/^project amp /);
   });
 });
