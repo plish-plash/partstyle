@@ -2,5 +2,7 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+# Generated entry and executables of scripts/standalone.mjs
+packages/cli/standalone/
 # Local viewer and history state of projects in this repo (examples, fixtures)
 .partstyle/

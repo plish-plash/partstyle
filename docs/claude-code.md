@@ -3,12 +3,8 @@
 ## Claude Code (primary)
 
 Claude Code edits the `.ckt` files with its own file tools and calls the CLI to read, query,
-validate and patch. Build once, then put the CLI on your PATH:
-
-```sh
-pnpm install && pnpm build
-pnpm add -g ./packages/cli     # provides `partstyle`, linked to this checkout
-```
+validate and patch. First put `partstyle` on your PATH: the standalone executable or a build
+from source ([install.md](install.md)).
 
 Start each design with `partstyle init` (or ask Claude to). It writes a project `CLAUDE.md`
 with the workflow, naming conventions and a worked example block, so Claude needs no example
@@ -35,6 +31,10 @@ The server speaks stdio and serves one project folder, which need not exist yet:
 ```
 
 For Claude Code: `claude mcp add partstyle -- node <repo>/packages/mcp/dist/main.js --project .`
+
+`partstyle mcp --project <path>` runs the same server, so with `partstyle` on PATH, or the
+[standalone executable](install.md#standalone-executable) on a machine without Node, use
+`"command": "partstyle", "args": ["mcp", "--project", "<path to design>"]` instead.
 
 The MCP server also starts the viewer in the same process (its URL goes to the client's log,
 and `focus` reports it). Pass `--viewer-port N` to pick the port or `--no-viewer` to skip it.

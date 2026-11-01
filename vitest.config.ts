@@ -13,6 +13,7 @@ export default defineConfig({
       "@partstyle/server": fileURLToPath(
         new URL("./packages/server/src/index.ts", import.meta.url),
       ),
+      "@partstyle/mcp": fileURLToPath(new URL("./packages/mcp/src/serve.ts", import.meta.url)),
     },
   },
   test: {

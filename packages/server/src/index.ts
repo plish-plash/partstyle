@@ -46,6 +46,16 @@ function viewerDist(): string {
   return path.join(path.dirname(pkg), "dist");
 }
 
+let embeddedViewer: Map<string, Buffer> | undefined;
+
+/**
+ * Serves the web app from these files (path within dist/, e.g. "assets/index.js") instead of
+ * the viewer package's dist/: for a standalone executable.
+ */
+export function embedViewer(files: Record<string, Uint8Array>): void {
+  embeddedViewer = new Map(Object.entries(files).map(([p, data]) => [p, Buffer.from(data)]));
+}
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -96,7 +106,7 @@ export async function startViewer(
   ws: Workspace,
   opts: { port?: number } = {},
 ): Promise<ViewerServer> {
-  const dist = viewerDist();
+  const dist = embeddedViewer ? "" : viewerDist();
   const clients = new Set<ServerResponse>();
   /** Drawings by view ("" for the main line, a variant's name, or "|P1" to preview a patch). */
   const models = new Map<string, Promise<ViewerModel>>();
@@ -214,17 +224,23 @@ export async function startViewer(
 
     // The built web app; paths are confined to its folder.
     const rel = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
-    const file = path.resolve(dist, rel);
-    if (!file.startsWith(dist + path.sep)) throw new HttpError(404, "not found");
     let data: Buffer;
-    try {
-      data = await readFile(file);
-    } catch {
-      if (rel === "index.html") throw new HttpError(500, "viewer not built: run pnpm build");
-      throw new HttpError(404, "not found");
+    if (embeddedViewer) {
+      const found = embeddedViewer.get(rel);
+      if (!found) throw new HttpError(404, "not found");
+      data = found;
+    } else {
+      const file = path.resolve(dist, rel);
+      if (!file.startsWith(dist + path.sep)) throw new HttpError(404, "not found");
+      try {
+        data = await readFile(file);
+      } catch {
+        if (rel === "index.html") throw new HttpError(500, "viewer not built: run pnpm build");
+        throw new HttpError(404, "not found");
+      }
     }
     res.writeHead(200, {
-      "content-type": contentTypes[path.extname(file)] ?? "application/octet-stream",
+      "content-type": contentTypes[path.extname(rel)] ?? "application/octet-stream",
     });
     res.end(data);
   };

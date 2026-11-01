@@ -184,9 +184,16 @@ importers:
       '@partstyle/engine':
         specifier: workspace:*
         version: link:../engine
+      '@partstyle/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@partstyle/server':
         specifier: workspace:*
         version: link:../server
+    devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.32.2
+        version: 1.32.2(zod@4.6.7)
 
   packages/engine:
     dependencies:

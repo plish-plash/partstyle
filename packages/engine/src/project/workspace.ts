@@ -81,9 +81,16 @@ async function exists(file: string): Promise<boolean> {
 
 const referenceUrl = new URL("../../../../docs/ckt-grammar.md", import.meta.url);
 
+let embeddedGrammar: string | undefined;
+
+/** Uses this text as the grammar reference instead of docs/: for a standalone executable. */
+export function embedGrammarReference(text: string): void {
+  embeddedGrammar = text;
+}
+
 /** The .ckt grammar and patch reference, served to the AI as an MCP resource and by the CLI. */
 export async function readGrammarReference(): Promise<string> {
-  return readFile(referenceUrl, "utf8");
+  return embeddedGrammar ?? readFile(referenceUrl, "utf8");
 }
 
 /**

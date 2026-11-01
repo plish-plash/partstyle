@@ -78,6 +78,22 @@ export const paperFor = (s: { width: number; height: number }) => {
 const ELK = ElkBundled as unknown as new () => ElkApi;
 let elk: ElkApi | undefined;
 
+/**
+ * ELK loads its in-process worker on first construction. That script takes a global `self`
+ * without `document` to mean a web worker and then registers itself instead of exporting
+ * anything. Bun defines `self`, so hide it for that moment.
+ */
+function createElk(): ElkApi {
+  const g = globalThis as { self?: unknown };
+  const self = "document" in g ? undefined : Object.getOwnPropertyDescriptor(g, "self");
+  if (self?.configurable) delete g.self;
+  try {
+    return new ELK();
+  } finally {
+    if (self?.configurable) Object.defineProperty(g, "self", self);
+  }
+}
+
 /** A library field (symbol coords, y up) placed relative to a symbol origin. */
 function libText(origin: Pt, f: LibField): PlacedText {
   return { at: { x: origin.x + f.x, y: origin.y - f.y }, angle: f.angle, justify: f.justify };
@@ -409,7 +425,7 @@ async function layoutOnce(
   /** Units (`u:J2:1`) to mirror left to right. */
   mirrors: Set<string>,
 ): Promise<Trial> {
-  elk ??= new ELK();
+  elk ??= createElk();
   const name = block.block.name;
   const inst = plan.instancesOf(name)[0];
   const prefix = inst?.prefix ?? "";

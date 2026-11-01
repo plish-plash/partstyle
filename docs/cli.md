@@ -14,15 +14,7 @@ Every MCP tool has a matching command with identical output (see
 **Exit codes:** `0` success; `1` the command failed (unknown block, rejected patch, validation
 errors); `2` usage error, or not a project folder for `validate`.
 
-## Setup
-
-```sh
-pnpm install && pnpm build        # in the partstyle repository
-pnpm add -g ./packages/cli        # puts `partstyle` on PATH, linked to this checkout
-```
-
-The global install links to the checkout, so later `pnpm build` runs update it. Without it, run
-`node <repo>/packages/cli/dist/main.js`, or `pnpm partstyle ...` from the repository root.
+To install partstyle, see [install.md](install.md).
 
 ## Projects
 
@@ -414,11 +406,20 @@ viewer: http://127.0.0.1:7766/
 Review state lives in two files: `comments.yaml` (versioned with the design) and
 `.partstyle/focus.json` (local, git-ignored). `overview` lists open comments too.
 
+## MCP server
+
+### `mcp [--project DIR] [--viewer-port N] [--no-viewer]`
+
+Runs the MCP server for DIR (default: the current directory) on stdio until the client
+disconnects, with the viewer (as `view`, logging its URL to stderr) in the same process.
+`--viewer-port` picks the viewer's port; `--no-viewer` skips it. Must be the first argument:
+`-p` does not apply. See [claude-code.md](claude-code.md) for client setup and the tools.
+
 ## Versions
 
 Git is the storage engine; these commands give it schematic vocabulary. partstyle reads and
-writes the repository itself (with isomorphic-git), so git need not be installed, and the result
-is an ordinary repository the git CLI can also drive. The project may be its own repository or a
+writes the repository itself, so git need not be installed, and the result is an ordinary
+repository the git CLI can also drive. The project may be its own repository or a
 folder inside a larger one (`init` creates a repository when it is in neither); checkpoints
 commit only the project folder. The commit author is `user.name` and `user.email` from the
 repository's or the global git config, else `partstyle`. Git worktrees (a `.git` file pointing

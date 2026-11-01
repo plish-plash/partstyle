@@ -15,8 +15,17 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
 - `pnpm partstyle -p examples/bench-sensor view`, then open the printed URL; for UI work run
   `pnpm --filter @partstyle/viewer dev` (Vite, proxies `/api` to a viewer on port 7766)
 - `pnpm check`: lint + typecheck + test
+- `pnpm standalone [TARGET...]` (after a build): Bun-compiled single executable in
+  `packages/cli/standalone/out/` with the grammar and viewer embedded (`scripts/standalone.mjs`;
+  Bun is at `~/.bun/bin/bun.exe` here, so pass `BUN=` if it is not on PATH). The smoke test
+  `packages/cli/src/standalone.test.ts` runs only when the native executable exists. Bun
+  defines a global `self`, which `drawing/layout.ts` hides while constructing ELK. CI
+  (`.github/workflows/ci.yml`) and tag releases (`release.yml`) build and smoke-test these
+  with `PARTSTYLE_BINARY` set, which makes a missing executable fail rather than skip.
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
-  [docs/cli.md](docs/cli.md), and keep it updated when commands change
+  [docs/cli.md](docs/cli.md), and keep it updated when commands change. cli.md is a man page:
+  command syntax and behaviour only. Installing, building, the standalone executable, CI and
+  releases go in [docs/install.md](docs/install.md); MCP client setup in docs/claude-code.md.
 - KiCad: `kicad-cli` is often not on PATH. On Windows look in
   `C:\Program Files\KiCad\<version>\bin\kicad-cli.exe` (10.0 on this machine) before concluding
   KiCad is missing (`project/kicad.ts` `findKicad` checks there). Tests that need kicad-cli
@@ -38,7 +47,8 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
     prompts, `partstyle prompt` and the `.claude/commands/` files `init` writes.
   - AI operations: `views.ts` (overview, read_block), `query.ts`, `patch.ts` (apply),
     `parts/search.ts`. `project/workspace.ts` wraps them over a folder, reloading per call.
-- `packages/cli` and `packages/mcp`: thin shells over `Workspace`. Every MCP tool has a CLI
+- `packages/cli` and `packages/mcp`: thin shells over `Workspace` (`partstyle mcp` runs
+  `serveMcp` from `packages/mcp/src/serve.ts`). Every MCP tool has a CLI
   command with identical output; add both together (see [docs/claude-code.md](docs/claude-code.md)).
   - KiCad hand-off: `bom.ts` (generic → MPN resolution, bom.lock), `kicad/` (S-expressions,
     annotation, schematic and netlist writers; pure). Symbols: `kicad/libsym.ts` matches and

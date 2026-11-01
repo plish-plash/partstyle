@@ -1,0 +1,44 @@
+# Lint, typecheck and test on Linux and Windows, then build and smoke-test this runner's
+# standalone executable (KiCad is not installed, so kicad-cli tests skip).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4 # version from packageManager in package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm check
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: pnpm standalone
+      - name: Smoke-test the executable
+        shell: bash
+        run: |
+          os=$([ "$RUNNER_OS" = Windows ] && echo windows || echo linux)
+          ext=$([ "$RUNNER_OS" = Windows ] && echo .exe || true)
+          export PARTSTYLE_BINARY="$PWD/packages/cli/standalone/out/partstyle-$os-x64$ext"
+          pnpm vitest run packages/cli/src/standalone.test.ts

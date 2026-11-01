@@ -14,7 +14,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
-    "partstyle": "node packages/cli/dist/main.js"
+    "partstyle": "node packages/cli/dist/main.js",
+    "standalone": "node scripts/standalone.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

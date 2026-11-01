@@ -1,0 +1,82 @@
+# Builds the standalone partstyle executables (scripts/standalone.mjs) for each platform,
+# smoke-tests the one each runner can execute, and on a v* tag publishes them with checksums as
+# a GitHub release. Run it by hand (workflow_dispatch) to get the executables as artifacts only.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            targets: bun-linux-x64 bun-linux-arm64
+            native: linux-x64
+          - os: macos-latest # Apple Silicon
+            targets: bun-darwin-arm64 bun-darwin-x64
+            native: darwin-arm64
+          - os: windows-latest
+            targets: bun-windows-x64
+            native: windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4 # version from packageManager in package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm standalone ${{ matrix.targets }}
+      # Apple Silicon refuses to run unsigned code; an ad-hoc signature is enough to run it,
+      # though Gatekeeper still warns about a downloaded file (Developer ID signing and
+      # notarization would avoid that).
+      - name: Sign (ad hoc)
+        if: runner.os == 'macOS'
+        run: for f in packages/cli/standalone/out/partstyle-darwin-*; do codesign --sign - --force "$f"; done
+      - name: Smoke-test the native executable
+        shell: bash
+        run: |
+          export PARTSTYLE_BINARY="$PWD/packages/cli/standalone/out/partstyle-${{ matrix.native }}"
+          pnpm vitest run packages/cli/src/standalone.test.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: partstyle-${{ matrix.os }}
+          # Executables only, not the source maps beside them.
+          path: |
+            packages/cli/standalone/out/partstyle-*
+            !packages/cli/standalone/out/*.map
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: partstyle-*
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum partstyle-* > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

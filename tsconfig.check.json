@@ -6,7 +6,8 @@
     "paths": {
       "@partstyle/engine": ["./packages/engine/src/index.ts"],
       "@partstyle/engine/node": ["./packages/engine/src/node.ts"],
-      "@partstyle/server": ["./packages/server/src/index.ts"]
+      "@partstyle/server": ["./packages/server/src/index.ts"],
+      "@partstyle/mcp": ["./packages/mcp/src/serve.ts"]
     }
   },
   "include": ["packages/*/src", "vitest.config.ts"],

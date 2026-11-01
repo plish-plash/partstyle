@@ -47,6 +47,8 @@ commands:
                                            import a KiCad project (creates the project if needed)
   bom export                               resolve generics, write bom.lock and bom.csv
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
+  mcp [--project DIR] [--viewer-port N] [--no-viewer]
+                                           run the MCP server on stdio (first argument only)
   focus                                    what is selected in the viewer, and open comments
   diff [--since checkpoint|last|ID]        circuit changes, statement by statement
   changes                                  changesets since the checkpoint, and pending patches

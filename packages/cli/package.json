@@ -11,6 +11,10 @@
   ],
   "dependencies": {
     "@partstyle/engine": "workspace:*",
+    "@partstyle/mcp": "workspace:*",
     "@partstyle/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2"
   }
 }
