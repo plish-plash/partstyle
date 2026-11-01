@@ -416,9 +416,13 @@ Review state lives in two files: `comments.yaml` (versioned with the design) and
 
 ## Versions
 
-Git is the storage engine; these commands give it schematic vocabulary. The project may be its
-own repository or a folder inside a larger one (`init` runs `git init` when it is in neither);
-checkpoints commit only the project folder.
+Git is the storage engine; these commands give it schematic vocabulary. partstyle reads and
+writes the repository itself (with isomorphic-git), so git need not be installed, and the result
+is an ordinary repository the git CLI can also drive. The project may be its own repository or a
+folder inside a larger one (`init` creates a repository when it is in neither); checkpoints
+commit only the project folder. The commit author is `user.name` and `user.email` from the
+repository's or the global git config, else `partstyle`. Git worktrees (a `.git` file pointing
+at another repository's worktree list) are not supported.
 
 - **Changeset:** one unit of change since the last checkpoint. Each `apply` is one; direct file
   edits become one per burst (edits less than a minute apart merge, roughly one turn of the
@@ -427,8 +431,10 @@ checkpoints commit only the project folder.
   `.partstyle/history.json`.
 - **Checkpoint:** a commit of the project folder, the person's approval of the changes so far.
   It starts a new changeset log.
-- **Variant:** a parallel version on its own branch, checked out as a git worktree under
-  `.partstyle/variants/NAME` (git-ignored).
+- **Variant:** a parallel version on its own branch, with a working copy of that branch under
+  `.partstyle/variants/NAME` (git-ignored). The copy is a plain folder marked by
+  `.partstyle-variant.json`; partstyle's checkpoints there commit to the variant's branch (the
+  git CLI run inside it sees the main repository instead).
 
 The viewer's Changes tab shows all of this: changes since the checkpoint are highlighted on the
 sheets (added green, modified amber), and each changeset or single statement can be reverted,
@@ -476,13 +482,13 @@ land immediately; the project's CLAUDE.md tells the AI to edit only through `app
 
 ### `variant list|create|diff|adopt|remove [NAME]`
 
-| Op            | Does                                                                                |
-| ------------- | ----------------------------------------------------------------------------------- |
-| `list`        | variants and how many statements each differs from the main line                    |
-| `create NAME` | a new branch from the last checkpoint, checked out under `.partstyle/variants/NAME` |
-| `diff NAME`   | main line → variant, statement by statement                                         |
-| `adopt NAME`  | copies the variant's design files over the main line's, as one changeset            |
-| `remove NAME` | deletes the worktree and its branch                                                 |
+| Op            | Does                                                                               |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `list`        | variants and how many statements each differs from the main line                   |
+| `create NAME` | a new branch from the last checkpoint, copied out under `.partstyle/variants/NAME` |
+| `diff NAME`   | main line → variant, statement by statement                                        |
+| `adopt NAME`  | copies the variant's design files over the main line's, as one changeset           |
+| `remove NAME` | deletes the working copy and its branch                                            |
 
 Work on a variant like any project: `partstyle -p .partstyle/variants/NAME/<project path> ...`,
 including its own checkpoints. The viewer opens it with `?variant=NAME`. Uncheckpointed changes

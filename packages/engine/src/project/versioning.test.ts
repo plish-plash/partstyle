@@ -1,18 +1,23 @@
+import { execFile } from "node:child_process";
 import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { git } from "./git.js";
+import { changedFiles, initRepo } from "./git.js";
 import { Workspace } from "./workspace.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
-const hasGit = await git(tmpdir(), ["--version"]).then(
+/** The git CLI, only to check that what isomorphic-git writes is a repository git reads. */
+const gitCli = async (cwd: string, args: string[]) =>
+  (await promisify(execFile)("git", args, { cwd, windowsHide: true })).stdout;
+const hasGit = await gitCli(tmpdir(), ["--version"]).then(
   () => true,
   () => false,
 );
 
-describe.skipIf(!hasGit)("versioning", () => {
+describe("versioning", () => {
   let tmp: string;
   let project: string;
   let ws: Workspace;
@@ -30,15 +35,7 @@ describe.skipIf(!hasGit)("versioning", () => {
     await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
     await rm(path.join(project, ".partstyle"), { recursive: true, force: true });
     await writeFile(path.join(project, ".gitignore"), ".partstyle/\nkicad/\n", "utf8");
-    for (const args of [
-      ["init", "-q"],
-      ["config", "user.email", "test@example.com"],
-      ["config", "user.name", "Test"],
-      ["config", "commit.gpgsign", "false"],
-      ["config", "core.autocrlf", "false"],
-    ]) {
-      await git(tmp, args);
-    }
+    await initRepo(tmp);
     ws = new Workspace(project);
   });
   afterAll(async () => {
@@ -50,7 +47,7 @@ describe.skipIf(!hasGit)("versioning", () => {
     expect(r.ok).toBe(true);
     expect(r.text).toMatch(/^checkpoint [0-9a-f]{7} "initial design"/);
     // The library beside the project is not part of it.
-    expect(await git(tmp, ["status", "--porcelain", "--", "library"])).toMatch(/\?\? library\//);
+    expect(await changedFiles(path.join(tmp, "library"))).toContain("L7805CV.yaml");
     expect((await ws.overview()).text).toMatch(
       /changes since checkpoint [0-9a-f]{7} "initial design": none/,
     );
@@ -139,10 +136,28 @@ describe.skipIf(!hasGit)("versioning", () => {
     const adopted = await ws.variant("adopt", "ldo");
     expect(adopted.text).toMatch(/^adopted variant ldo as C1: circuit\/power.ckt/);
     expect(await readFile(power(), "utf8")).toContain("res(22k");
-    // The main project's checkpoint never sweeps the variant's worktree in.
-    expect(await git(project, ["status", "--porcelain", "--", "."])).not.toContain("variants");
+    // The main project's checkpoint never sweeps the variant's copy in.
+    expect((await changedFiles(project)).join(" ")).not.toContain("variants");
+
+    // A checkpoint in the variant commits to its branch, not the main line.
+    await writeFile(vPower, text.replace("part R90 res(10k", "part R90 res(47k"));
+    expect((await variant.checkpoint("try 47k")).ok).toBe(true);
+    expect((await variant.checkpoints()).text).toMatch(/^[0-9a-f]{7} \S+ \S+ try 47k\n/);
+    expect((await ws.checkpoints()).text).not.toContain("try 47k");
 
     expect((await ws.variant("remove", "ldo")).ok).toBe(true);
     expect((await ws.variant("list")).text).toMatch(/^no variants/);
+  });
+
+  it.skipIf(!hasGit)("writes a repository the git CLI reads", async () => {
+    // (The removed variant's checkpoint is left dangling, as after git branch -D.)
+    expect(await gitCli(tmp, ["fsck", "--strict", "--no-dangling"])).toBe("");
+    expect(await gitCli(tmp, ["log", "--format=%s"])).toBe("with R90\ntweaks\ninitial design\n");
+    // Checkpoints stage what they commit; the adopted, not yet checkpointed edit shows.
+    expect(await gitCli(tmp, ["status", "--porcelain", "--", "examples"])).toBe(
+      " M examples/bench-sensor/circuit/power.ckt\n",
+    );
+    expect(await gitCli(tmp, ["ls-tree", "--name-only", "HEAD"])).toBe("examples\n");
+    expect(await gitCli(tmp, ["branch", "--list", "variant/*"])).toBe("");
   });
 });

@@ -30,7 +30,15 @@ import { planRevert, type RevertPlan } from "../versions/revert.js";
 import { buildViewerModel, type VersionState, type ViewerModel } from "../viewer-model.js";
 import { countIssues, formatValidation, issueSummary, overview, readBlock } from "../views.js";
 import { type ProjectConfig, parseProjectConfig } from "./config.js";
-import { filesAt, git, lastCommit, repoInfo } from "./git.js";
+import {
+  changedFiles,
+  commitProject,
+  filesAt,
+  initRepo,
+  lastCommit,
+  recentCommits,
+  repoInfo,
+} from "./git.js";
 import { type ChangeSource, changesOf, History, readCircuits, toFiles } from "./history.js";
 import {
   checkFootprints,
@@ -223,7 +231,7 @@ export class Workspace {
     // Checkpoints are git commits; a project already inside a repository uses that one.
     if (!(await repoInfo(this.root))) {
       try {
-        await git(this.root, ["init", "-q"]);
+        await initRepo(this.root);
         lines.push("initialized a git repository for checkpoints");
       } catch (e) {
         lines.push(`note: no git repository, so no checkpoints (${(e as Error).message})`);
@@ -967,10 +975,7 @@ export class Workspace {
 
   /** Files outside circuit/ changed since the checkpoint (context, parts, notes, locks). */
   private async otherChangedFiles(): Promise<string[]> {
-    const spec = ["--", ".", ":(exclude)circuit", ":(exclude).partstyle", ":(exclude)kicad"];
-    const changed = await git(this.root, ["diff", "--name-only", "--relative", "HEAD", ...spec]);
-    const added = await git(this.root, ["ls-files", "-o", "--exclude-standard", ...spec]);
-    return [...new Set(`${changed}\n${added}`.split("\n").filter(Boolean))].sort();
+    return (await changedFiles(this.root)).filter((f) => !/^(circuit|kicad)\//.test(f));
   }
 
   /** The changesets since the last checkpoint with numbered statements, and pending patches. */
@@ -1064,28 +1069,22 @@ export class Workspace {
         );
       }
       const st = await this.versionState();
-      // Local state stays out of checkpoints; naming it when git already ignores it is an error.
-      const ignored = await git(this.root, ["check-ignore", "-q", ".partstyle"]).then(
-        () => true,
-        () => false,
-      );
-      const spec = ["--", ".", ...(ignored ? [] : [":(exclude).partstyle"])];
-      if (!(await git(this.root, ["status", "--porcelain", ...spec])).trim()) {
-        return { ok: true, text: "nothing to checkpoint: no changes since the last checkpoint" };
-      }
+      // Local state (.partstyle/) stays out of checkpoints.
+      let id: string | undefined;
       try {
-        await git(this.root, ["add", "-A", ...spec]);
-        await git(this.root, ["commit", "-q", "-m", message.trim(), ...spec]);
+        id = await commitProject(this.root, message.trim());
       } catch (e) {
         return fail(`git could not commit: ${(e as Error).message}`);
       }
+      if (id === undefined) {
+        return { ok: true, text: "nothing to checkpoint: no changes since the last checkpoint" };
+      }
       await this.history.restart();
-      const cp = await lastCommit(this.root);
       const n = st.changed.length;
       const what = st.checkpoint
         ? `${n} statement change${n === 1 ? "" : "s"} in ${st.changesets.length} changeset${st.changesets.length === 1 ? "" : "s"}`
         : "the project's first checkpoint";
-      return { ok: true, text: `checkpoint ${cp?.id.slice(0, 7)} "${message.trim()}": ${what}` };
+      return { ok: true, text: `checkpoint ${id.slice(0, 7)} "${message.trim()}": ${what}` };
     });
   }
 
@@ -1094,14 +1093,9 @@ export class Workspace {
     return this.guard(async () => {
       await this.load();
       if (!(await repoInfo(this.root))) return fail("not in a git repository: no checkpoints");
-      const out = await git(this.root, ["log", "-n", "20", "--format=%h%x09%cI%x09%s", "--", "."]);
-      const lines = out
-        .split("\n")
-        .filter(Boolean)
-        .map((l) => {
-          const [id, date, ...msg] = l.split("\t");
-          return `${id} ${date?.slice(0, 16).replace("T", " ")} ${msg.join("\t")}`;
-        });
+      const lines = (await recentCommits(this.root, 20)).map(
+        (c) => `${c.id.slice(0, 7)} ${c.date.slice(0, 16).replace("T", " ")} ${c.message}`,
+      );
       return { ok: true, text: lines.length > 0 ? lines.join("\n") : "no checkpoints yet" };
     });
   }
@@ -1145,8 +1139,8 @@ export class Workspace {
   }
 
   /**
-   * Variants are parallel versions of the design on their own git branches, each checked out
-   * under .partstyle/variants/. list, create NAME and diff NAME are for anyone; adopt NAME
+   * Variants are parallel versions of the design on their own git branches, each with a
+   * working copy under .partstyle/variants/ (checkpoints there commit to its branch). list, create NAME and diff NAME are for anyone; adopt NAME
    * (copy a variant's design over the main line, as one changeset) and remove NAME are the
    * person's decisions.
    */
@@ -1221,7 +1215,7 @@ export class Workspace {
           ].join("\n"),
         };
       }
-      await removeVariant(this.root, v);
+      await removeVariant(info, v);
       return { ok: true, text: `removed variant ${name} and its branch ${v.branch}` };
     });
   }

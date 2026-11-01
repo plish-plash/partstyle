@@ -220,7 +220,7 @@ Git is the storage engine; the app gives it schematic vocabulary so the user nev
 | ------------ | ------------------------------------ | ------------------------------------------------------------------------------ |
 | Checkpoint   | Commit                               | Message written by the human or proposed by the AI                             |
 | Changeset    | Working-copy edits, logged per apply | One per AI `apply` call; applied at once, revertible until the next checkpoint |
-| Variant      | Branch, checked out as a worktree    | Parallel versions (e.g. "LDO" vs "buck" power stage) viewable side by side     |
+| Variant      | Branch, with a working copy          | Parallel versions (e.g. "LDO" vs "buck" power stage) viewable side by side     |
 | Compare      | Semantic diff between any two refs   | Reports parts added/removed/changed and net membership changes, not text lines |
 
 The semantic diff is computed by the engine from the parsed models, so a reordered file or a layout-only change shows as no circuit change. Layout files are versioned too, but excluded from circuit diffs.
@@ -276,7 +276,7 @@ Decision: TypeScript end to end, one local process that serves MCP, the CLI and 
 | MCP server                                  | Official MCP TypeScript SDK, stdio                                     | Works with Claude Desktop/Code; same process as viewer                 |
 | Viewer                                      | Local web app (Vite + Svelte or React), SVG rendering                  | Opens in any browser; can be wrapped in Tauri later                    |
 | Auto-layout                                 | elkjs (Eclipse Layout Kernel), layered algorithm with port constraints | Designed for node-port graphs; used by netlistsvg for the same job     |
-| Versioning                                  | git via isomorphic-git or the git CLI                                  | Real git repo the user can also drive directly                         |
+| Versioning                                  | git via isomorphic-git (no git install needed)                         | Real git repo the user can also drive directly                         |
 | KiCad I/O                                   | Own S-expression reader/writer + `kicad-cli` subprocess                | No Python dependency; KiCad does connectivity on import                |
 
 Python was considered for its KiCad tooling (kiutils, SKiDL) but rejected to keep one language across engine and viewer. Rust is unnecessary for designs of this size.
