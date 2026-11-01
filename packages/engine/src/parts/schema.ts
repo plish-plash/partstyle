@@ -27,11 +27,11 @@ export const PartRecordSchema = z
       .string()
       .regex(/^[A-Za-z0-9._+-]+$/, "id may contain only letters, digits and . _ + -")
       .describe("Library id and file name, referenced as lib:<id>; the MPN with / replaced by _"),
-    manufacturer: z.string().min(1),
-    mpn: z.string().min(1),
+    manufacturer: z.string(),
+    mpn: z.string(),
     summary: z.string().min(1).describe("One line: what it is, key ratings, package"),
-    package: z.string().min(1),
-    footprint: z.string().min(1).describe("KiCad footprint, Library:Footprint"),
+    package: z.string(),
+    footprint: z.string().describe("KiCad footprint, Library:Footprint"),
     kicad_symbol: z
       .string()
       .regex(/^[^:\s]+:[^:\s]+$/, "must be Library:Symbol")
@@ -77,14 +77,32 @@ export const PartRecordSchema = z
           sha256: z.string().nullable().optional(),
         })
         .optional(),
-      extracted_by: z.enum(["ai", "human"]),
+      extracted_by: z
+        .enum(["ai", "human", "kicad"])
+        .describe("kicad: a draft made by KiCad import from a symbol, still to be completed"),
       verified_by: z
         .enum(["human"])
         .nullable()
         .describe("null until checked against the datasheet"),
     }),
   })
+  .superRefine((r, ctx) => {
+    // Only an import draft may leave identity fields empty; completing it means filling them.
+    if (r.provenance.extracted_by === "kicad") return;
+    for (const key of ["manufacturer", "mpn", "package", "footprint"] as const) {
+      if (r[key] === "") {
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: "must not be empty (only a KiCad import draft may leave it empty)",
+        });
+      }
+    }
+  })
   .describe("A real part: identity, pinout and distilled datasheet facts");
+
+/** A record KiCad import drafted from a symbol: pins and footprint only, no datasheet facts. */
+export const isDraft = (r: PartRecord) => r.provenance.extracted_by === "kicad";
 
 export type PartRecord = z.infer<typeof PartRecordSchema>;
 

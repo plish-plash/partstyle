@@ -49,6 +49,10 @@ AI-first schematic editor; see [DESIGN.md](DESIGN.md). Circuits are `.ckt` text
     grid (`gridRoute` keeps segments orthogonal); `drawing/wires.ts`
     splits, merges and adds junctions; `drawing/connectivity.ts` proves the geometry matches the
     netlist; `drawing/prepare.ts` is the entry point. `kicad/schematic.ts` only serializes it.
+  - KiCad import: `kicad/import.ts` (pure: netlist reading, sheets → blocks and ports, part
+    matching, draft records, re-import carry-over) and `project/kicad-import.ts` (node: runs
+    kicad-cli on a temporary copy, with PWR_FLAGs exposed and ERC for no-connect flags).
+    Workspace `kicadImport` writes the files and checks the result against KiCad's netlist.
   - Review: `review.ts` (comments.yaml, .partstyle/focus.json, `focus` text) and
     `viewer-model.ts` (the JSON the viewer renders).
   - Versions: `versions/diff.ts` (semantic statement diff, pure) and `versions/revert.ts`

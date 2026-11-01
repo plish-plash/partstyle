@@ -82,3 +82,4 @@ the issues they added or resolved. Use `dry_run` to preview.
 | `part.footprint-pads`                                            | error                              | record's pins and footprint pads differ                           |
 | `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint |
 | `kicad.symbol-fallback`                                          | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated    |
+| `part.draft`                                                     | warning                            | a KiCad import draft record is in use; complete or replace it     |

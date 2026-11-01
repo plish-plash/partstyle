@@ -230,6 +230,8 @@ export async function checkFootprints(
   const issues: Issue[] = [];
   for (const e of entries) {
     const r = e.record;
+    // An import draft without a footprint is already flagged part.draft.
+    if (r.footprint === "") continue;
     const location = { file: e.file, line: 1, col: 1 };
     const pads = await footprintPads(footprintsDir, r.footprint);
     if (!pads) {

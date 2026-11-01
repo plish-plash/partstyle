@@ -40,6 +40,8 @@ commands:
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
   kicad export [--no-check]                write kicad/ and verify it with kicad-cli
+  kicad import PATH [--replace] [--library PATH]...
+                                           import a KiCad project (creates the project if needed)
   bom export                               resolve generics, write bom.lock and bom.csv
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
   focus                                    what is selected in the viewer, and open comments
@@ -78,6 +80,7 @@ function parse(argv: string[]) {
       json: { type: "boolean" },
       "dry-run": { type: "boolean" },
       "no-check": { type: "boolean" },
+      replace: { type: "boolean" },
       detail: { type: "string" },
       tier: { type: "string" },
       scope: { type: "string" },
@@ -183,9 +186,20 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
     }
 
     case "kicad":
-      if (args[0] !== "export" || args.length > 1)
-        return usageError("usage: kicad export [--no-check]");
-      return fromText(await ws.kicadExport({ check: !values["no-check"] }));
+      if (args[0] === "export" && args.length === 1) {
+        return fromText(await ws.kicadExport({ check: !values["no-check"] }));
+      }
+      if (args[0] === "import" && args.length === 2) {
+        return fromText(
+          await ws.kicadImport(path.resolve(args[1] as string), {
+            replace: values.replace ?? false,
+            libraryPaths: (values.library ?? []).map((p) => path.resolve(p)),
+          }),
+        );
+      }
+      return usageError(
+        "usage: kicad export [--no-check] | kicad import PATH [--replace] [--library PATH]...",
+      );
 
     case "bom":
       if (args[0] !== "export" || args.length > 1) return usageError("usage: bom export");

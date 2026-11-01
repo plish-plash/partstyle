@@ -18,6 +18,13 @@ export type * from "./drawing/types.js";
 export { runErc } from "./erc/rules.js";
 export * from "./kicad/annotate.js";
 export { exportKicad, type KicadExport } from "./kicad/export.js";
+export {
+  buildImport,
+  type ImportInput,
+  type ImportResult,
+  type KicadNetlist,
+  parseNetlistForImport,
+} from "./kicad/import.js";
 export { compareNetlists, parseKicadNetlist, writeKicadNetlist } from "./kicad/netlist.js";
 export * from "./kicad/sexpr.js";
 export { stableUuid } from "./kicad/uuid.js";

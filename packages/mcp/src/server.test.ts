@@ -36,6 +36,7 @@ describe("MCP server", () => {
       "focus",
       "init_project",
       "kicad_export",
+      "kicad_import",
       "overview",
       "part_get",
       "part_put",
@@ -46,7 +47,7 @@ describe("MCP server", () => {
       "variant",
     ]);
     // Tool definitions are paid on every turn; keep them short (DESIGN.md plans ~16 tools).
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(1700);
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(1750);
   });
 
   it("returns exactly what the CLI's workspace returns", async () => {

@@ -54,6 +54,7 @@ identical.
 | `part_get(id, tier)`                | `partstyle part get ID --tier ...`                                               |
 | `part_put(record, scope)`           | `partstyle part put [FILE\|-] --scope ...`                                       |
 | `kicad_export(check)`               | `partstyle kicad export [--no-check]`                                            |
+| `kicad_import(path)`                | `partstyle kicad import PATH` (`--replace` is CLI only)                          |
 | `bom_export`                        | `partstyle bom export`                                                           |
 | `focus`                             | `partstyle focus`                                                                |
 | `diff(since)`                       | `partstyle diff [--since ...]`                                                   |

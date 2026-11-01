@@ -47,7 +47,7 @@ const rootOptions: LayoutOptions = {
   "elk.spacing.nodeNode": "2.54",
   "elk.layered.spacing.nodeNodeBetweenLayers": "7.62",
   "elk.spacing.edgeEdge": "2.54",
-  "elk.spacing.edgeNode": "1.27",
+  "elk.spacing.edgeNode": "2.54",
   "elk.layered.spacing.edgeEdgeBetweenLayers": "2.54",
   "elk.layered.spacing.edgeNodeBetweenLayers": "2.54",
   "elk.spacing.componentComponent": "10.16",

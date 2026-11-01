@@ -6,8 +6,10 @@ import { compareIssues, formatIssue, issueDelta } from "../diagnostics.js";
 import { type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
 import { annotate, formatAnnotationLock, parseAnnotationLock } from "../kicad/annotate.js";
 import { exportKicad } from "../kicad/export.js";
+import { buildImport } from "../kicad/import.js";
 import { compareNetlists, parseKicadNetlist } from "../kicad/netlist.js";
 import { parsePartRecord } from "../parts/library.js";
+import { isDraft } from "../parts/schema.js";
 import { describePart, type PartTier, searchParts } from "../parts/search.js";
 import { applyPatch } from "../patch.js";
 import { runQuery, type TextResult } from "../query.js";
@@ -39,6 +41,7 @@ import {
   parseErcJson,
   runKicadCli,
 } from "./kicad.js";
+import { type KicadDesign, readKicadDesign } from "./kicad-import.js";
 import { loadProject, ProjectLoadError } from "./load.js";
 import { addPending, readPending, removePending } from "./pending.js";
 import { projectSkeleton } from "./skeleton.js";
@@ -534,6 +537,153 @@ export class Workspace {
         `next: open ${KICAD_DIR}/${x.projectFile.name}; in the PCB editor use Tools > Update PCB from Schematic`,
       );
       return { ok, text: lines.join("\n") };
+    });
+  }
+
+  /**
+   * Imports a KiCad project (a .kicad_pro, .kicad_sch or its folder) through kicad-cli, which
+   * resolves the connectivity. Creates the project if there is none; importing again replaces
+   * circuit/ as one changeset, keeping intents, net attributes, port kinds, waivers and block
+   * descriptions. Symbols that match no library record become draft records in parts/.
+   */
+  kicadImport(
+    source: string,
+    opts: { replace?: boolean; libraryPaths?: string[] } = {},
+  ): Promise<TextResult> {
+    return this.guard(async () => {
+      const hasProject = await exists(path.join(this.root, "project.toml"));
+      const config = hasProject
+        ? parseProjectConfig(await this.readOptional("project.toml"), "project.toml").config
+        : undefined;
+      const { cli, symbols } = await this.kicad(config);
+      if (!cli) {
+        return fail(
+          "import needs kicad-cli, which resolves KiCad's connectivity (set [kicad] cli in project.toml or KICAD_CLI)",
+        );
+      }
+      const lines: string[] = [];
+      if (hasProject && !opts.replace) {
+        const circuits = Object.keys(await readCircuits(this.root));
+        if (circuits.length > 0 && !(await exists(path.join(this.root, IMPORT_NOTES)))) {
+          return fail(
+            `${this.root} already has a design (${circuits.join(", ")}) that was not imported; ` +
+              "import with replace to overwrite circuit/ (it stays revertible as one changeset)",
+          );
+        }
+      }
+      let design: KicadDesign;
+      try {
+        design = await readKicadDesign(cli, source);
+      } catch (e) {
+        return fail(`cannot read the KiCad project: ${(e as Error).message}`);
+      }
+      if (!hasProject) {
+        const created = await this.init({
+          name: design.project,
+          ...(opts.libraryPaths && { libraryPaths: opts.libraryPaths }),
+        });
+        if (!created.ok) return created;
+        lines.push(created.text.split("\n")[0] as string);
+      }
+
+      const { result: before } = await this.load();
+      const beforeFiles = await readCircuits(this.root);
+      const { footprints } = await this.kicad(before.config);
+      const pads = new Map<string, Set<string>>();
+      if (footprints) {
+        const used = new Set(
+          [...design.sheets.values()].flatMap((n) => n.comps.map((c) => c.footprint)),
+        );
+        for (const fp of used) {
+          const p = fp ? await footprintPads(footprints, fp) : undefined;
+          if (p) pads.set(fp, p);
+        }
+      }
+      let stockSymbol: ((libId: string) => boolean) | undefined;
+      if (symbols) {
+        if (this.symbolLibs?.dir !== symbols) this.symbolLibs = new KicadSymbolLibraries(symbols);
+        const names = new Set((await this.symbolLibs.index()).map((s) => `${s.lib}:${s.name}`));
+        stockSymbol = (id) => names.has(id);
+      }
+      const x = buildImport({
+        project: design.project,
+        rootFile: design.rootFile,
+        sheets: design.sheets,
+        library: before.library,
+        notes: design.notes,
+        pads,
+        source: toPosix(path.resolve(source)),
+        date: new Date().toLocaleDateString("sv"),
+        ...(stockSymbol && { stockSymbol }),
+        ...(design.unconnected && { unconnected: design.unconnected }),
+        ...(hasProject && {
+          previous: {
+            blocks: before.blocks,
+            annotation: parseAnnotationLock(await this.readOptional("annotation.lock")),
+          },
+        }),
+      });
+
+      // circuit/ is replaced; drafts are remade, and records someone completed are left alone.
+      const circuitDir = path.join(this.root, "circuit");
+      await mkdir(circuitDir, { recursive: true });
+      const written = new Set(x.circuits.map((c) => c.file));
+      for (const f of Object.keys(beforeFiles)) {
+        if (!written.has(f)) await rm(path.join(this.root, f), { force: true });
+      }
+      for (const c of x.circuits) await writeFile(path.join(this.root, c.file), c.text, "utf8");
+      const partsDir = path.join(this.root, "parts");
+      const draftFiles = new Set(x.drafts.map((d) => `${d.id}.yaml`));
+      for (const f of await readdir(partsDir).catch(() => [] as string[])) {
+        if (draftFiles.has(f) || !/\.ya?ml$/.test(f)) continue;
+        const text = await readFile(path.join(partsDir, f), "utf8");
+        const { record } = parsePartRecord(text, f);
+        if (record && isDraft(record)) await rm(path.join(partsDir, f));
+      }
+      if (x.drafts.length > 0) await mkdir(partsDir, { recursive: true });
+      for (const d of x.drafts)
+        await writeFile(path.join(partsDir, `${d.id}.yaml`), d.text, "utf8");
+      await writeFile(path.join(this.root, "annotation.lock"), x.annotationLock, "utf8");
+      await mkdir(path.join(this.root, "notes"), { recursive: true });
+      await writeFile(path.join(this.root, IMPORT_NOTES), x.notes, "utf8");
+      const logged = await this.history.record("import", `imported KiCad ${design.project}`);
+
+      const after = validateProject(await loadProject(this.root));
+      const files = [
+        ...x.circuits.map((c) => c.file),
+        ...(x.drafts.length > 0 ? [`parts/ (${x.drafts.length} drafts)`] : []),
+        "annotation.lock",
+        IMPORT_NOTES,
+      ];
+      lines.push(`imported into ${files.join(", ")}${logged ? ` as ${logged.id}` : ""}`);
+      lines.push(...x.report);
+      if (after.netlist) {
+        const diffs = compareNetlists(after.netlist, x.annotation, x.expected);
+        lines.push(
+          diffs.length === 0
+            ? "round-trip: the imported design connects exactly what KiCad's netlist does"
+            : "round-trip MISMATCH (an import bug):",
+          ...diffs.map((d) => `  ${d}`),
+        );
+      }
+      if (hasProject) {
+        const changes = diffCircuits(toFiles(beforeFiles), toFiles(await readCircuits(this.root)));
+        lines.push(
+          changes.length === 0
+            ? "changes: none to the circuit"
+            : `changes: ${changes.length} statement${changes.length === 1 ? "" : "s"} (see diff)`,
+          ...formatChanges(changes)
+            .slice(0, 12)
+            .map((l) => `  ${l}`),
+        );
+      }
+      lines.push(`now: ${issueSummary(after)}`);
+      lines.push(
+        x.drafts.length > 0
+          ? "next: overview; resolve the drafts (validate lists them as part.draft), then rename auto-named nets"
+          : "next: overview, then validate",
+      );
+      return { ok: true, text: lines.join("\n") };
     });
   }
 
@@ -1117,6 +1267,7 @@ export class Workspace {
 
 const KICAD_DIR = "kicad";
 const VIEWER_FILE = ".partstyle/viewer.json";
+const IMPORT_NOTES = "notes/kicad-import.md";
 
 function summarizeLockChanges(changes: string[]): string[] {
   if (changes.length === 0) return [];

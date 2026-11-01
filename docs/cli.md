@@ -271,6 +271,55 @@ The command fails (exit 1) on a round-trip mismatch, KiCad ERC errors or footpri
 Next step: open `kicad/<name>.kicad_pro`, then in the PCB editor run Tools > Update PCB from
 Schematic.
 
+### `kicad import PATH [--replace] [--library PATH]...`
+
+Imports a KiCad project: a `.kicad_pro`, its root `.kicad_sch`, or a folder holding one project.
+KiCad itself resolves the connectivity, so kicad-cli is required. It runs on a temporary copy of
+the schematics; the KiCad files are never written. Without a `project.toml` the project is
+created first (as `init` would, with `--library` paths); then:
+
+| Written                 | Contents                                                   |
+| ----------------------- | ---------------------------------------------------------- |
+| `circuit/<block>.ckt`   | one block per sheet file; the root sheet is `main`         |
+| `parts/<id>.yaml`       | draft records for symbols that match no library record     |
+| `annotation.lock`       | each instance's KiCad refdes, so a later export keeps them |
+| `notes/kicad-import.md` | nets that had no name, and the schematic's text notes      |
+
+How KiCad maps onto blocks:
+
+- **Sheets** become blocks; a sheet used twice is one block used twice. Nets that cross a sheet
+  boundary become ports, named by the sheet's hierarchical (or global) labels. Port kinds are
+  inferred: `ground` from the name, `power_out`/`power_in` from pin types or a rail name
+  (`+5V`, `VCC`), otherwise from signal directions.
+- **Net names** come from labels and power symbols. A net KiCad named automatically
+  (`Net-(R1-Pad2)`) is named after a pin, `N_R1_2`, and listed for renaming.
+- **PWR_FLAG** on a net becomes `{source: KiCad PWR_FLAG}`.
+- **No-connect flags**: pins KiCad's ERC accepts as unconnected get
+  `waive REF.PIN erc.unconnected-pin "no-connect flag in KiCad"`.
+- **Parts** are matched in order: partstyle's own Spec field (a design exported from here), the
+  MPN field (also "Manufacturer Part Number" and similar), the LCSC field, then plain R, C, L
+  and coloured LED symbols become generics (`res(10k, 1%, 0603)`) when the value parses and the
+  footprint is partstyle's standard chip footprint, then the value as an MPN or record id. A
+  library record must have every pin number of the KiCad symbol.
+- **Everything else** becomes a draft record per distinct symbol, value, footprint and MPN, built
+  from KiCad's pin table (`~{RESET}` becomes `~RESET`), with `provenance.extracted_by: kicad`
+  and footprint pads the symbol lacks as `nc` pins. Drafts may leave manufacturer, MPN, package
+  and footprint empty. Each draft in use is a `part.draft` warning, the unresolved-parts
+  worklist: identify the part, complete the record from its datasheet and set `extracted_by`,
+  or switch the parts to another record.
+
+Afterwards the imported design is validated and its connectivity compared with KiCad's netlist;
+a mismatch is reported as an import bug. Symbols without pins (mounting holes, logos) are
+skipped.
+
+**Re-importing** (after editing in KiCad) replaces `circuit/` as one changeset, revertible like
+any other, and reports the semantic diff. It keeps what KiCad cannot hold: part and net intents,
+net attributes, port kinds, waivers and block descriptions, and the local refdes, net and port
+names the design had (matched by `annotation.lock` and by pins). Drafts are remade; records
+someone completed are left alone. A project with a design that was not imported needs
+`--replace`. Exporting and re-importing an unchanged design gives no circuit changes; a value
+changed in KiCad updates the generic's value.
+
 ### Finding KiCad
 
 `kicad-cli` and the stock footprint and symbol libraries are located in this order:

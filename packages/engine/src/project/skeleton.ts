@@ -73,6 +73,9 @@ and fix or explain every issue.
   Use \`lib:ID\` for everything else. Find records with \`partstyle part search\`; add missing ones
   with \`partstyle part put\` (\`partstyle schema part\` prints the schema), taking pinouts from the
   datasheet. Leave \`verified_by: null\`: only a human verifies a record.
+- A design imported from KiCad (\`partstyle kicad import\`) has draft records for symbols the
+  library lacked, each a \`part.draft\` warning: identify the part with the person, then complete
+  the record from its datasheet (or switch the parts to an existing record or a generic).
 - Put an \`@ intent\` on every part and on nets whose purpose is not obvious.
 - Record design rationale in \`notes/decisions.md\` and layout constraints in \`notes/pcb.md\`.
 - Waive an issue only with a real reason in the waiver.

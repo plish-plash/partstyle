@@ -4,6 +4,7 @@ import { compareIssues, dedupeIssues, type Issue } from "./diagnostics.js";
 import { runErc } from "./erc/rules.js";
 import { elaborate, type Netlist, type WaiverScope } from "./netlist/elaborate.js";
 import { buildLibrary, type PartLibrary } from "./parts/library.js";
+import { isDraft } from "./parts/schema.js";
 import { type ProjectConfig, parseProjectConfig } from "./project/config.js";
 import type { ProjectSource } from "./project/source.js";
 
@@ -38,7 +39,11 @@ export function validateProject(source: ProjectSource): ValidationResult {
   }
 
   const elaborated = elaborate(blocks, library, config.top);
-  issues.push(...elaborated.issues, ...runErc(elaborated.netlist));
+  issues.push(
+    ...elaborated.issues,
+    ...runErc(elaborated.netlist),
+    ...draftIssues(elaborated.netlist, library),
+  );
 
   const { kept, waived } = applyWaivers(dedupeIssues(issues), elaborated.waiverScopes);
   return {
@@ -51,7 +56,34 @@ export function validateProject(source: ProjectSource): ValidationResult {
   };
 }
 
-function globToRegExp(glob: string): RegExp {
+/**
+ * The unresolved-parts worklist KiCad import leaves: one warning per draft record in use, until
+ * the record is completed from a datasheet or the parts are switched to a real record.
+ */
+function draftIssues(netlist: Netlist, library: PartLibrary): Issue[] {
+  const users = new Map<string, string[]>();
+  for (const p of netlist.parts) {
+    if (p.record && isDraft(p.record)) {
+      users.set(p.record.id, [...(users.get(p.record.id) ?? []), p.path]);
+    }
+  }
+  return [...users].map(([id, paths]) => {
+    const r = library.get(id);
+    const missing = r?.record.mpn ? "" : "no MPN; ";
+    return {
+      code: "part.draft",
+      severity: "warning" as const,
+      message:
+        `lib:${id} (${paths.join(" ")}) is a draft from KiCad import: ${missing}identify the part, ` +
+        "then complete the record from its datasheet (part_put) or use another record",
+      location: { file: r?.file ?? "", line: 1, col: 1 },
+      subjects: [id, ...paths],
+    };
+  });
+}
+
+/** A waiver subject (`U2.PD*`) as a regular expression. */
+export function globToRegExp(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\?]/g, "\\$&").replace(/\*/g, ".*");
   return new RegExp(`^${escaped}$`);
 }

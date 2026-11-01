@@ -36,6 +36,18 @@ describe("parsePartRecord", () => {
     );
   });
 
+  it("lets only a KiCad import draft leave identity fields empty", () => {
+    const empty = record("X1")
+      .replace("mpn: X1", 'mpn: ""')
+      .replace(/footprint: .*/, 'footprint: ""');
+    expect(parsePartRecord(empty, "x.yaml").issues.map((i) => i.message)).toEqual([
+      "mpn: must not be empty (only a KiCad import draft may leave it empty)",
+      "footprint: must not be empty (only a KiCad import draft may leave it empty)",
+    ]);
+    const draft = empty.replace("extracted_by: ai", "extracted_by: kicad");
+    expect(parsePartRecord(draft, "x.yaml").issues).toEqual([]);
+  });
+
   it("rejects unknown keys so typos surface", () => {
     const { issues } = parsePartRecord(`${record("X1")}ratngs: {}\n`, "x.yaml");
     expect(issues[0]?.message).toMatch(/ratngs/);

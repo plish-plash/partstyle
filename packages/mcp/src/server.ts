@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { queryUsage, type TextResult } from "@partstyle/engine";
 import { readGrammarReference, type Workspace } from "@partstyle/engine/node";
@@ -34,7 +35,7 @@ export function createServer(ws: Workspace, version = "0.0.0"): McpServer {
     "init_project",
     {
       description:
-        "Create a new project skeleton (project.toml, context.md, circuit/main.ckt, notes/, CLAUDE.md) in this server's project folder. Fails if a project exists.",
+        "Create a project skeleton (project.toml, context.md, circuit/, notes/, CLAUDE.md) in this server's folder. Fails if one exists.",
       inputSchema: {
         name: z.string().optional().describe("Defaults to the folder name"),
         library_paths: z
@@ -155,13 +156,24 @@ export function createServer(ws: Workspace, version = "0.0.0"): McpServer {
     "kicad_export",
     {
       description:
-        "Write the KiCad project to kicad/ (schematic, symbols, netlist; never the PCB), then verify it with kicad-cli: netlist round-trip and KiCad ERC. Requires a design without errors.",
+        "Write kicad/ (schematic, symbols, netlist; never the PCB) and verify it with kicad-cli (netlist round-trip, ERC). Needs a design without errors.",
       inputSchema: {
         check: z.boolean().optional().describe("Run kicad-cli checks (default true)"),
       },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
     async ({ check }) => reply(await ws.kicadExport({ check: check ?? true })),
+  );
+
+  server.registerTool(
+    "kicad_import",
+    {
+      description:
+        "Import a KiCad project (.kicad_pro, .kicad_sch or folder, relative to the project). Re-import replaces circuit/, keeping intents and attributes; unmatched symbols become drafts.",
+      inputSchema: { path: z.string() },
+      annotations: { destructiveHint: true, openWorldHint: false },
+    },
+    async ({ path: source }) => reply(await ws.kicadImport(resolve(ws.root, source))),
   );
 
   server.registerTool(
