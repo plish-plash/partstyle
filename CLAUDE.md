@@ -26,7 +26,7 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   `packages/cli/standalone/out/partstyle.mcpb`, the same entry bundled for Node, with the
   manifest template `packages/cli/mcpb/manifest.json` (tools filled in from the server). Building
   it runs the bundle under the current Node first; `node scripts/standalone.mjs --check-mcpb`
-  repeats that (the manifest promises Node >= 20). The smoke test also runs the bundle.
+  repeats that (the manifest promises Node >= 22, the oldest Node CI checks it under). The smoke test also runs the bundle.
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
   [docs/cli.md](docs/cli.md), and keep it updated when commands change. cli.md is a man page:
   command syntax and behaviour only. Installing, building, the standalone executable, CI and

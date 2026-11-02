@@ -93,8 +93,8 @@ copy of `examples/bench-sensor`. It then writes the manifest from the template
 version, adds `LICENSE` and `THIRD_PARTY_NOTICES.txt`
 (every bundled package's license, found from Bun's metafile, plus the viewer's Svelte runtime;
 also written to `out/` for releases), and packs it with the `mcpb` CLI
-(`@anthropic-ai/mcpb`). The manifest asks for Node 20 or later; `--check-mcpb` repeats the check
-alone, e.g. under Node 20. The smoke test also covers the bundle once it is built.
+(`@anthropic-ai/mcpb`). The manifest asks for Node 22 or later; `--check-mcpb` repeats the check
+alone, e.g. under another Node. The smoke test also covers the bundle once it is built.
 
 ## CI and releases
 
@@ -103,7 +103,7 @@ alone, e.g. under Node 20. The smoke test also covers the bundle once it is buil
 - `.github/workflows/release.yml`, on a `vX.Y.Z` tag: checks the tag against the version (below);
   builds all five executables on Linux,
   macOS and Windows runners (the macOS ones ad-hoc signed) and smoke-tests the ones each runner
-  can execute; builds the extension and checks it under Node 22 and 20;
+  can execute; builds the extension and checks it under Node 22;
   zips `library/` as `partstyle-library.zip`; then publishes them all, with `SHA256SUMS` and
   `THIRD_PARTY_NOTICES.txt` (the licenses of the bundled packages), as a
   GitHub release with generated notes. A tag with a

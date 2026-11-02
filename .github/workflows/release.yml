@@ -46,7 +46,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4 # version from packageManager in package.json
+      - uses: pnpm/action-setup@v6 # version from packageManager in package.json (pnpm 12: v6.1+)
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -68,7 +68,7 @@ jobs:
         run: |
           export PARTSTYLE_BINARY="$PWD/packages/cli/standalone/out/partstyle-${{ matrix.native }}"
           pnpm vitest run packages/cli/src/standalone.test.ts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: partstyle-${{ matrix.os }}
           # Executables only, not the source maps beside them.
@@ -78,14 +78,13 @@ jobs:
           if-no-files-found: error
 
   # The Claude Desktop extension: one Node bundle for every platform (Claude Desktop runs it
-  # with its own Node.js), checked under Node 22 while packing and again under Node 20, the
-  # oldest its manifest accepts.
+  # with its own Node.js), checked while packing under Node 22, the oldest its manifest accepts.
   mcpb:
     needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4 # version from packageManager in package.json
+      - uses: pnpm/action-setup@v6 # version from packageManager in package.json (pnpm 12: v6.1+)
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -101,12 +100,7 @@ jobs:
         env:
           PARTSTYLE_BINARY: ${{ github.workspace }}/packages/cli/standalone/out/mcpb/server/index.mjs
         run: pnpm vitest run packages/cli/src/standalone.test.ts
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 20
-      - name: Check it under Node 20
-        run: node scripts/standalone.mjs --check-mcpb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: partstyle-mcpb
           # The notices cover the executables too: they bundle the same packages.
@@ -123,7 +117,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: zip -r -X partstyle-library.zip library
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: partstyle-library
           path: partstyle-library.zip
@@ -136,7 +130,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: out
           pattern: partstyle-*
@@ -144,7 +138,7 @@ jobs:
       - name: Checksums
         working-directory: out
         run: sha256sum partstyle* > SHA256SUMS && cat SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: out/*
           generate_release_notes: true
