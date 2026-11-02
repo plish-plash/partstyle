@@ -9,6 +9,7 @@ import type { ProjectConfig } from "../project/config.js";
 import type { ValidationResult } from "../validate.js";
 import { checkConnectivity } from "./connectivity.js";
 import { layoutSheet } from "./layout.js";
+import { turnable } from "./orient.js";
 import { type DrawingPlan, planDrawing } from "./plan.js";
 import type { SheetLayout } from "./types.js";
 
@@ -106,7 +107,7 @@ function chooseSymbols(
 
 /**
  * Prepares a validated design for drawing: stable refdes, BOM resolution, a symbol per part
- * type, how each net is drawn, and an ELK layout of every sheet. Throws if the design did not
+ * type, how each net is drawn, and a layout of every sheet. Throws if the design did not
  * elaborate. A connectivity mismatch in a laid-out sheet is reported as a `layout.connectivity`
  * error: it is a layout bug, never a design problem.
  */
@@ -157,7 +158,24 @@ export async function prepareDrawing(
   const sheets = new Map<string, SheetLayout>();
   for (const block of result.blocks) {
     if (plan.instancesOf(block.block.name).length === 0) continue;
-    const sheet = await layoutSheet(block, plan, netlist, blocks);
+    for (const p of block.parts) {
+      const bad =
+        p.layout?.rotation !== undefined && !turnable.test(p.ref)
+          ? `${p.ref} is not a two-terminal part, so it cannot be turned (flip it instead); r${p.layout.rotation} is ignored`
+          : p.layout?.flip !== undefined && turnable.test(p.ref)
+            ? `${p.ref} is a two-terminal part, so it turns rather than flips (r180 reverses it); ${p.layout.flip ? "flip" : "noflip"} is ignored`
+            : undefined;
+      if (bad) {
+        issues.push({
+          code: "layout.bad-hint",
+          severity: "warning",
+          message: bad,
+          location: p.location,
+          subjects: [p.ref],
+        });
+      }
+    }
+    const sheet = layoutSheet(block, plan, netlist, blocks);
     sheets.set(block.block.name, sheet);
     for (const problem of checkConnectivity(sheet)) {
       issues.push({

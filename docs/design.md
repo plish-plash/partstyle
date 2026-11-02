@@ -26,7 +26,7 @@ The tool stores a circuit as compact, semantic text (parts, pins, nets, intent) 
 
 Five principles drive every later decision; when a design choice is unclear, these break the tie.
 
-1. **Connectivity is the source of truth; geometry is derived.** The circuit is parts + pins + nets. Symbol positions and wires are a presentation layer computed by auto-layout, stored separately, and never required for the AI to understand or change the circuit.
+1. **Connectivity is the source of truth; geometry is derived.** The circuit is parts + pins + nets. Symbol positions and wires are computed by auto-layout and never stored. The human steers the layout with a few coarse hints stored inline on part lines (`[2 r90 flip]`: stage in the signal chain, rotation, mirroring); they cost a few tokens, mean nothing to the circuit, and the AI keeps them as they are.
 2. **Plain-text files are the canonical store.** A project is a folder of small, line-oriented text files. This makes git the versioning engine, makes diffs readable by both human and AI, and lets an AI with file tools (e.g. Claude Code) work without any server at all.
 3. **Progressive disclosure.** Every read has a cheap summary tier and a detailed tier. The AI starts from a project overview of a few hundred tokens and drills down only where it needs to.
 4. **Parts carry knowledge.** Facts the AI would otherwise re-derive from a datasheet (pinout, ratings, required external components, gotchas) are captured once in the part record, with provenance and a human-verified flag.
@@ -40,7 +40,7 @@ The MCP server, CLI and viewer are thin: they translate requests into engine cal
 
 ## Data model and file formats
 
-A project is a folder of text files, split by who reads them: the AI reads circuit, parts and context; only the viewer reads layout.
+A project is a folder of text files, split by who reads them: the AI reads circuit, parts and context; layout hints ride along in the circuit files.
 
 ```
 my-board/
@@ -56,8 +56,6 @@ my-board/
   notes/
     decisions.md          # design rationale, keyed to refdes/nets
     pcb.md                # layout notes for the KiCad stage
-  layout/                 # generated + human-nudged positions (AI never reads)
-    power.layout.json
 ```
 
 ### Circuit files (.ckt)
@@ -173,7 +171,7 @@ Deliberately absent: anything with coordinates, wires, or label placement.
 - **Compact notation.** A net is one line listing its pins, versus dozens of S-expression wire and label objects in a `.kicad_sch`.
 - **Summary-first reads.** `overview` and `detail=summary` let the AI decide what to open; part records are read at the lowest tier that answers the question.
 - **Batched writes, delta results.** One `apply` call carries a whole edit; it returns only issues that changed, not the whole design.
-- **Deltas instead of re-reads.** `diff(since)` tells the AI what the human changed between turns (viewer edits, file edits, reverts; layout-only changes excluded), so it doesn't reload the project.
+- **Deltas instead of re-reads.** `diff(since)` tells the AI what the human changed between turns (viewer edits, file edits, reverts; layout-only edits folded into one line per block), so it doesn't reload the project.
 - **Distilled parts.** Datasheets are read once at ingestion; afterwards the AI reads a few hundred tokens of record instead of a PDF.
 - **Small tool list.** \~16 tools keep the per-turn tool-definition cost low.
 - **Images on demand only.** Renders are expensive; the AI asks for one when it genuinely needs a visual check.
@@ -199,7 +197,7 @@ The viewer is where the human sees, points and decides; it is a read-mostly wind
 - **Point.** Click a part, pin or net to select it; `focus()` hands the selection to the AI, so "why is this here?" needs no refdes typed.
 - **Comment.** Attach a note to a part or net; the AI sees open comments via `focus()` and `overview`.
 - **Review.** Revert a changeset, whole or per statement; checkpoint when satisfied.
-- **Nudge layout.** Drag symbols or pin a block's placement; stored in `layout/`, invisible to the AI.
+- **Arrange the layout.** Move a group a stage earlier or later in the signal chain, rotate a two-terminal part, mirror anything else. Stored as hints on the part's .ckt line; there is no fine-grained dragging: coarse controls over a deterministic layout should be enough.
 - **Verify parts.** Mark an AI-extracted part record as checked against its datasheet.
 - **Edit connectivity.** Rename a net, swap or re-value a part, connect or disconnect a pin from the UI; each becomes an ordinary .ckt edit the AI sees in its next diff. Any text editor works too.
 
@@ -223,7 +221,7 @@ Git is the storage engine; the app gives it schematic vocabulary so the user nev
 | Variant      | Branch, with a working copy          | Parallel versions (e.g. "LDO" vs "buck" power stage) viewable side by side     |
 | Compare      | Semantic diff between any two refs   | Reports parts added/removed/changed and net membership changes, not text lines |
 
-The semantic diff is computed by the engine from the parsed models, so a reordered file or a layout-only change shows as no circuit change. Layout files are versioned too, but excluded from circuit diffs.
+The semantic diff is computed by the engine from the parsed models, so a reordered file shows as no change, and a layout-only change is marked as such.
 
 The global part library is versioned separately; `parts.lock` pins each project to the exact record versions it used, so a later library correction does not silently change an old design.
 
@@ -256,7 +254,7 @@ Interop works through files and `kicad-cli`, not KiCad's live API: KiCad 10's IP
 ### Import
 
 1. Run `kicad-cli sch export netlist --format kicadsexpr` ([option list](https://docs.kicad.org/doxygen/command__sch__export__netlist_8cpp_source.html)) so KiCad itself resolves connectivity (wires, junctions, labels, power symbols, hierarchy). This avoids reimplementing KiCad's connectivity rules.
-2. Parse the `.kicad_sch` files only for what the netlist lacks: sheet structure, symbol positions (seed the layout files) and text notes.
+2. Parse the `.kicad_sch` files only for what the netlist lacks: sheet structure, symbol positions (could seed layout hints) and text notes.
 3. Map each symbol to a part record by its MPN field; symbols without one become an "unresolved parts" worklist for the AI and human to resolve.
 4. Net names are kept; auto-generated names (`Net-(R1-Pad2)`) are flagged for renaming.
 
@@ -268,16 +266,16 @@ Round trips are lossy by design: graphical detail (wire routing, drawn boxes, te
 
 Decision: TypeScript end to end, one local process that serves MCP, the CLI and the viewer from a single engine. The viewer must be web tech anyway, and one language avoids maintaining two parsers.
 
-| Component                                   | Choice                                                                 | Why                                                                    |
-| ------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Engine (parser, connectivity, checks, diff) | TypeScript library                                                     | Shared by every interface; runs in Node and, if useful, in the browser |
-| .ckt parser                                 | Hand-written or Lezer/Chevrotain grammar                               | Good error messages with line numbers matter more than speed           |
-| Part records                                | YAML + JSON Schema                                                     | Schema doubles as the AI's spec for writing records                    |
-| MCP server                                  | Official MCP TypeScript SDK, stdio                                     | Works with Claude Desktop/Code; same process as viewer                 |
-| Viewer                                      | Local web app (Vite + Svelte or React), SVG rendering                  | Opens in any browser; can be wrapped in Tauri later                    |
-| Auto-layout                                 | elkjs (Eclipse Layout Kernel), layered algorithm with port constraints | Designed for node-port graphs; used by netlistsvg for the same job     |
-| Versioning                                  | git via isomorphic-git (no git install needed)                         | Real git repo the user can also drive directly                         |
-| KiCad I/O                                   | Own S-expression reader/writer + `kicad-cli` subprocess                | No Python dependency; KiCad does connectivity on import                |
+| Component                                   | Choice                                                     | Why                                                                    |
+| ------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Engine (parser, connectivity, checks, diff) | TypeScript library                                         | Shared by every interface; runs in Node and, if useful, in the browser |
+| .ckt parser                                 | Hand-written or Lezer/Chevrotain grammar                   | Good error messages with line numbers matter more than speed           |
+| Part records                                | YAML + JSON Schema                                         | Schema doubles as the AI's spec for writing records                    |
+| MCP server                                  | Official MCP TypeScript SDK, stdio                         | Works with Claude Desktop/Code; same process as viewer                 |
+| Viewer                                      | Local web app (Vite + Svelte or React), SVG rendering      | Opens in any browser; can be wrapped in Tauri later                    |
+| Auto-layout                                 | Own: groups by signal stage, grid-packed, grid maze router | Deterministic single pass, steerable by stored hints; no retry layouts |
+| Versioning                                  | git via isomorphic-git (no git install needed)             | Real git repo the user can also drive directly                         |
+| KiCad I/O                                   | Own S-expression reader/writer + `kicad-cli` subprocess    | No Python dependency; KiCad does connectivity on import                |
 
 Python was considered for its KiCad tooling (kiutils, SKiDL) but rejected to keep one language across engine and viewer. Rust is unnecessary for designs of this size.
 
@@ -295,7 +293,7 @@ Each milestone ends with something usable on a real design; the order front-load
 
 ## Risks
 
-- **Auto-layout readability.** Generated schematics can be hard to read for analog circuits where convention matters (feedback loops, signal flow left to right). Mitigation: layout hints in .ckt (`@flow`, grouping) plus human nudging that persists.
+- **Auto-layout readability.** Generated schematics can be hard to read for analog circuits where convention matters (feedback loops, signal flow left to right). Mitigation: conventional defaults (signal left to right, rails up, ground down, passives grouped with what they serve) plus layout hints in .ckt (stage, rotation, flip) that the human sets in the viewer.
 - **AI-extracted part records can be wrong.** A wrong pinout is a board respin. Mitigation: verified flag, footprint pad check, and treating unverified records as a validation warning.
 - **KiCad format drift.** `.kicad_sch` changes between major versions. Mitigation: target one KiCad version, keep the netlist path as the robust fallback, and verify every export with `kicad-cli`.
 - **DSL adoption cost.** A new language needs a spec the AI can learn cheaply. Mitigation: a one-page grammar reference exposed as an MCP resource, kept under \~1k tokens.

@@ -3,6 +3,9 @@ import type { Pt, WireSegment } from "./types.js";
 /** KiCad's connection grid; every connection point and wire vertex lands on it. */
 export const SNAP = 1.27;
 
+/** The grid parts' pins and all wires are placed on: KiCad's 100 mil pin grid. */
+export const PITCH = 2.54;
+
 /** Snaps to the connection grid, rounded so equal points compare equal. */
 export const snap = (v: number) => Number((Math.round(v / SNAP) * SNAP).toFixed(4));
 export const snapPt = (p: Pt): Pt => ({ x: snap(p.x), y: snap(p.y) });
@@ -22,11 +25,12 @@ export function onSegmentInterior(p: Pt, a: Pt, b: Pt): boolean {
  * Cleans up routed wires so every connection is explicit: segments are split wherever another
  * segment's end or a connection point (pin, label, power symbol) of the same net lands on them,
  * duplicates are removed, straight runs are re-merged where nothing else connects, and a
- * junction is placed wherever three or more segments meet.
+ * junction is placed wherever three or more segments meet, or two meet at a pin (`pins`).
  */
 export function normalizeWires(
   segments: WireSegment[],
   connectionPoints: { net: string; at: Pt }[],
+  pins: { net: string; at: Pt }[] = [],
 ): { wires: WireSegment[]; junctions: { net: string; at: Pt }[] } {
   const byNet = new Map<string, WireSegment[]>();
   for (const s of segments) {
@@ -98,6 +102,11 @@ export function normalizeWires(
         degree.set(key(p), d);
       }
       wires.push({ net, a, b });
+    }
+    // A pin counts as one more end: two wires on a pin meet like three wires do.
+    for (const p of pins) {
+      const d = p.net === net ? degree.get(key(p.at)) : undefined;
+      if (d) d.n++;
     }
     for (const d of degree.values()) if (d.n >= 3) junctions.push({ net, at: d.at });
   }

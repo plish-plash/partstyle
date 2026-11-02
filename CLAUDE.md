@@ -18,8 +18,7 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
 - `pnpm standalone [TARGET...]` (after a build): Bun-compiled single executable in
   `packages/cli/standalone/out/` with the grammar and viewer embedded (`scripts/standalone.mjs`;
   Bun is at `~/.bun/bin/bun.exe` here, so pass `BUN=` if it is not on PATH). The smoke test
-  `packages/cli/src/standalone.test.ts` runs only when the native executable exists. Bun
-  defines a global `self`, which `drawing/layout.ts` hides while constructing ELK. CI
+  `packages/cli/src/standalone.test.ts` runs only when the native executable exists. CI
   (`.github/workflows/ci.yml`) and tag releases (`release.yml`) build and smoke-test these
   with `PARTSTYLE_BINARY` set, which makes a missing executable fail rather than skip.
 - `pnpm mcpb` (after a build, needs Bun): the Claude Desktop extension
@@ -65,14 +64,20 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     vets KiCad library symbols (flattening, units, pin compatibility), `kicad/power.ts` power
     symbols, `kicad/symbols.ts` generated fallbacks. `project/kicad.ts` (node) finds kicad-cli
     and the stock libraries, indexes symbol names, checks footprint pads and parses ERC.
-  - Drawing (shared by the viewer and KiCad export, pure): `drawing/plan.ts` decides per net
-    power symbol / wire / label; `drawing/orient.ts` turns two-terminal parts; `drawing/layout.ts`
-    places and routes each sheet with ELK (decoupling and shunt parts ride beside a host part
-    inside its ELK node; flips and mirrors are tried as extra layouts and kept if they shorten
-    the wiring; connected components are packed onto the smallest paper) and snaps it to 1.27 mm
-    grid (`gridRoute` keeps segments orthogonal); `drawing/wires.ts`
-    splits, merges and adds junctions; `drawing/connectivity.ts` proves the geometry matches the
-    netlist; `drawing/prepare.ts` is the entry point. `kicad/schematic.ts` only serializes it.
+  - Drawing (shared by the viewer and KiCad export, pure, one deterministic pass: no trial
+    layouts): `drawing/plan.ts` decides per net power symbol / wire / label; `drawing/nodes.ts`
+    collects units and child sheets in their default orientation (`orient.ts`, or a stored
+    `[rN]`); `groups.ts` attaches two-terminal parts to hosts (satellite, shunt, series chain);
+    `flow.ts` derives stages and default flips; `cell.ts` lays out one group in its own
+    coordinates, pins on the 2.54 mm grid; `pack.ts` packs groups into rows of stage slots on
+    the smallest paper, lowering each to line up with what it connects to; `route.ts` is an A*
+    maze router on the 2.54 mm grid (a connection crossing 3+ wires, or detouring between
+    groups, is left for labels); `layout.ts` ties them together (wire nets in consecutive slots
+    of a row, label the rest). Layout hints (`[2 r90 flip]` on part
+    and use lines) are parsed into `LayoutHint`; `Workspace.setLayout` writes them for the
+    viewer. `drawing/wires.ts` splits, merges and adds junctions; `drawing/connectivity.ts`
+    proves the geometry matches the netlist; `drawing/prepare.ts` is the entry point.
+    `kicad/schematic.ts` only serializes it.
   - KiCad import: `kicad/import.ts` (pure: netlist reading, sheets → blocks and ports, part
     matching, draft records, re-import carry-over) and `project/kicad-import.ts` (node: runs
     kicad-cli on a temporary copy, with PWR_FLAGs exposed and ERC for no-connect flags).

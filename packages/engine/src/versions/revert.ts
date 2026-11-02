@@ -1,4 +1,5 @@
 import { parseCkt } from "../ckt/parser.js";
+import { printStatement } from "../ckt/print.js";
 import type { TextFile } from "../project/source.js";
 import { diffCircuits, opOf, type StatementChange } from "./diff.js";
 
@@ -14,6 +15,16 @@ export interface RevertPlan {
 }
 
 const blockOf = (text: string) => parseCkt(text, "<revert>").ast.block.name;
+
+/** A part or use printed with `[]` when it has no layout hint, so `=` clears a later one. */
+function explicitLayout(printed: string): string {
+  const { ast } = parseCkt(`block x\n${printed}\n`, "<revert>");
+  const part = ast.parts[0];
+  const use = ast.uses[0];
+  if (part) return printStatement({ kind: "part", decl: part }, true);
+  if (use) return printStatement({ kind: "use", decl: use }, true);
+  return printed;
+}
 
 /**
  * Plans undoing `changes` against the current circuit files. An item is reverted only while its
@@ -84,7 +95,7 @@ export function planRevert(
     } else if (op === "-") {
       lines.push(`+ ${c.before}`);
     } else {
-      lines.push(`= ${c.before}`);
+      lines.push(`= ${explicitLayout(c.before as string)}`);
     }
     byBlock.set(c.block, lines);
     plan.reverted++;

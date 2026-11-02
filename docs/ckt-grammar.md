@@ -3,16 +3,16 @@
 One statement per line. `#` starts a comment. Nothing has coordinates.
 
 ```
-block NAME "description"                 # first statement; one block per file
-port  NAME : KIND                        # KIND: power_in power_out ground input output bidir passive
-part  REF lib:ID            [@ intent]   # a record from the part library
-part  REF FN(arg, ...)      [@ intent]   # generic, resolved to an MPN at BOM time
+block NAME "description"                          # first statement; one block per file
+port  NAME : KIND                                 # KIND: power_in power_out ground input output bidir passive
+part  REF lib:ID           [[layout]] [@ intent]  # a record from the part library
+part  REF FN(arg, ...)     [[layout]] [@ intent]  # generic, resolved to an MPN at BOM time
 net   NAME : PINREF... [-> port NAME] [{key: value, ...}] [@ intent]
-use   BLOCK as INST         [@ intent]   # instantiate another block
-waive SUBJECT [CODE] "reason"            # suppress a validation issue
+use   BLOCK as INST        [[layout]] [@ intent]  # instantiate another block
+waive SUBJECT [CODE] "reason"                     # suppress a validation issue
 ```
 
-- **Names** are any run of characters without whitespace or `: { } ( ) , " @ #`, so `+12V`
+- **Names** are any run of characters without whitespace or `: { } ( ) , [ ] " @ #`, so `+12V`
   and `VINA+` are fine. Refdes, net, port and instance names must not contain `.` or `/`.
 - **PINREF** is `REF.PIN` or `INST.PORT`. `PIN` is a pin number (`C1.1`, `U4.22`) or a pin name
   (`U1.OUT`). A name shared by several pins (`U4.GND`) connects all of them.
@@ -29,6 +29,22 @@ waive SUBJECT [CODE] "reason"            # suppress a validation issue
   gives the part a footprint even before it resolves to an MPN.
 - **Waivers**: SUBJECT is a refdes, pinref or net, relative to the block. `*` matches anything
   (`U4.PD*`). CODE limits the waiver to one issue code. Unused waivers are reported.
+
+## Layout hints
+
+`part R4 res(100k) [2 r90]`, `part J2 lib:X [1 flip]`, `use filter as F1 [3]`: how the human
+arranged the drawing in the viewer. Each item is optional; whatever is left out is chosen
+automatically. They change only the drawing, never the circuit.
+
+- **Stage** (`1`, `2`, ...): position in the signal chain. A sheet is drawn as groups (a part with
+  the passives that ride along with it: decoupling, shunts, series parts) placed left to right
+  by stage, wrapping onto new rows. Groups with the same stage stack. A stage on a passive
+  gives it a group of its own.
+- **`r0` `r90` `r180` `r270`**: rotation of a two-terminal part (R, C, L, F, FB, D, LED).
+- **`flip` / `noflip`**: mirror anything else left to right, or keep it as the library draws it.
+
+Keep hints when editing a statement: `= part R4 res(220k)` without brackets keeps R4's hint, and
+`[]` clears it. A diff reports layout-only edits as one line per block.
 
 ## Hierarchy
 
@@ -79,6 +95,7 @@ the issues they added or resolved. Use `dry_run` to preview.
 | `elab.unused-block`, `elab.attr-conflict`, `waive.unused`        | warning                            |                                                                   |
 | `patch.error`                                                    | error                              | patch rejected; nothing was applied                               |
 | `layout.connectivity`, `layout.failed`                           | error                              | auto-layout bug: the drawing does not match the design            |
+| `layout.bad-hint`                                                | warning                            | a rotation on a part that only flips, or a flip on one that turns |
 | `part.footprint-pads`                                            | error                              | record's pins and footprint pads differ                           |
 | `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint |
 | `kicad.symbol-fallback`                                          | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated    |

@@ -6,6 +6,8 @@ export type TokenKind =
   | "rbrace"
   | "lparen"
   | "rparen"
+  | "lbracket"
+  | "rbracket"
   | "comma"
   | "arrow"
   | "intent";
@@ -31,10 +33,12 @@ const punctuation: Record<string, TokenKind> = {
   "}": "rbrace",
   "(": "lparen",
   ")": "rparen",
+  "[": "lbracket",
+  "]": "rbracket",
   ",": "comma",
 };
 
-const wordStop = /[\s:{}(),"@#]/;
+const wordStop = /[\s:{}()[\],"@#]/;
 
 /** Tokenizes one line of a .ckt file. `#` starts a comment; `@` takes the rest of the line as intent. */
 export function lexLine(line: string): { tokens: Token[]; errors: LexError[] } {

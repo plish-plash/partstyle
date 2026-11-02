@@ -9,6 +9,8 @@ export {
 } from "./project/projects.js";
 export {
   embedGrammarReference,
+  type LayoutOp,
+  layoutOps,
   readGrammarReference,
   Workspace,
 } from "./project/workspace.js";

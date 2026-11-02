@@ -9,7 +9,7 @@ export const HISTORY_FILE = ".partstyle/history.json";
 /** Edits closer together than this are one changeset: roughly, one turn of the AI's work. */
 export const BURST_MS = 60_000;
 
-export type ChangeSource = "edit" | "apply" | "revert" | "accept" | "adopt" | "import";
+export type ChangeSource = "edit" | "apply" | "revert" | "accept" | "adopt" | "import" | "layout";
 
 /** Circuit file texts by project-relative path; null where the file did not exist. */
 export type FileStates = Record<string, string | null>;

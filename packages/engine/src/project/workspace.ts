@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { formatBomCsv, resolveBom } from "../bom.js";
+import type { LayoutHint } from "../ckt/ast.js";
+import { printStatement } from "../ckt/print.js";
 import { compareIssues, formatIssue, issueDelta } from "../diagnostics.js";
+import type { Rotation } from "../drawing/orient.js";
 import { type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
 import { annotate, formatAnnotationLock, parseAnnotationLock } from "../kicad/annotate.js";
 import { exportKicad } from "../kicad/export.js";
@@ -65,6 +68,10 @@ import {
 } from "./variants.js";
 
 const fail = (text: string): TextResult => ({ ok: false, text });
+
+/** Layout edits the viewer makes: see `Workspace.setLayout`. */
+export const layoutOps = ["rotate", "flip", "earlier", "later", "reset"] as const;
+export type LayoutOp = (typeof layoutOps)[number];
 
 const toPosix = (p: string) => p.split(path.sep).join("/");
 
@@ -818,6 +825,76 @@ export class Workspace {
       if (updated === text) return fail(`could not find 'verified_by: null' in ${entry.file}`);
       await writeFile(file, updated, "utf8");
       return { ok: true, text: `marked ${id} verified in ${entry.file}` };
+    });
+  }
+
+  /**
+   * Changes how a part or child sheet of `block` is drawn, as the human asks in the viewer:
+   * turn a two-terminal part a quarter turn, mirror anything else (a two-terminal part turns
+   * half way instead), move its group a stage earlier or later, or clear its hint. The first
+   * stage edit on a sheet writes the stage every group has now, so the others stay where they
+   * are rather than following along. Written as a patch (never held for review: it is the
+   * human's own edit), so it is logged and can be reverted like any other change.
+   */
+  setLayout(block: string, ref: string, op: LayoutOp): Promise<TextResult> {
+    return this.guard(async () => {
+      const { result } = await this.load();
+      const ast = result.blocks.find((b) => b.block.name === block);
+      if (!ast) return fail(`no block ${block}`);
+      if (!result.netlist || !result.config) return fail("the design does not elaborate yet");
+      const drawing = await prepareDrawing(
+        result,
+        await this.locks(),
+        await this.libraries(result),
+      );
+      const hints = drawing.sheets.get(block)?.hints ?? [];
+      const h = hints.find((x) => x.ref === ref);
+      if (!h) return fail(`no part or sheet ${ref} drawn in ${block}`);
+
+      const stored = (r: string): LayoutHint =>
+        ast.parts.find((p) => p.ref === r)?.layout ??
+        ast.uses.find((u) => u.instance === r)?.layout ??
+        {};
+      const next = new Map<string, LayoutHint>();
+      const hintOf = (r: string) => next.get(r) ?? stored(r);
+      if (op === "earlier" || op === "later") {
+        if (!hints.some((x) => x.stored.stage !== undefined)) {
+          for (const x of hints) {
+            if (x.ref === x.group) next.set(x.ref, { ...stored(x.ref), stage: x.stage });
+          }
+        }
+        // A part riding in another's group leaves it for a stage of its own.
+        const stage = Math.max(1, h.stage + (op === "earlier" ? -1 : 1));
+        next.set(ref, { ...hintOf(ref), stage });
+      } else if (op === "rotate") {
+        if (!h.turnable) return fail(`${ref} is not a two-terminal part; flip it instead`);
+        next.set(ref, { ...hintOf(ref), rotation: ((h.rotation + 90) % 360) as Rotation });
+      } else if (op === "flip") {
+        next.set(
+          ref,
+          h.turnable
+            ? { ...hintOf(ref), rotation: ((h.rotation + 180) % 360) as Rotation }
+            : { ...hintOf(ref), flip: !h.flip },
+        );
+      } else {
+        next.set(ref, {});
+      }
+
+      const lines = [`in ${block}`];
+      for (const [r, layout] of next) {
+        const part = ast.parts.find((p) => p.ref === r);
+        const use = ast.uses.find((u) => u.instance === r);
+        if (part)
+          lines.push(`= ${printStatement({ kind: "part", decl: { ...part, layout } }, true)}`);
+        else if (use)
+          lines.push(`= ${printStatement({ kind: "use", decl: { ...use, layout } }, true)}`);
+      }
+      return this.applyPatchText(lines.join("\n"), {
+        dryRun: false,
+        hold: false,
+        source: "layout",
+        note: `layout: ${op} ${block}/${ref}`,
+      });
     });
   }
 

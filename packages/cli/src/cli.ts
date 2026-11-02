@@ -117,8 +117,30 @@ function oneOf<T extends string>(value: string | undefined, allowed: readonly T[
   return allowed.find((a) => a === value);
 }
 
-async function readInput(arg: string | undefined, io: CliIO): Promise<string> {
-  return arg === undefined || arg === "-" ? io.readStdin() : readFile(arg, "utf8");
+/**
+ * Reads FILE, or stdin when it is `-` or omitted, and hands the text on. A file that cannot be
+ * read is reported as an error rather than thrown.
+ */
+async function withInput(
+  arg: string | undefined,
+  io: CliIO,
+  use: (text: string) => Promise<CommandResult>,
+): Promise<CommandResult> {
+  const stdin = arg === undefined || arg === "-";
+  let text: string;
+  try {
+    text = stdin ? await io.readStdin() : await readFile(arg, "utf8");
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException;
+    const why =
+      err.code === "ENOENT"
+        ? "no such file"
+        : err.code === "EISDIR"
+          ? "it is a folder"
+          : err.message;
+    return { stdout: "", stderr: `cannot read ${stdin ? "stdin" : arg}: ${why}`, exitCode: 2 };
+  }
+  return use(text);
 }
 
 export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
@@ -189,8 +211,9 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
 
     case "apply": {
       if (args.length > 1) return usageError("usage: apply [FILE|-] [--dry-run]");
-      const patch = await readInput(args[0], io);
-      return fromText(await ws.apply(patch, { dryRun: values["dry-run"] ?? false }));
+      return withInput(args[0], io, async (patch) =>
+        fromText(await ws.apply(patch, { dryRun: values["dry-run"] ?? false })),
+      );
     }
 
     case "doc": {
@@ -199,7 +222,7 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         return fromText(await ws.readDoc(file));
       }
       if (op === "write" && file !== undefined && args.length <= 3) {
-        return fromText(await ws.writeDoc(file, await readInput(source, io)));
+        return withInput(source, io, async (text) => fromText(await ws.writeDoc(file, text)));
       }
       return usageError("usage: doc read FILE | doc write FILE [SRC|-]");
     }
@@ -216,7 +239,7 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         const scope = oneOf(values.scope, ["global", "project"] as const);
         if (values.scope !== undefined && !scope)
           return usageError("--scope must be global or project");
-        return fromText(await ws.partPut(await readInput(rest[0], io), scope));
+        return withInput(rest[0], io, async (yaml) => fromText(await ws.partPut(yaml, scope)));
       }
       return usageError("usage: part search QUERY | part get ID | part put [FILE|-]");
     }

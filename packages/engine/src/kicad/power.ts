@@ -142,11 +142,13 @@ type Point = { x: number; y: number };
 export const powerRotation = (p: PowerSymbol, outward: number) =>
   (((outward - p.bodyDir) % 360) + 360) % 360;
 
-/** Where a power symbol's net name goes: beyond its drawing, centred. */
+/** Where a power symbol's net name goes: just beyond its drawing, centred. */
 export function powerValueAt(at: Point, outward: number, value: string): Point {
   const rad = (outward * Math.PI) / 180;
   const horizontal = outward === 0 || outward === 180;
-  const distance = horizontal ? 3.81 + value.length * 0.6 : 5.08;
+  // The drawings reach about 2.5 mm from the pin; the name sits clear of that, or of half its
+  // width when it reads sideways.
+  const distance = horizontal ? 3.4 + value.length * 0.55 : 4.19;
   return {
     x: at.x + Math.round(Math.cos(rad) * distance * 100) / 100,
     y: at.y - Math.round(Math.sin(rad) * distance * 100) / 100,

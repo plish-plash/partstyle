@@ -88,6 +88,20 @@ describe("partstyle read commands", () => {
     const bad = await cli(["-p", example, "apply"], "in power\n- part D99");
     expect(bad).toMatchObject({ exitCode: 1, stderr: expect.stringMatching(/no part D99/) });
   });
+
+  it("reports a patch, document or part file it cannot read", async () => {
+    const missing = path.join(example, "no-such.patch");
+    expect(await inExample(["apply", missing])).toEqual({
+      stdout: "",
+      stderr: `cannot read ${missing}: no such file`,
+      exitCode: 2,
+    });
+    expect((await inExample(["apply", example])).stderr).toBe(
+      `cannot read ${example}: it is a folder`,
+    );
+    expect((await inExample(["doc", "write", "notes/x.md", missing])).exitCode).toBe(2);
+    expect((await inExample(["part", "put", missing])).exitCode).toBe(2);
+  });
 });
 
 describe("partstyle init", () => {

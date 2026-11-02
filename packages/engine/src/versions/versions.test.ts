@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyPatch } from "../patch.js";
 import type { ProjectSource, TextFile } from "../project/source.js";
-import { describeChange, diffCircuits, formatChanges, opOf } from "./diff.js";
+import { describeChange, diffCircuits, formatChanges, opOf, type StatementChange } from "./diff.js";
 import { planRevert } from "./revert.js";
 
 const power = `block power "rails"
@@ -50,6 +50,25 @@ describe("diffCircuits", () => {
     ]);
   });
 
+  it("marks layout-only edits and folds them into one line", () => {
+    const edited = power
+      .replace("part U1 lib:L7805CV", "part U1 lib:L7805CV [2 flip]")
+      .replace("part C2 cap(100n, 16V, X7R, 0603)", "part C2 cap(1u, 16V, X7R, 0603) [r90]");
+    const changes = diffCircuits([file(power)], [file(edited)]);
+    expect(changes.map((c) => [c.key, c.layout ?? false])).toEqual([
+      ["C2", false],
+      ["U1", true],
+    ]);
+    expect(describeChange(changes[1] as StatementChange)).toBe(
+      "~ part U1 layout [2 flip] (was auto)",
+    );
+    expect(formatChanges(changes)).toEqual([
+      "power:",
+      "  ~ part C2 cap(1u, 16V, X7R, 0603) [r90] (was cap(100n, 16V, X7R, 0603))",
+      "  layout edited: U1",
+    ]);
+  });
+
   it("summarizes a new block in one line", () => {
     const mcu = {
       file: "circuit/mcu.ckt",
@@ -90,6 +109,25 @@ describe("planRevert", () => {
     expect(diffCircuits([file(power)], reverted).map((c) => `${c.kind} ${c.key}`)).toEqual([
       "part R1",
     ]);
+  });
+
+  it("keeps a layout hint through '=' unless [] clears it, and reverts hints", () => {
+    const hinted = applyPatch(source(power), "in power\n= part U1 lib:L7805CV [2 flip]").source
+      .circuits;
+    const kept = applyPatch(
+      { ...source(power), circuits: hinted },
+      "in power\n= part U1 lib:LM7805",
+    ).source.circuits;
+    expect(kept[0]?.text).toContain("part U1 lib:LM7805 [2 flip]");
+    const cleared = applyPatch(
+      { ...source(power), circuits: hinted },
+      "in power\n= part U1 lib:L7805CV []",
+    ).source.circuits;
+    expect(diffCircuits([file(power)], cleared)).toEqual([]);
+
+    const plan = planRevert(diffCircuits([file(power)], hinted), hinted, [file(power)]);
+    const reverted = applyPatch({ ...source(power), circuits: hinted }, plan.patch).source.circuits;
+    expect(diffCircuits([file(power)], reverted)).toEqual([]);
   });
 
   it("deletes an added block's file and writes back a removed one", () => {

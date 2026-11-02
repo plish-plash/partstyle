@@ -99,7 +99,7 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
       const asset = await fetch(new URL(script as string, url));
       expect(asset.status).toBe(200);
       expect(asset.headers.get("content-type")).toContain("javascript");
-      // ELK lays out the sheets under Bun too.
+      // The sheets lay out under Bun too.
       const model = (await (await fetch(new URL("api/model", url))).json()) as {
         issues: { code: string }[];
         sheets: unknown[];

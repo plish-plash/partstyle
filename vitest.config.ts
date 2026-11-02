@@ -18,7 +18,7 @@ export default defineConfig({
   },
   test: {
     include: ["packages/*/src/**/*.test.ts"],
-    // Some tests run kicad-cli, ELK layout and an HTTP server for real.
+    // Some tests run kicad-cli, the layout and an HTTP server for real.
     testTimeout: 30_000,
   },
 });

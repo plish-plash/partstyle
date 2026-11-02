@@ -137,6 +137,21 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
     onselect([subject], e.shiftKey);
   };
 
+  /** Each group's extent and stage, shown while a part of this sheet is selected. */
+  const groupTags = $derived.by(() => {
+    const local = selection.flatMap((s) => (s.startsWith(prefix) ? [s.slice(prefix.length).replace(/\/$/, "")] : []));
+    const mine = new Set(layout.hints.filter((h) => local.includes(h.ref)).map((h) => h.group));
+    if (mine.size === 0) return [];
+    const boxes = new Map<string, { x: number; y: number; stage: number }>();
+    const grow = (group: string, x: number, y: number, stage: number) => {
+      const b = boxes.get(group);
+      boxes.set(group, b ? { x: Math.min(b.x, x), y: Math.min(b.y, y), stage } : { x, y, stage });
+    };
+    for (const u of layout.units) grow(u.group, u.box.x, u.box.y, u.stage);
+    for (const s of layout.sheets) grow(s.instance, s.at.x, s.at.y, s.stage);
+    return [...boxes].map(([group, b]) => ({ group, ...b, mine: mine.has(group) }));
+  });
+
   /** Label text runs away from its connection point. */
   const labelJustify = (angle: number) => (angle === 180 || angle === 270 ? ["right"] : ["left"]);
 </script>
@@ -300,6 +315,10 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
         >
       {/each}
     </g>
+  {/each}
+
+  {#each groupTags as t (t.group)}
+    <text x={t.x} y={t.y - 5} class="stage-tag" class:mine={t.mine}>stage {t.stage}</text>
   {/each}
 
   {#each markers as m, i (i)}

@@ -27,9 +27,23 @@ export type PartSpec =
   | { kind: "lib"; id: string }
   | { kind: "generic"; fn: string; args: string[] };
 
+/**
+ * How a part or sheet is drawn (`[2 r90 flip]`): the human's layout, kept by the AI. Omitted
+ * items are chosen automatically.
+ */
+export interface LayoutHint {
+  /** Position in the signal chain: groups are drawn left to right by stage. */
+  stage?: number;
+  /** Counter-clockwise rotation of a two-terminal part. */
+  rotation?: 0 | 90 | 180 | 270;
+  /** Mirrored left to right (`flip`), or kept as the library draws it (`noflip`). */
+  flip?: boolean;
+}
+
 export interface PartDecl {
   ref: string;
   spec: PartSpec;
+  layout?: LayoutHint;
   intent?: string;
   location: Location;
 }
@@ -54,6 +68,7 @@ export interface NetDecl {
 export interface UseDecl {
   block: string;
   instance: string;
+  layout?: LayoutHint;
   intent?: string;
   location: Location;
 }

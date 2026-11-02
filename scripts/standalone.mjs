@@ -217,9 +217,6 @@ partstyle.mcpb and the standalone partstyle executables contain the packages bel
 includes the Svelte runtime. Partstyle itself is licensed under Apache-2.0 (LICENSE), and the
 seed part library under CC0-1.0 (library/LICENSE).
 
-elkjs is dual-licensed EPL-2.0 OR GPL-3.0-or-later and is used here under EPL-2.0. Its source
-code is available at https://github.com/kieler/elkjs.
-
 The standalone executables also contain the Bun runtime (https://bun.sh), which is MIT
 licensed and includes JavaScriptCore and other components under their own licenses, some
 LGPL; see LICENSE.md in https://github.com/oven-sh/bun.

@@ -2,6 +2,7 @@ import type { Issue, Location } from "../diagnostics.js";
 import {
   type BlockDecl,
   type CktFile,
+  type LayoutHint,
   type NetDecl,
   type PartSpec,
   type PinRef,
@@ -57,6 +58,34 @@ class Cursor {
     }
     this.i++;
     return t;
+  }
+
+  /**
+   * A `[stage rN flip]` layout clause; `[]` gives an empty hint (which a patch uses to clear
+   * one), no clause gives undefined.
+   */
+  optionalLayout(): LayoutHint | undefined {
+    if (!this.is("lbracket")) return undefined;
+    this.next();
+    const hint: LayoutHint = {};
+    while (!this.is("rbracket")) {
+      const t = this.expect("word", "a stage number, r0/r90/r180/r270, flip, noflip or ']'");
+      const rotation = /^r(0|90|180|270)$/.exec(t.text);
+      if (/^[1-9]\d{0,3}$/.test(t.text) && hint.stage === undefined) {
+        hint.stage = Number(t.text);
+      } else if (rotation && hint.rotation === undefined) {
+        hint.rotation = Number(rotation[1]) as NonNullable<LayoutHint["rotation"]>;
+      } else if ((t.text === "flip" || t.text === "noflip") && hint.flip === undefined) {
+        hint.flip = t.text === "flip";
+      } else {
+        throw new StatementError(
+          `unexpected '${t.text}' in layout (expected a stage number, r0/r90/r180/r270, flip or noflip, each at most once)`,
+          t.start,
+        );
+      }
+    }
+    this.next();
+    return hint;
   }
 
   optionalIntent(): string | undefined {
@@ -180,11 +209,18 @@ function parseTokens(c: Cursor, loc: (offset: number) => Location): Statement {
       } else {
         throw new StatementError("expected 'lib:ID' or 'generic(...)'", head.start);
       }
+      const layout = c.optionalLayout();
       const intent = c.optionalIntent();
       c.expectEnd();
       return {
         kind: "part",
-        decl: { ref, spec, location, ...(intent !== undefined && { intent }) },
+        decl: {
+          ref,
+          spec,
+          location,
+          ...(layout !== undefined && { layout }),
+          ...(intent !== undefined && { intent }),
+        },
       };
     }
     case "net": {
@@ -234,11 +270,18 @@ function parseTokens(c: Cursor, loc: (offset: number) => Location): Statement {
       const as = c.expect("word", "'as'");
       if (as.text !== "as") throw new StatementError("expected 'as'", as.start);
       const instance = checkName(c.expect("word", "instance name"), "instance name");
+      const layout = c.optionalLayout();
       const intent = c.optionalIntent();
       c.expectEnd();
       return {
         kind: "use",
-        decl: { block, instance, location, ...(intent !== undefined && { intent }) },
+        decl: {
+          block,
+          instance,
+          location,
+          ...(layout !== undefined && { layout }),
+          ...(intent !== undefined && { intent }),
+        },
       };
     }
     case "waive": {

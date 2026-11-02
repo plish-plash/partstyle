@@ -2,7 +2,8 @@
 
 This is a Partstyle schematic project. The circuit is stored as connectivity (parts, pins, nets
 and intent) in `circuit/*.ckt`. Never add coordinates, wires or label positions; the schematic
-drawing is generated.
+drawing is generated. Bracketed layout hints on part lines (`[2 r90 flip]`) are the person's
+arrangement from the viewer: keep them as they are when editing a part.
 
 Commands below are the `partstyle` CLI; the Partstyle MCP server has a tool for each.
 

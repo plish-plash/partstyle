@@ -2,7 +2,7 @@ import type { CktFile } from "../ckt/ast.js";
 import { paperFor, papers } from "../drawing/layout.js";
 import { shapeOf } from "../drawing/plan.js";
 import type { Drawing } from "../drawing/prepare.js";
-import type { PlacedPower, PlacedUnit } from "../drawing/types.js";
+import type { PlacedPower, PlacedText, PlacedUnit } from "../drawing/types.js";
 import type { Annotation } from "./annotate.js";
 import { symbolKey } from "./libsym.js";
 import { placePower } from "./power.js";
@@ -41,6 +41,12 @@ export interface SchematicOutput {
 /** The flat refdes of a part path, falling back to its local refdes. */
 const refOf = (annotation: Annotation, path: string) =>
   annotation.get(path) ?? path.slice(path.lastIndexOf("/") + 1);
+
+/**
+ * About how wide KiCad's stroke font draws 1.27 mm text; it runs wider than the viewer's font.
+ * Erring wide only moves centred text a little further from the part.
+ */
+const kicadTextWidth = (s: string) => s.length * 1.1;
 
 /** Writes the laid-out sheets as KiCad schematic files: geometry comes from `drawing.sheets`. */
 export function writeSchematics(drawing: Drawing): SchematicOutput {
@@ -232,6 +238,30 @@ export function writeSchematics(drawing: Drawing): SchematicOutput {
     }
 
     function placedUnit(u: PlacedUnit): SExpr[] {
+      /**
+       * A field as the layout placed it (on the sheet, as the viewer draws it), in KiCad's
+       * terms: KiCad reads justification in the symbol's frame, so a mirrored symbol's left is
+       * its right, and a turned symbol's turns with it. Text left- or right-justified on a turned
+       * symbol is centred instead, its middle reckoned from the width KiCad's font draws.
+       */
+      const field = (name: string, value: string, t: PlacedText): SExpr[] => {
+        const side = t.justify.find((j) => j === "left" || j === "right");
+        const rest = t.justify.filter((j) => j !== side);
+        let x = t.at.x;
+        let justify = t.justify;
+        if (side && u.rotation !== 0) {
+          x += ((side === "left" ? 1 : -1) * kicadTextWidth(value)) / 2;
+          justify = rest;
+        } else if (side && u.mirror) {
+          justify = [side === "left" ? "right" : "left", ...rest];
+        }
+        return property(
+          name,
+          value,
+          [x, t.at.y, angle(t.angle)],
+          justify.length > 0 ? { justify } : {},
+        );
+      };
       const entry = drawing.bomByPath.get(u.path);
       const record = entry?.record;
       const s = symbolsByLibId.get(u.libId);
@@ -260,18 +290,8 @@ export function writeSchematics(drawing: Drawing): SchematicOutput {
         ["in_pos_files", yesNo(true)],
         ["dnp", yesNo(false)],
         ["uuid", unitUuid(name, u.ref, u.unit)],
-        property(
-          "Reference",
-          refOf(annotation, u.path),
-          [u.refField.at.x, u.refField.at.y, angle(u.refField.angle)],
-          u.refField.justify.length > 0 ? { justify: u.refField.justify } : {},
-        ),
-        property(
-          "Value",
-          entry?.value ?? u.libId,
-          [u.valueField.at.x, u.valueField.at.y, angle(u.valueField.angle)],
-          u.valueField.justify.length > 0 ? { justify: u.valueField.justify } : {},
-        ),
+        field("Reference", refOf(annotation, u.path), u.refField),
+        field("Value", entry?.value ?? u.libId, u.valueField),
         property("Footprint", entry?.footprint ?? "", [at.x, at.y, 0], { hide: true }),
         property("Datasheet", record?.provenance.datasheet?.url ?? "", [at.x, at.y, 0], {
           hide: true,
