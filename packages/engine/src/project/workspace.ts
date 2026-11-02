@@ -51,6 +51,7 @@ import {
 } from "./kicad.js";
 import { type KicadDesign, readKicadDesign } from "./kicad-import.js";
 import { loadProject, ProjectLoadError } from "./load.js";
+import { writePartRecord } from "./part-put.js";
 import { addPending, readPending, removePending } from "./pending.js";
 import { projectSkeleton } from "./skeleton.js";
 import type { ProjectSource } from "./source.js";
@@ -414,42 +415,21 @@ export class Workspace {
   partPut(yaml: string, scope?: "global" | "project"): Promise<TextResult> {
     return this.guard(async () => {
       const { result } = await this.load();
-      const { record, issues } = parsePartRecord(yaml, "<record>");
-      if (!record) return fail(issues.map((i) => i.message).join("\n"));
-
       const globalPath = result.config?.library.paths[0];
       const where = scope ?? (globalPath === undefined ? "project" : "global");
       if (where === "global" && globalPath === undefined) {
         return fail("no [library] paths in project.toml; use scope project");
       }
-      const dir =
-        where === "global"
-          ? path.resolve(this.root, globalPath as string)
-          : path.join(this.root, "parts");
-      const file = path.join(dir, `${record.id}.yaml`);
-      const rel = toPosix(path.relative(this.root, file));
-      const { footprints } = await this.kicad(result.config);
-      const notes: string[] = [];
-      if (footprints) {
-        const fpIssues = await checkFootprints(
-          [{ record, file: rel, layer: where, text: yaml }],
-          footprints,
-        );
-        const pads = fpIssues.find((i) => i.code === "part.footprint-pads");
-        if (pads) return fail(`${pads.message}; not written`);
-        notes.push(...fpIssues.map((i) => `warning: ${i.message}`));
-      } else {
-        notes.push("note: KiCad footprint libraries not found, so pads were not checked");
-      }
-      if (!record.provenance.verified_by) notes.push("unverified until a human checks it");
-
-      const existed = result.library.get(record.id)?.layer === where;
-      await mkdir(dir, { recursive: true });
-      await writeFile(file, yaml.endsWith("\n") ? yaml : `${yaml}\n`, "utf8");
-      return {
-        ok: true,
-        text: [`${existed ? "updated" : "created"} ${rel} (lib:${record.id})`, ...notes].join("\n"),
-      };
+      return writePartRecord(yaml, {
+        dir:
+          where === "global"
+            ? path.resolve(this.root, globalPath as string)
+            : path.join(this.root, "parts"),
+        layer: where,
+        shown: (file) => toPosix(path.relative(this.root, file)),
+        footprints: (await this.kicad(result.config)).footprints,
+        exists: (id) => result.library.get(id)?.layer === where,
+      });
     });
   }
 

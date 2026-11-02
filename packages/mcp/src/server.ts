@@ -81,6 +81,15 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     );
   };
 
+  /**
+   * A part-library tool: on the open project's libraries, or in global mode with no project
+   * open, on the shared library (Claude looks parts up before creating a project).
+   */
+  const libraryOrProject = async (
+    shared: (p: Projects) => Promise<TextResult>,
+    project: (w: Workspace) => Promise<TextResult>,
+  ) => (projects && !(await current()) ? reply(await shared(projects)) : run(project));
+
   /** Opens a project and reports it: where it is, the viewer, and its overview. */
   const opened = async (root: string, before: string[] = []): Promise<TextResult> => {
     const url = await open(root);
@@ -292,7 +301,11 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       inputSchema: { q: z.string() },
       annotations: readOnly,
     },
-    async ({ q }) => run((w) => w.partSearch(q)),
+    async ({ q }) =>
+      libraryOrProject(
+        (p) => p.partSearch(q),
+        (w) => w.partSearch(q),
+      ),
   );
 
   server.registerTool(
@@ -303,7 +316,11 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       inputSchema: { id: z.string(), tier: z.enum(["summary", "pins", "full"]).optional() },
       annotations: readOnly,
     },
-    async ({ id, tier }) => run((w) => w.partGet(id, tier ?? "summary")),
+    async ({ id, tier }) =>
+      libraryOrProject(
+        (p) => p.partGet(id, tier ?? "summary"),
+        (w) => w.partGet(id, tier ?? "summary"),
+      ),
   );
 
   server.registerTool(
@@ -320,7 +337,17 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
-    async ({ record, scope }) => run((w) => w.partPut(record, scope)),
+    async ({ record, scope }) =>
+      libraryOrProject(
+        async (p) =>
+          scope === "project"
+            ? {
+                ok: false,
+                text: "no project open, so no project parts/ to write to: open_project NAME first, or leave scope unset for the shared library",
+              }
+            : p.partPut(record),
+        (w) => w.partPut(record, scope),
+      ),
   );
 
   server.registerTool(

@@ -130,7 +130,10 @@ identical.
 | (viewer, started with the server)                                                 | `partstyle view [--port N]`                                                      |
 | prompts `design_review(block)`, `ingest_part(part, datasheet)`, `prepare_handoff` | `partstyle prompt NAME [ARGS...]`, and `/design-review` etc. in Claude Code      |
 
-Until a project is open in global mode, the project tools answer with how to open one.
+Until a project is open in global mode, the project tools answer with how to open one, except
+`part_search`, `part_get` and `part_put`, which work on the shared library (`library/` in the
+projects folder), so Claude can check and add parts before creating a project. (`part_put` with
+`scope: project` still needs an open project.)
 
 `init_project`: in global mode it creates `<projects dir>/NAME` (or the folder `path`, absolute
 or relative to the projects folder) using the shared library, then opens it. The library folder

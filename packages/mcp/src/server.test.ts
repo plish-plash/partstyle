@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,7 +10,8 @@ import { Projects, readGrammarReference, Workspace } from "@partstyle/engine/nod
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
 
-const example = fileURLToPath(new URL("../../../examples/bench-sensor", import.meta.url));
+const repo = (p: string) => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
+const example = repo("examples/bench-sensor");
 const ws = new Workspace(example);
 
 let client: Client;
@@ -162,11 +163,11 @@ describe("MCP server for many projects", () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  async function connect(roots: string[] = []) {
+  async function connect(roots: string[] = [], home = projects) {
     opened = [];
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await createServer(undefined, {
-      projects,
+      projects: home,
       onOpen: async (w) => {
         opened.push(w.root);
         return "http://127.0.0.1:7766/";
@@ -186,6 +187,36 @@ describe("MCP server for many projects", () => {
     };
     return { c, text };
   }
+
+  it("uses the shared library for parts before any project is open", async () => {
+    const shelf = new Projects(path.join(tmp, "shelf"), path.join(tmp, "state"));
+    const { text } = await connect([], shelf);
+    expect(await text("part_search", { q: "regulator" })).toEqual({
+      text: `no part records in the shared library ${shelf.libraryDir} yet (unzip partstyle-library.zip in ${shelf.dir}, or add records with part_put)`,
+      isError: false,
+    });
+    await cp(repo("library"), shelf.libraryDir, { recursive: true });
+    expect((await text("part_search", { q: "7805" })).text).toMatch(/^L7805CV: STMicro/);
+    const record = await text("part_get", { id: "L7805CV", tier: "full" });
+    expect(record.text).toMatch(/^# library\/L7805CV\.yaml\n/);
+    expect((await text("part_get", { id: "nope" })).isError).toBe(true);
+
+    // New records go to the shared library too; there are no project parts/ yet.
+    const yaml = (await readFile(repo("library/1N5819.yaml"), "utf8")).replace(
+      "id: 1N5819",
+      "id: TEST-D1",
+    );
+    const put = await text("part_put", { record: yaml });
+    expect(put.text).toMatch(/^created library\/TEST-D1\.yaml \(lib:TEST-D1\)\n/);
+    expect(put.text).toContain("unverified until a human checks it");
+    expect(await readFile(path.join(shelf.libraryDir, "TEST-D1.yaml"), "utf8")).toBe(yaml);
+    expect((await text("part_put", { record: yaml })).text).toMatch(/^updated library\/TEST-D1/);
+    expect((await text("part_search", { q: "TEST-D1" })).text).toMatch(/^TEST-D1: onsemi/);
+    expect((await text("part_put", { record: "id: x" })).isError).toBe(true);
+    expect((await text("part_put", { record: yaml, scope: "project" })).text).toMatch(
+      /^no project open, so no project parts\/ to write to/,
+    );
+  });
 
   it("needs a project opened first, and says how", async () => {
     const { c, text } = await connect();

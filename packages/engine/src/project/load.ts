@@ -10,7 +10,8 @@ function rel(root: string, file: string): string {
   return path.relative(root, file).split(path.sep).join("/");
 }
 
-async function listFiles(dir: string, extensions: string[]): Promise<string[]> {
+/** Files in `dir` (not recursive) with one of the extensions, sorted; none if it is missing. */
+export async function listFiles(dir: string, extensions: string[]): Promise<string[]> {
   let entries: string[];
   try {
     entries = await readdir(dir);

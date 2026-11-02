@@ -1,7 +1,12 @@
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { buildLibrary, type PartLibrary } from "../parts/library.js";
+import { describePart, type PartTier, searchParts } from "../parts/search.js";
 import type { TextResult } from "../query.js";
+import { findKicad } from "./kicad.js";
+import { listFiles } from "./load.js";
+import { writePartRecord } from "./part-put.js";
 
 /** Where projects go when no folder is given: ~/Documents/partstyle. */
 export const defaultProjectsDir = () => path.join(homedir(), "Documents", "partstyle");
@@ -74,6 +79,51 @@ export class Projects {
   /** Creates the shared library folder, so new projects can point at it. */
   async ensureLibrary(): Promise<void> {
     await mkdir(this.libraryDir, { recursive: true });
+  }
+
+  /** The shared library on its own, for looking parts up before any project is open. */
+  private async library(): Promise<PartLibrary | undefined> {
+    const files = await listFiles(this.libraryDir, [".yaml", ".yml"]);
+    if (files.length === 0) return undefined;
+    const sources = await Promise.all(
+      files.map(async (f) => ({
+        file: `library/${path.basename(f)}`,
+        text: await readFile(f, "utf8"),
+        layer: "global" as const,
+      })),
+    );
+    return buildLibrary(sources).library;
+  }
+
+  private emptyLibrary(): TextResult {
+    return {
+      ok: true,
+      text: `no part records in the shared library ${this.libraryDir} yet (unzip partstyle-library.zip in ${this.dir}, or add records with part_put)`,
+    };
+  }
+
+  /** part_search over the shared library, when no project is open. */
+  async partSearch(query: string): Promise<TextResult> {
+    const library = await this.library();
+    return library ? searchParts(library, query) : this.emptyLibrary();
+  }
+
+  /** part_get from the shared library, when no project is open. */
+  async partGet(id: string, tier: PartTier): Promise<TextResult> {
+    const library = await this.library();
+    return library ? describePart(library, id, tier) : this.emptyLibrary();
+  }
+
+  /** part_put into the shared library, when no project is open. */
+  async partPut(yaml: string): Promise<TextResult> {
+    const library = await this.library();
+    return writePartRecord(yaml, {
+      dir: this.libraryDir,
+      layer: "global",
+      shown: (file) => `library/${path.basename(file)}`,
+      footprints: (await findKicad(this.dir, {})).footprints,
+      exists: (id) => library?.has(id) ?? false,
+    });
   }
 
   /** A project name (a folder in dir) or a path, absolute or relative to dir. */
