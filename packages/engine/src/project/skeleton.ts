@@ -214,16 +214,25 @@ cap_derating = 1.5
     {
       file: "context.md",
       text: `---
+# YAML for the checks; prose for people goes below the closing ---.
 use_case: TODO one line, e.g. benchtop sensor interface
-environment: {temp_c: [0, 50], indoor: true}
-power: {source: TODO e.g. 12 V wall adapter, connector: TODO}
-assembly: {method: TODO e.g. SMT service + hand-soldered THT, volume: 1}
+environment:
+  temp_c: [0, 50]
+  indoor: true
+power:
+  source: TODO e.g. 12 V wall adapter
+  connector: TODO e.g. PWR/J1
+assembly:
+  method: TODO e.g. SMT service + hand-soldered THT
+  volume: 1
 external_interfaces: []
 # Each connector to the outside world, for example:
 #  - connector: PWR/J1
 #    connects_to: 12 V wall adapter
 #    signal: 12 V DC
-#    hazards: [reverse polarity, ESD]
+#    hazards:
+#      - reverse polarity
+#      - ESD
 ---
 
 TODO: what the board does, who uses it and where, and anything a reviewer should know.

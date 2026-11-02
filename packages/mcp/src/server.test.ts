@@ -75,7 +75,9 @@ describe("MCP server", () => {
       await c.connect(clientSide);
       const text = async (name: string, args: Record<string, unknown>) =>
         ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]?.text;
-      expect(await text("read_doc", { file: "context.md" })).toMatch(/^---\nuse_case: TODO/);
+      expect(await text("read_doc", { file: "context.md" })).toMatch(
+        /^---\n(#.*\n)+use_case: TODO/,
+      );
       expect(await text("write_doc", { file: "notes/power.md", text: "# Power\n" })).toBe(
         "wrote notes/power.md (1 line)",
       );

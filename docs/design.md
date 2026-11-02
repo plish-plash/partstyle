@@ -126,14 +126,22 @@ Structured front matter for checks, free prose below for the AI and the human.
 
 ```yaml
 use_case: Benchtop sensor interface
-environment: { temp_c: [0, 50], indoor: true }
-power: { source: 12 V wall adapter, connector: J1 }
-assembly: { method: SMT service + hand-soldered THT, volume: 10 }
+environment:
+  temp_c: [0, 50]
+  indoor: true
+power:
+  source: 12 V wall adapter
+  connector: J1
+assembly:
+  method: SMT service + hand-soldered THT
+  volume: 10
 external_interfaces:
   - connector: J4
     connects_to: remote sensor on 2 m cable
     signal: 0-3.3 V analog
-    hazards: [ESD, miswiring to 12 V]
+    hazards:
+      - ESD
+      - miswiring to 12 V
 ```
 
 External interfaces are first-class: each names a connector, what is on the other end, and its hazards, so review can ask "is J4 protected against what it will actually see?"

@@ -1,19 +1,26 @@
 ---
-
 use_case: Benchtop sensor interface
-environment: {temp_c: [0, 50], indoor: true}
-power: {source: 12 V wall adapter, connector: PWR/J1}
-assembly: {method: SMT service + hand-soldered THT, volume: 10}
+environment:
+  temp_c: [0, 50]
+  indoor: true
+power:
+  source: 12 V wall adapter
+  connector: PWR/J1
+assembly:
+  method: SMT service + hand-soldered THT
+  volume: 10
 external_interfaces:
-- connector: AFE/J2
-  connects_to: remote sensor on 2 m cable
-  signal: 0-3.3 V analog, sensor powered from +5V
-  hazards: [ESD, miswiring to 12 V]
-- connector: MCU/J5
-  connects_to: USB-UART adapter
-  signal: 3.3 V UART
-  hazards: [ESD]
-
+  - connector: AFE/J2
+    connects_to: remote sensor on 2 m cable
+    signal: 0-3.3 V analog, sensor powered from +5V
+    hazards:
+      - ESD
+      - miswiring to 12 V
+  - connector: MCU/J5
+    connects_to: USB-UART adapter
+    signal: 3.3 V UART
+    hazards:
+      - ESD
 ---
 
 A bench interface that reads a remote analog sensor and reports over UART.

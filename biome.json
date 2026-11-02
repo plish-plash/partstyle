@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/*.svelte", "!**/.claude/commands"]
+    "includes": ["**", "!**/*.svelte", "!**/.claude/commands", "!**/context.md"]
   },
   "formatter": {
     "enabled": true,
