@@ -534,6 +534,7 @@ on the main line are not carried into a new variant. The MCP `variant` tool offe
 | `grammar`               | the `.ckt` and patch reference ([ckt-grammar.md](ckt-grammar.md)) |
 | `schema part`           | the part-record JSON Schema                                       |
 | `--help`                | the command summary                                               |
+| `--version`             | `partstyle VERSION`: a release's version, or the source's         |
 
 The procedures are the MCP server's prompts, printed for clients without prompt support. `init`
 also writes them as Claude Code slash commands in `.claude/commands/`:

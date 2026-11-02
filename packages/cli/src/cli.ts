@@ -18,6 +18,7 @@ import {
   readGrammarReference,
   Workspace,
 } from "@partstyle/engine/node";
+import { partstyleVersion } from "@partstyle/mcp";
 import { startViewer } from "@partstyle/server";
 
 export interface CommandResult {
@@ -73,6 +74,8 @@ commands:
 
 options:
   -p, --project DIR   project folder (default: current directory)
+  -h, --help          this summary
+  --version           print Partstyle's version
 
 Full reference: docs/cli.md in the Partstyle repository.`;
 
@@ -105,6 +108,7 @@ function parse(argv: string[]) {
       since: { type: "string" },
       dir: { type: "string" },
       help: { type: "boolean", short: "h" },
+      version: { type: "boolean" },
     },
   });
 }
@@ -127,6 +131,7 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
   const { values, positionals } = parsed;
   const [command, ...args] = positionals;
   if (values.help) return { stdout: usage, exitCode: 0 };
+  if (values.version) return { stdout: `partstyle ${partstyleVersion()}`, exitCode: 0 };
   if (command === undefined) return usageError("missing command");
 
   const ws = new Workspace(values.project ?? ".");

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Projects, projectsDirFrom, Workspace } from "@partstyle/engine/node";
@@ -5,6 +6,23 @@ import { startViewer, type ViewerServer } from "@partstyle/server";
 import { createServer } from "./server.js";
 
 export { createServer, type ServerOptions } from "./server.js";
+
+let version: string | undefined;
+
+/** Stamps a release build's version (its entry calls this), overriding package.json's. */
+export function embedVersion(v: string): void {
+  version = v;
+}
+
+/** Partstyle's version, as `partstyle --version` prints and the MCP server reports it. */
+export function partstyleVersion(): string {
+  version ??= (
+    JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+      version: string;
+    }
+  ).version;
+  return version;
+}
 
 /**
  * Runs the MCP server on stdio until the client disconnects: `partstyle-mcp ARGS` and
@@ -45,11 +63,11 @@ export async function serveMcp(argv: string[]): Promise<void> {
   if (values.project !== undefined) {
     const ws = new Workspace(values.project);
     await show(ws);
-    server = createServer(ws);
+    server = createServer(ws, { version: partstyleVersion() });
   } else {
     const dir = projectsDirFrom(values["projects-dir"], (m) => process.stderr.write(`${m}\n`));
     const projects = new Projects(dir);
-    server = createServer(undefined, { projects, onOpen: show });
+    server = createServer(undefined, { projects, onOpen: show, version: partstyleVersion() });
   }
   await server.connect(new StdioServerTransport());
 

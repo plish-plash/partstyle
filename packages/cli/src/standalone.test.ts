@@ -11,6 +11,7 @@ import {
   StdioClientTransport,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Workspace } from "@partstyle/engine/node";
+import { partstyleVersion } from "@partstyle/mcp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // What scripts/standalone.mjs builds: the executable for this machine and the Claude Desktop
@@ -34,6 +35,12 @@ const builds = (
   prefix: /\.m?js$/.test(file) ? [file] : [],
 }));
 
+/** The version the builds embed: package.json's, as the source reports it. */
+const stamped = partstyleVersion();
+
+// Vitest fails a file that defines no tests, as describe.each([]) would before anything is built.
+if (builds.length === 0) it.skip("standalone builds (none built: pnpm standalone, pnpm mcpb)");
+
 describe.each(builds)("standalone build $file", ({ command, prefix }) => {
   let tmp: string;
   let project: string;
@@ -53,6 +60,7 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
   it("runs CLI commands, with the grammar embedded", async () => {
     const run = (args: string[]) =>
       promisify(execFile)(command, [...prefix, ...args], { windowsHide: true });
+    expect((await run(["--version"])).stdout).toBe(`partstyle ${stamped}\n`);
     expect((await run(["grammar"])).stdout).toBe(
       `${await readFile(repo("docs/ckt-grammar.md"), "utf8")}\n`,
     );
@@ -74,6 +82,7 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
     try {
+      expect(client.getServerVersion()?.version).toBe(stamped);
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name)).toContain("overview");
       const r = await client.callTool({ name: "validate" });

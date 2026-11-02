@@ -6,6 +6,9 @@
   "description": "AI-first schematic editor: design circuits in chat and watch them in a live viewer.",
   "long_description": "Partstyle stores a circuit as connectivity (parts, pins, nets and intent) in plain text and draws the schematic itself. Claude creates and edits projects through these tools, checks them against part ratings and the board's context, and hands them off to KiCad. The live viewer (a local web page) shows each change as it lands; select things there and refer to them as \"this\". KiCad export and import need KiCad installed.",
   "author": { "name": "Elliot Segal" },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/plish-plash/partstyle",
+  "repository": { "type": "git", "url": "https://github.com/plish-plash/partstyle.git" },
   "keywords": ["schematic", "electronics", "circuit", "kicad", "pcb"],
   "server": {
     "type": "node",

@@ -24,7 +24,7 @@ The extension is not signed, so Claude Desktop shows it as unverified when insta
 
 Optional: `partstyle-library.zip` on the releases page holds the starter part records from this
 repository's `library/` (20 records: regulators, an MCU, an op-amp, diodes, connectors,
-passives and LEDs). Unzip it
+passives and LEDs), released under CC0 1.0 (public domain; see `library/LICENSE`). Unzip it
 in the projects folder (`Documents/partstyle` by default): it unpacks as `library/`, the shared
 library that projects created there already use. Records added later with `part_put` go there
 too. To use it from elsewhere, pass its folder to `partstyle init --library`.
@@ -89,8 +89,10 @@ node scripts/standalone.mjs --check-mcpb   # check the built server under anothe
 `packages/cli/standalone/out/mcpb/server/index.mjs` (about 2.6 MB), then runs it under the
 current Node the way Claude Desktop would: MCP handshake, the grammar, and the viewer drawing a
 copy of `examples/bench-sensor`. It then writes the manifest from the template
-`packages/cli/mcpb/manifest.json`, with the server's tool list and the version from
-`PARTSTYLE_VERSION` (default `0.0.0-dev`), and packs it with the `mcpb` CLI
+`packages/cli/mcpb/manifest.json`, with the server's tool list and the `package.json`
+version, adds `LICENSE` and `THIRD_PARTY_NOTICES.txt`
+(every bundled package's license, found from Bun's metafile, plus the viewer's Svelte runtime;
+also written to `out/` for releases), and packs it with the `mcpb` CLI
 (`@anthropic-ai/mcpb`). The manifest asks for Node 20 or later; `--check-mcpb` repeats the check
 alone, e.g. under Node 20. The smoke test also covers the bundle once it is built.
 
@@ -98,15 +100,28 @@ alone, e.g. under Node 20. The smoke test also covers the bundle once it is buil
 
 - `.github/workflows/ci.yml`, on pushes to `main` and pull requests: `pnpm check` on Linux and
   Windows, then builds and smoke-tests each runner's executable and the extension.
-- `.github/workflows/release.yml`, on a `vX.Y.Z` tag: builds all five executables on Linux,
+- `.github/workflows/release.yml`, on a `vX.Y.Z` tag: checks the tag against the version (below);
+  builds all five executables on Linux,
   macOS and Windows runners (the macOS ones ad-hoc signed) and smoke-tests the ones each runner
-  can execute; builds the extension with the tag's version and checks it under Node 22 and 20;
-  zips `library/` as `partstyle-library.zip`; then publishes them all with `SHA256SUMS` as a
+  can execute; builds the extension and checks it under Node 22 and 20;
+  zips `library/` as `partstyle-library.zip`; then publishes them all, with `SHA256SUMS` and
+  `THIRD_PARTY_NOTICES.txt` (the licenses of the bundled packages), as a
   GitHub release with generated notes. A tag with a
-  `-`, like `v0.2.0-rc1`, makes a prerelease. Running the workflow by hand builds everything as
-  artifacts without a release.
+  `-`, like `v0.2.0-rc1`, makes a prerelease.
 
-To release: make sure CI is green on `main`, then
+**Versions.** The `version` in `packages/*/package.json` is the version: what
+`partstyle --version` prints and the MCP server reports, from source, the executables and the
+extension alike, and what the extension manifest says. The packages move together, and it must
+be a semantic version (`X.Y.Z` or `X.Y.Z-suffix`), which the extension manifest requires;
+`scripts/check-version.mjs` checks both (so does `pnpm check`). A release tag must be exactly `v`
+plus that version: the release workflow's first job runs `check-version.mjs` with the tag and
+fails, before building anything, if it does not match.
+
+**Release.**
+
+1. Bump `version` in every `packages/*/package.json` to the new version (the root
+   `package.json` has none), and commit.
+2. Make sure CI is green on `main`, then tag that commit with `v` and the version:
 
 ```sh
 git tag v0.1.0 && git push origin v0.1.0

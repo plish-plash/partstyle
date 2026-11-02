@@ -1,7 +1,8 @@
 # Builds the standalone partstyle executables (scripts/standalone.mjs) for each platform and
 # the Claude Desktop extension (partstyle.mcpb), smoke-tests them, zips the seed part library,
 # and on a v* tag publishes them with checksums as a GitHub release. Run it by hand
-# (workflow_dispatch) to get them as artifacts only.
+# (workflow_dispatch) for a dry run: the same builds and checks, as artifacts only. The version
+# comes from packages/*/package.json; a tag must be v plus that version, or nothing is built.
 name: Release
 
 on:
@@ -13,7 +14,22 @@ permissions:
   contents: read
 
 jobs:
+  # The packages agree on one semantic version and, on a tag, the tag is v<that version>.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            node scripts/check-version.mjs "$GITHUB_REF_NAME"
+          else
+            node scripts/check-version.mjs
+          fi
+
   build:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -65,6 +81,7 @@ jobs:
   # with its own Node.js), checked under Node 22 while packing and again under Node 20, the
   # oldest its manifest accepts.
   mcpb:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -79,11 +96,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Build the extension
-        shell: bash
-        run: |
-          # v1.2.3 -> 1.2.3; a manual run without a tag gets a dev version.
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export PARTSTYLE_VERSION="${GITHUB_REF_NAME#v}"; fi
-          pnpm mcpb
+        run: pnpm mcpb
       - name: Smoke-test its server
         env:
           PARTSTYLE_BINARY: ${{ github.workspace }}/packages/cli/standalone/out/mcpb/server/index.mjs
@@ -96,12 +109,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: partstyle-mcpb
-          path: packages/cli/standalone/out/partstyle.mcpb
+          # The notices cover the executables too: they bundle the same packages.
+          path: |
+            packages/cli/standalone/out/partstyle.mcpb
+            packages/cli/standalone/out/THIRD_PARTY_NOTICES.txt
           if-no-files-found: error
 
   # The seed part library, with library/ at the top of the zip: unzipped in the projects folder,
   # it is the shared library new projects use.
   library:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

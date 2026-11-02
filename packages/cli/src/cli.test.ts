@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { run } from "./cli.js";
 
@@ -149,6 +151,18 @@ describe("partstyle view and focus", () => {
 });
 
 describe("partstyle", () => {
+  it("prints its version, from package.json", async () => {
+    const { version } = JSON.parse(await readFile(repo("packages/mcp/package.json"), "utf8"));
+    expect(await cli(["--version"])).toEqual({ stdout: `partstyle ${version}`, exitCode: 0 });
+  });
+
+  it("has one semantic version across the packages (as releases check against the tag)", async () => {
+    const { stdout } = await promisify(execFile)(process.execPath, [
+      repo("scripts/check-version.mjs"),
+    ]);
+    expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
   it("prints the grammar and the part-record JSON Schema", async () => {
     expect((await cli(["grammar"])).stdout).toMatch(/^# \.ckt grammar reference/);
     const r = await cli(["schema", "part"]);
