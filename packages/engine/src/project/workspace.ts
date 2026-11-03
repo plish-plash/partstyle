@@ -1055,7 +1055,8 @@ export class Workspace {
   /**
    * Changes how a part or child sheet of `block` is drawn, as the human asks in the viewer:
    * turn a two-terminal part a quarter turn, mirror anything else (a two-terminal part turns
-   * half way instead), move its group a stage earlier or later, or clear its hint. The first
+   * half way instead), move its group a stage earlier or later (from any part in the group: the
+   * stage is written on the group's head), or clear its hint. The first
    * stage edit on a sheet writes the stage every group has now, so the others stay where they
    * are rather than following along. Written as a patch (never held for review: it is the
    * human's own edit), so it is logged and can be reverted like any other change.
@@ -1092,9 +1093,10 @@ export class Workspace {
             if (x.ref === x.group) next.set(x.ref, { ...stored(x.ref), stage: x.stage });
           }
         }
-        // A part riding in another's group leaves it for a stage of its own.
+        // A part riding in another's group moves with it: the stage goes on the group's head
+        // (a stage written on the rider itself would split it off).
         const stage = Math.max(1, h.stage + (op === "earlier" ? -1 : 1));
-        next.set(ref, { ...hintOf(ref), stage });
+        next.set(h.group, { ...hintOf(h.group), stage });
       } else if (op === "rotate") {
         if (!h.turnable) return fail(`${ref} is not a two-terminal part; flip it instead`);
         next.set(ref, { ...hintOf(ref), rotation: ((h.rotation + 90) % 360) as Rotation });

@@ -264,80 +264,9 @@ while the design has validation errors.
 | `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor |
 | `<name>.kicad_pro`    | written only if missing, so KiCad's own settings survive  |
 
-Each sheet is laid out automatically, in one deterministic pass — the same layout the viewer
-shows. Parts are drawn in **groups**: a part (or child sheet) with the passives that ride along
-with it. Groups are placed left to right by **stage** along the signal flow, groups of one
-stage stacked, and the stages wrap onto new rows when the paper is full. Layout hints on part
-and `use` lines (`[2 r90 flip]`, see the grammar) fix a group's stage or a part's rotation or
-mirroring; the viewer writes them. How a net is drawn depends on what it connects:
-
-- **Small nets** (2–6 connections in a sheet: pins, sheet pins and its hierarchical label)
-  whose groups sit in consecutive stages of one row are routed as orthogonal wires on the
-  2.54 mm pin grid, with junction dots where three wires meet or two meet at a pin. Ones
-  reaching further get a
-  local label (or hierarchical label, for a port) on each piece, and so do ones whose wire
-  would cross three or more others, or run more than 20 mm further than the distance between
-  its ends between two groups (wrapping around a part; a feedback loop around its own part is
-  fine), or that cannot be routed at all.
-- **Adjacent pins** of one part on the same net (three GND pins in a row) are tied with a short
-  wire along their ends and share one label or power symbol.
-- **Larger nets** use local labels at each pin; ports of such nets get hierarchical labels.
-  A port net that reaches only one pin in a sheet has its hierarchical label right on that pin.
-- **A label never shares a pin with a wire.** It sits on the pin only when nothing is wired
-  there. When the pin's wire runs along the part (adjacent pins tied together), the label goes
-  out on a short stub; when a wire leaves the pin outward (a part in line), a short stub tees
-  off it just past the pin, with a junction dot, and the label hangs at its end: above the
-  wire, or below it, or on a longer stub, whichever is clearest. A stub never ends on another
-  net's wire or runs into a pin where any other choice exists (that would look like a
-  connection); crossing a wire, or text crowding a part, is the lesser evil. At the end of
-  a row of hung parts, the label sits on the end of the row's wire.
-- **Power nets** (any net with power pins or a `ground`/`power_in`/`power_out` port) use KiCad
-  power symbols from its `power` library: `power:GND`, `power:+5V` and so on when one is named
-  after the net, otherwise `power:GND` (ground) or `power:VCC` with the net name as its value.
-  They connect globally, so their ports get no sheet pins. The name is the bare net name, or
-  the instance-qualified one (`PWR_+12V`) when two nets share a bare name. If a block used more
-  than once would need different power names per instance, that net falls back to labels.
-- **Power symbols point the conventional way**: rails up, ground down. At a pin on a symbol's
-  side, a short stub carries the symbol clear of the part, unless another connected pin is in
-  its way, when it points straight out of the pin instead.
-- **Ports** that are not power nets become sheet pins on the parent's sheet symbol.
-- **Unconnected pins** get no-connect flags.
-- **PWR_FLAG** (`power:PWR_FLAG`) is added to every net drawn with power symbols or feeding
-  `power_in` pins that has no `power_out` pin, i.e. power from outside the design (a
-  `{source: ...}` rail, ground). It sits in a sheet where the net reaches real part pins.
-
-Without hints, parts are placed to read like a hand-drawn schematic:
-
-- **Stages** follow the signal: between two groups sharing signal nets, outputs and inputs
-  vote two each for which comes first, and pins on the right or left of a part with pins on
-  both sides (an IC) one each. Supply nets carry power from a regulator's output to what it
-  feeds. Groups connected to nothing come last.
-- **Two-terminal parts** (R, C, L, F, FB, D, LED refdes) are turned: a part to ground stands
-  with ground at the bottom, one between a rail and a signal stands with the rail on top, and
-  anything else lies in the signal path, facing the pin it hangs from (a free diode anode
-  first).
-- **Shunt parts** (two-terminal parts from a signal net to ground or a rail: filter caps,
-  pull-downs, clamps) hang under the net's wire (or stand over it, for a rail) beyond the pin
-  that drives it. **Series parts** continue in line beyond the pin (clear of the bodies hung
-  before them; their text hangs below the wire), and what hangs off their far end follows.
-  Where no pin has room (crowded neighbouring pins), the part forms a group of its own.
-- **Decoupling parts** (two-terminal parts on power nets only) are drawn in a row under the IC
-  or connector they serve (beside it, on its left, when that side has no pins: an op-amp's
-  supply unit): the nearest one declared before or after them that shares a rail. Declare a
-  capacitor next to its IC to keep them together.
-- **Connectors and other one-sided parts are mirrored** to face the circuit: a source whose
-  pins point left, or a sink whose pins point right.
-- **Reference and value text** keep the KiCad symbol's own placement when the part is drawn as
-  its library has it. Otherwise (a generated symbol, a mirrored or turned part, any
-  two-terminal part) they sit just right of an upright part, reference over value, or centred
-  over the part, the value directly on it and the reference above. KiCad's font is wider than
-  the viewer's, so text beside a turned part may sit slightly further out in the export.
-- **Groups line up with what they connect to:** each is lowered (or the row before it is) so
-  its first connection to a group already placed in the row runs straight, or drops into a pin
-  pointing up (rises into one pointing down) instead of hooking back over it.
-- The sheet goes on the smallest paper that holds it (A4 first), and generated symbols put a
-  part's supply pins on top and grounds at the bottom (a regulator keeps its input on the
-  left, in line with its output).
+Each sheet is drawn as the viewer shows it: groups of parts placed left to right by stage,
+wires between neighbouring stages, labels for nets that reach further, and KiCad power symbols
+for power nets. The rules are in [layout.md](layout.md).
 
 Power symbol definitions are copied from KiCad's installed `power.kicad_sym` so they match the
 library exactly; without KiCad, built-in look-alikes with the same names are used.
@@ -449,7 +378,7 @@ When the footprint libraries are found, `validate`, `overview` and `apply` also 
 
 Serves the live viewer for the project at `http://127.0.0.1:7766/` (or the next free port;
 `--port 0` picks any) until Ctrl-C. The MCP server starts the same viewer automatically. The
-page shows each sheet with the auto-layout described under `kicad export`, and updates within a
+page shows each sheet laid out as described in [layout.md](layout.md), and updates within a
 moment of any change to the project's files or its part libraries.
 
 - **Navigate:** sheet buttons in the header, or double-click a sheet. Scroll to zoom, drag to
@@ -466,7 +395,8 @@ moment of any change to the project's files or its part libraries.
   part, turns a two-terminal one half way), or returns it to automatic placement. Each edit
   writes a layout hint into the .ckt and is logged as a change; the first stage edit on a
   sheet also writes every group's current stage, so the rest stay put. Stage numbers show over
-  the groups while a part of the sheet is selected.
+  the groups while a part of the sheet is selected. See [layout.md](layout.md) for what stages,
+  groups and the defaults are.
 
 The server listens on 127.0.0.1 only, refuses requests addressed to other host names, and accepts
 writes only from its own page. Add `?live=0` to the URL for a static snapshot without the update

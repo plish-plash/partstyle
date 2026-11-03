@@ -31,7 +31,8 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   `PARTSTYLE_STATE_DIR` at a temporary copy, so they never touch the repo's records.
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
   [docs/cli.md](docs/cli.md), and keep it updated when commands change. cli.md is a man page:
-  command syntax and behaviour only. Installing, building, the standalone executable, CI and
+  command syntax and behaviour only; the layout rules (shared by the viewer and the KiCad
+  export) are in [docs/layout.md](docs/layout.md), kept updated when the drawing code changes. Installing, building, the standalone executable, CI and
   releases go in [INSTALL.md](INSTALL.md); MCP client setup in docs/claude-code.md.
 - KiCad: `kicad-cli` is often not on PATH. On Windows look in
   `C:\Program Files\KiCad\<version>\bin\kicad-cli.exe` (10.0 on this machine) before concluding
@@ -78,7 +79,8 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     `[rN]`); `groups.ts` attaches two-terminal parts to hosts (satellite, shunt, series chain);
     `flow.ts` derives stages and default flips; `cell.ts` lays out one group in its own
     coordinates, pins on the 2.54 mm grid; `pack.ts` packs groups into rows of stage slots on
-    the smallest paper, lowering each to line up with what it connects to; `route.ts` is an A*
+    the smallest paper (a slot's groups side by side while they fit its width, else stacked),
+    lowering each to line up with what it connects to; `route.ts` is an A*
     maze router on the 2.54 mm grid (a connection crossing 3+ wires, or detouring between
     groups, is left for labels); `layout.ts` ties them together (wire nets in consecutive slots
     of a row, label the rest). Layout hints (`[2 r90 flip]` on part

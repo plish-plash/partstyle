@@ -100,6 +100,7 @@ lacks become draft part records to complete.
 | [docs/claude-code.md](docs/claude-code.md) | Using Partstyle from Claude Code, Claude Desktop and MCP clients     |
 | [docs/cli.md](docs/cli.md)                 | Reference for every `partstyle` command                              |
 | [docs/ckt-grammar.md](docs/ckt-grammar.md) | The `.ckt` language, patches, and every issue code                   |
+| [docs/layout.md](docs/layout.md)           | How sheets are laid out, and how to steer the layout                 |
 | [docs/design.md](docs/design.md)           | Design rationale and architecture                                    |
 
 ## Development

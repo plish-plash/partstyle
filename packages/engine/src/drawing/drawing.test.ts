@@ -487,6 +487,66 @@ describe("prepareDrawing", () => {
     expect(s.width).toBeLessThan(297);
   });
 
+  it("sets narrow groups of one stage side by side, each chain kept together", async () => {
+    // Two more LED chains on the 5 V rail: U1 feeds them, so they share the stage of the
+    // existing R1–D2 chain, under U2 and its decoupling.
+    const n = [7, 8];
+    const d = await patched(
+      [
+        "in power",
+        ...n.flatMap((i) => [`+ part R${i} res(1k)`, `+ part D${i} led(red)`]),
+        ...n.flatMap((i) => [`net +5V += R${i}.1`, `net GND += D${i}.K`]),
+        ...n.map((i) => `+ net A${i} : R${i}.2 D${i}.A`),
+      ].join("\n"),
+    );
+    const s = sheetOf(d, "power");
+    expect(checkConnectivity(s)).toEqual([]);
+    const [r1, r7, r8] = ["R1", "R7", "R8"].map((r) => unitOf(s, r));
+    expect([r1?.stage, r7?.stage, r8?.stage]).toEqual([3, 3, 3]);
+    expect(new Set([r1, r7, r8].map((u) => u?.box.y)).size).toBe(1);
+    expect((r1 as PlacedUnit).box.x).toBeLessThan((r7 as PlacedUnit).box.x);
+    expect((r7 as PlacedUnit).box.x).toBeLessThan((r8 as PlacedUnit).box.x);
+    for (const [r, led] of [
+      ["R1", "D2"],
+      ["R7", "D7"],
+      ["R8", "D8"],
+    ] as const) {
+      // Each LED straight under its own resistor.
+      expect(unitOf(s, led).box.x).toBe(unitOf(s, r).box.x);
+      expect(unitOf(s, led).box.y).toBeGreaterThan(unitOf(s, r).box.y);
+    }
+  });
+
+  it("lines a connector up with the pins low on a tall part that feed it", () => {
+    // J5 shares a stage with J3, under it; one of its UART pins lines up with the ATmega's, far
+    // down (the two parts order them oppositely, so only one can).
+    const mcu = sheetOf(drawing, "mcu");
+    const level = (net: string) => pinOf(mcu, "J5", net).at.y === pinOf(mcu, "U4", net).at.y;
+    expect(level("TXD") || level("RXD")).toBe(true);
+  });
+
+  it("lines a group up with the nearer of the parts it follows", async () => {
+    // U1 and U2 share stage 1, U2 below U1. U3's upper input comes from U2 and its lower one
+    // from U1: it lines up with U1 (the smaller move), not with whichever was placed last.
+    const d = await patched(
+      [
+        "in pick",
+        "+ block pick",
+        "+ part U1 lib:MCP6002-I_SN [1]",
+        "+ part U2 lib:MCP6002-I_SN [1]",
+        "+ part U3 lib:MCP6002-I_SN [2]",
+        "+ net HI : U2.OUTA U3.VINA-",
+        "+ net LO : U1.OUTA U3.VINB+",
+        "in main",
+        "+ use pick as PK",
+      ].join("\n"),
+    );
+    const s = sheetOf(d, "pick");
+    expect(checkConnectivity(s)).toEqual([]);
+    expect(unitOf(s, "U2").box.y).toBeGreaterThan(unitOf(s, "U1").box.y);
+    expect(pinOf(s, "U3", "LO").at.y).toBe(pinOf(s, "U1", "LO").at.y);
+  });
+
   it("puts grounded parts below the wire that feeds them", async () => {
     const r = validateProject(
       await loadProject(repo("packages/engine/test-fixtures/pulldowns"), seed),
@@ -538,9 +598,9 @@ describe("prepareDrawing", () => {
   });
 
   it("hangs a label off a wire clear of the wire on the next pin", async () => {
-    // R2 sits in line on U1's + input, so INT_IN (which reaches U9, far away) is labelled on a
-    // stub teed off that wire; R1 stands over the wire of the − input, one pin above (as the
-    // generated op-amp symbol orders them).
+    // R2 sits in line on U1's + input, so INT_IN (which reaches U9, two slots on past U8) is
+    // labelled on a stub teed off that wire; R1 stands over the wire of the − input, one pin
+    // above (as the generated op-amp symbol orders them).
     const d = await patched(
       [
         "in tee",
@@ -548,6 +608,7 @@ describe("prepareDrawing", () => {
         "+ part U1 lib:MCP6002-I_SN",
         "+ part R1 res(10k)",
         "+ part R2 res(1k)",
+        "+ part U8 lib:MCP6002-I_SN [5]",
         "+ part U9 lib:MCP6002-I_SN [6]",
         "+ net +5V : R1.1 U1.VDD U9.VDD",
         "+ net GND : U1.VSS U9.VSS",

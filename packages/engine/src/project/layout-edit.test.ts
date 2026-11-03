@@ -54,6 +54,15 @@ describe("setLayout", () => {
     expect(await line("U3")).toMatch(/\[2\]/);
   });
 
+  it("moves a rider's whole group rather than splitting the rider off", async () => {
+    // C7 hangs off R3 in U3's group: its stage buttons move U3, and C7 gets no hint.
+    expect((await ws.setLayout("sensor_afe", "C7", "later")).ok).toBe(true);
+    expect(await line("U3")).toMatch(/\[3\]/);
+    expect(await line("C7")).not.toMatch(/\[/);
+    expect((await ws.setLayout("sensor_afe", "C7", "earlier")).ok).toBe(true);
+    expect(await line("U3")).toMatch(/\[2\]/);
+  });
+
   it("clears a hint and logs every edit as a change", async () => {
     expect((await ws.setLayout("sensor_afe", "R4", "reset")).ok).toBe(true);
     expect(await line("R4")).toBe(
