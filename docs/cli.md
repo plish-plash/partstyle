@@ -394,8 +394,9 @@ moment of any change to the project's files or its part libraries.
   earlier or later (`[` / `]`), rotates a two-terminal part (`R`), flips it (`F`: mirrors a
   part, turns a two-terminal one half way), or returns it to automatic placement. Each edit
   writes a layout hint into the .ckt and is logged as a change; the first stage edit on a
-  sheet also writes every group's current stage, so the rest stay put. Stage numbers show over
-  the groups while a part of the sheet is selected. See [layout.md](layout.md) for what stages,
+  sheet also writes every group's current stage, so the rest stay put. While a part of the
+  sheet is selected, each stage's number shows at the top of its column (the selected part's
+  stage highlighted). See [layout.md](layout.md) for what stages,
   groups and the defaults are.
 
 The server listens on 127.0.0.1 only, refuses requests addressed to other host names, and accepts

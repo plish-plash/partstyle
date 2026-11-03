@@ -232,6 +232,7 @@ describe("checkConnectivity", () => {
     junctions: [],
     noConnects: [],
     hints: [],
+    stages: [],
     ...over,
   });
   const unit = (pins: { number: string; x: number; y: number; net?: string }[]): PlacedUnit => ({
@@ -650,6 +651,34 @@ describe("prepareDrawing", () => {
     const r4 = unitOf(afe, "R4");
     for (const f of [r4.refField, r4.valueField]) {
       expect(f).toMatchObject({ at: { x: r4.box.x + r4.box.w + 1.27 }, justify: ["left"] });
+    }
+  });
+
+  it("puts a generated symbol's text beside its rightmost top pin, not over the pins", () => {
+    // Without KiCad's libraries the ATmega is a generated symbol, its supply pins on top.
+    const u4 = unitOf(sheetOf(drawing, "mcu"), "U4");
+    const top = u4.pins.filter((p) => p.outward === 90);
+    expect(top.length).toBeGreaterThan(0);
+    const rightmost = top.reduce((a, p) => (p.at.x > a.at.x ? p : a));
+    for (const f of [u4.refField, u4.valueField]) {
+      expect(f.justify).toEqual(["left"]);
+      expect(f.at.x).toBeGreaterThan(rightmost.at.x);
+      expect(Math.abs(f.at.y - rightmost.at.y)).toBeLessThanOrEqual(1 + 1e-9);
+    }
+    expect(u4.refField.at.y).toBeLessThan(u4.valueField.at.y);
+  });
+
+  it("reports each stage's column, covering its parts, in order", () => {
+    for (const sheet of drawing.sheets.values()) {
+      const stages = sheet.stages.map((s) => s.stage);
+      expect(stages).toEqual([...stages].sort((a, b) => a - b));
+      for (const u of sheet.units) {
+        const col = sheet.stages.find((s) => s.stage === u.stage);
+        expect(col).toBeDefined();
+        expect(u.box.x).toBeGreaterThanOrEqual((col?.x ?? 0) - 1e-6);
+        expect(u.box.x + u.box.w).toBeLessThanOrEqual((col?.x ?? 0) + (col?.w ?? 0) + 1e-6);
+        expect(u.box.y).toBeGreaterThanOrEqual(col?.top ?? 0);
+      }
     }
   });
 

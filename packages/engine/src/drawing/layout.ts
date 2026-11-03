@@ -148,7 +148,7 @@ export function layoutSheet(
   const groups = formGroups(input);
   const flow = deriveFlow(input, groups);
   const cells = groups.map((g) => buildCell(g, flow.stages.get(g.id) ?? 1, flow.flips, input));
-  const { grid } = packCells(cells, (net) => planOf(net).kind === "wire");
+  const { grid, stages } = packCells(cells, (net) => planOf(net).kind === "wire");
 
   const piecesOf = new Map<string, { cell: Cell; piece: Piece }[]>();
   for (const cell of cells) {
@@ -433,6 +433,7 @@ export function layoutSheet(
     junctions,
     noConnects,
     hints,
+    stages,
   };
 }
 

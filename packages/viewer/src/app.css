@@ -266,7 +266,7 @@ textarea {
   gap: 0.3rem;
 }
 
-/* Stage numbers over each group of the sheet, while a part on it is selected. */
+/* Stage numbers over each stage's column, while a part of the sheet is selected. */
 .stage-tag {
   fill: var(--ui-muted);
   font-size: 1.6px;
@@ -497,6 +497,11 @@ svg text {
   stroke: var(--hot);
   stroke-width: 0.35;
   stroke-dasharray: 0.8 0.5;
+}
+
+/* No outline for keyboard focus (the item last clicked): the selection is what shows. */
+svg [role="button"]:focus {
+  outline: none;
 }
 
 .pin-hit {

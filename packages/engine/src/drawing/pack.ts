@@ -1,6 +1,7 @@
 import { type Cell, moveCell } from "./cell.js";
 import { GRID } from "./nodes.js";
 import { paperFor, papers } from "./paper.js";
+import type { PlacedStage } from "./types.js";
 import { PITCH, snap } from "./wires.js";
 
 /** Clear of KiCad's sheet frame and its coordinate band. */
@@ -33,7 +34,12 @@ const up = (v: number) => snap(Math.ceil(v / PITCH - 1e-6) * PITCH);
 export function packCells(
   cells: Cell[],
   wired: (net: string) => boolean,
-): { width: number; height: number; grid: Map<Cell, { row: number; slot: number }> } {
+): {
+  width: number;
+  height: number;
+  grid: Map<Cell, { row: number; slot: number }>;
+  stages: PlacedStage[];
+} {
   const slots: Slot[] = [];
   for (const c of [...cells].sort((a, b) => a.stage - b.stage || a.group.line - b.group.line)) {
     const last = slots[slots.length - 1];
@@ -61,6 +67,7 @@ export function packCells(
   const arrange = (maxW: number) => {
     const at = new Map<Cell, { x: number; y: number }>();
     const grid = new Map<Cell, { row: number; slot: number }>();
+    const stages: PlacedStage[] = [];
     let x = 0;
     let row = 0;
     let rowY = 0;
@@ -115,10 +122,11 @@ export function packCells(
         rowCells.push(c);
       });
       close();
+      stages.push({ stage: slot.stage, x, w: slot.w, top: rowY });
       width = Math.max(width, x + slot.w);
       x = up(x + slot.w + channel(i));
     });
-    return { at, grid, width, height: bottom() };
+    return { at, grid, stages, width, height: bottom() };
   };
 
   let best = arrange(Number.POSITIVE_INFINITY);
@@ -132,7 +140,12 @@ export function packCells(
     const to = best.at.get(c) as { x: number; y: number };
     moveCell(c, snap(PAD.left + to.x - c.box.x), snap(PAD.top + to.y - c.box.y));
   }
-  return { width: PAD.left + best.width, height: PAD.top + best.height, grid: best.grid };
+  return {
+    width: PAD.left + best.width,
+    height: PAD.top + best.height,
+    grid: best.grid,
+    stages: best.stages.map((s) => ({ ...s, x: PAD.left + s.x, top: PAD.top + s.top })),
+  };
 }
 
 /** How far below its wire a pin pointing this way sits, so the wire drops into it. */

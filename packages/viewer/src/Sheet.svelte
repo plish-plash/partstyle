@@ -138,18 +138,12 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
   };
 
   /** Each group's extent and stage, shown while a part of this sheet is selected. */
-  const groupTags = $derived.by(() => {
+  /** One label per stage, centred over its column, while a part of this sheet is selected. */
+  const stageTags = $derived.by(() => {
     const local = selection.flatMap((s) => (s.startsWith(prefix) ? [s.slice(prefix.length).replace(/\/$/, "")] : []));
-    const mine = new Set(layout.hints.filter((h) => local.includes(h.ref)).map((h) => h.group));
+    const mine = new Set(layout.hints.filter((h) => local.includes(h.ref)).map((h) => h.stage));
     if (mine.size === 0) return [];
-    const boxes = new Map<string, { x: number; y: number; stage: number }>();
-    const grow = (group: string, x: number, y: number, stage: number) => {
-      const b = boxes.get(group);
-      boxes.set(group, b ? { x: Math.min(b.x, x), y: Math.min(b.y, y), stage } : { x, y, stage });
-    };
-    for (const u of layout.units) grow(u.group, u.box.x, u.box.y, u.stage);
-    for (const s of layout.sheets) grow(s.instance, s.at.x, s.at.y, s.stage);
-    return [...boxes].map(([group, b]) => ({ group, ...b, mine: mine.has(group) }));
+    return layout.stages.map((s) => ({ ...s, mine: mine.has(s.stage) }));
   });
 
   /** Label text runs away from its connection point. */
@@ -317,8 +311,8 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
     </g>
   {/each}
 
-  {#each groupTags as t (t.group)}
-    <text x={t.x} y={t.y - 5} class="stage-tag" class:mine={t.mine}>stage {t.stage}</text>
+  {#each stageTags as t, i (i)}
+    <text x={t.x + t.w / 2} y={t.top - 3} text-anchor="middle" class="stage-tag" class:mine={t.mine}>stage {t.stage}</text>
   {/each}
 
   {#each markers as m, i (i)}

@@ -23,7 +23,8 @@ group's stage, a two-terminal part's rotation, or whether anything else is mirro
 only the drawing, never the circuit.
 
 The viewer writes them: select a part or sheet and use its Layout section (see
-[`view`](cli.md#view---port-n)). The stage buttons move the selected part's whole group, even
+[`view`](cli.md#view---port-n)); while a part is selected, each stage's number shows at the top
+of its column. The stage buttons move the selected part's whole group, even
 when the part rides in another's; the first stage edit on a sheet writes every group's current
 stage, so the others stay where they are. A stage written by hand on a passive gives it a group
 of its own.
@@ -100,8 +101,9 @@ Without hints, parts are placed to read like a hand-drawn schematic:
 
 Reference and value text keep the KiCad symbol's own placement when the part is drawn as its
 library has it. Otherwise (a generated symbol, a mirrored or turned part, any two-terminal
-part) they sit just right of an upright part, reference over value, or centred over the part,
-the value directly on it and the reference above. KiCad's font is wider than the viewer's, so
+part) they sit just right of an upright part, reference over value; beside the rightmost pin on
+top of a part with pins there, reference over value, left-aligned; or else centred over the
+part, the value directly on it and the reference above. KiCad's font is wider than the viewer's, so
 text beside a turned part may sit slightly further out in the KiCad export.
 
 ## Checks

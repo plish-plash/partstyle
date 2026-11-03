@@ -131,4 +131,15 @@ export interface SheetLayout {
   junctions: { net: string; at: Pt }[];
   noConnects: Pt[];
   hints: PlacedHint[];
+  /** The column each stage's groups are placed in, left to right and row by row. */
+  stages: PlacedStage[];
+}
+
+/** One stage's column on a sheet: where its groups go, under the top of its row. */
+export interface PlacedStage {
+  stage: number;
+  x: number;
+  w: number;
+  /** Top of the row the stage is in: its label goes just above. */
+  top: number;
 }

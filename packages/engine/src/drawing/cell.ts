@@ -92,11 +92,18 @@ const LINE = 2;
 /**
  * Reference and value fields of a part whose library placement cannot be used (a generated
  * symbol, or one turned or mirrored): beside an upright part, the reference over the value,
- * starting just right of it; otherwise centred over the part, the value directly on it and the
- * reference above. Text is placed as the viewer draws it, on the sheet; the KiCad export
- * adapts it to how KiCad reads a mirrored or turned symbol's fields.
+ * starting just right of it; beside the rightmost pin on top of a part that has pins there
+ * (they would run through text above it), the reference over the value, left-aligned; otherwise
+ * centred over the part, the value directly on it and the reference above. Text is placed as
+ * the viewer draws it, on the sheet; the KiCad export adapts it to how KiCad reads a mirrored
+ * or turned symbol's fields.
  */
-function ownFields(box: Rect, upright: boolean): [ref: PlacedText, value: PlacedText] {
+function ownFields(
+  box: Rect,
+  upright: boolean,
+  /** Ends of the pins on top of the part. */
+  topPins: Pt[],
+): [ref: PlacedText, value: PlacedText] {
   const at = (x: number, y: number, justify: string[]): PlacedText => ({
     at: { x, y },
     angle: 0,
@@ -106,6 +113,12 @@ function ownFields(box: Rect, upright: boolean): [ref: PlacedText, value: Placed
     const left = box.x + box.w + CHAR;
     const mid = box.y + box.h / 2;
     return [at(left, mid - LINE / 2, ["left"]), at(left, mid + LINE / 2, ["left"])];
+  }
+  const rightmost = topPins.reduce<Pt | undefined>((a, p) => (!a || p.x > a.x ? p : a), undefined);
+  if (rightmost) {
+    // Clear of a power symbol standing on the pin, level with the pin itself.
+    const left = rightmost.x + 1.5 * CHAR;
+    return [at(left, rightmost.y - LINE / 2, ["left"]), at(left, rightmost.y + LINE / 2, ["left"])];
   }
   const centre = box.x + box.w / 2;
   const top = box.y - CHAR;
@@ -551,7 +564,11 @@ export function buildCell(
     const [refField, valueField] =
       asLibrary && fields?.reference && fields.value
         ? [libText(o, fields.reference), libText(o, fields.value)]
-        : ownFields(box, upright);
+        : ownFields(
+            box,
+            upright,
+            n.pins.filter((p) => p.outward === 90).map((p) => add(o, p)),
+          );
     b.text.push(textRect(refField, n.ref), textRect(valueField, value));
     b.units.push({
       ref: n.ref,
