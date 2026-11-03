@@ -18,6 +18,8 @@ export interface Focus {
   selection: string[];
   /** Instance prefix of the sheet being viewed: "" for the top, "PWR/" for an instance. */
   sheet?: string;
+  /** The variant being viewed; absent for the main circuit. */
+  variant?: string;
   updated?: string;
 }
 
@@ -77,6 +79,7 @@ export function parseFocus(text: string): Focus {
         ? data.selection.filter((s) => typeof s === "string")
         : [],
       ...(typeof data.sheet === "string" && { sheet: data.sheet }),
+      ...(typeof data.variant === "string" && data.variant !== "" && { variant: data.variant }),
       ...(typeof data.updated === "string" && { updated: data.updated }),
     };
   } catch {
@@ -114,6 +117,7 @@ export function focusText(
 ): string {
   const lines: string[] = [];
   const open = comments.filter((c) => c.status === "open");
+  if (focus.variant) lines.push(`viewing variant ${focus.variant} (pass variant=${focus.variant})`);
   if (focus.selection.length > 0) {
     const where =
       focus.sheet === undefined

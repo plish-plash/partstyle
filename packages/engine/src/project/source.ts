@@ -10,6 +10,9 @@ export interface TextFile {
 export interface ProjectSource {
   /** partstyle-project.yaml: the project's name, settings and design context. */
   project: TextFile;
+  /** For a variant: its name, and its project file of overrides if it has one. */
+  variant?: string;
+  projectOverride?: TextFile;
   /** comments.yaml: review comments from the viewer. */
   comments?: TextFile;
   circuits: TextFile[];

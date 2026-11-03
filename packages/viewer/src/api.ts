@@ -38,8 +38,8 @@ export const setReviewMode = (mode: "auto" | "accept", variant?: string) =>
 export const decidePending = (op: "accept" | "reject", id: string, variant?: string) =>
   post<Result>("api/pending", { op, id, variant });
 
-export const variantOp = (op: "create" | "adopt" | "remove", name: string) =>
-  post<Result>("api/variant", { op, name });
+export const variantOp = (op: "create" | "adopt" | "remove", name: string, description?: string) =>
+  post<Result>("api/variant", { op, name, description });
 
 export const sendFocus = (focus: Focus) => post<{ ok: true }>("api/focus", focus);
 

@@ -61,9 +61,23 @@ export interface ChangeItem {
   text: string;
 }
 
-/** Checkpoint, changesets, pending changes and variants: what the review panel shows. */
+/** A variant: what it has of its own, and which of those blocks main changed since the copy. */
+export interface VariantSummary {
+  name: string;
+  description?: string;
+  /** Whether it overrides parts of the project file. */
+  projectFile: boolean;
+  /** Its own block files (circuit/x.ckt). */
+  blocks: string[];
+  diverged: string[];
+}
+
+/**
+ * Checkpoint, changesets, pending changes and variants: what the review panel shows. For a
+ * variant, changesets and pending changes are the variant's own.
+ */
 export interface VersionState {
-  /** Whether the project is in a git repository, so checkpoints and variants work. */
+  /** Whether the project is in a git repository, so checkpoints work. */
   git: boolean;
   mode: ReviewMode;
   checkpoint?: { id: string; message: string; date: string };
@@ -71,7 +85,9 @@ export interface VersionState {
   pending: { id: string; created: string; log: string[] }[];
   /** Everything changed since the checkpoint, for highlighting on the sheets. */
   changed: Omit<ChangeItem, "id" | "text">[];
-  variants: string[];
+  variants: VariantSummary[];
+  /** For a variant: where it differs from main, for highlighting on its sheets. */
+  vsMain?: Omit<ChangeItem, "id" | "text">[];
 }
 
 /** Everything the viewer shows, as one JSON document. */

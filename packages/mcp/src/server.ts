@@ -19,6 +19,11 @@ const reply = (r: TextResult) => ({
 
 const readOnly = { readOnlyHint: true, openWorldHint: false } as const;
 
+/** The design a tool works on: main (when omitted), or a variant by name. */
+const variant = z.string().optional();
+const on = (w: Workspace, v: string | undefined) =>
+  w.forVariant(v === undefined || v === "main" ? undefined : v);
+
 const isProject = (dir: string) =>
   stat(path.join(dir, PROJECT_FILE)).then(
     (s) => s.isFile(),
@@ -205,9 +210,10 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     {
       description:
         "Start here. Project summary: blocks with part counts and ports, environment context, issue counts and the first issues.",
+      inputSchema: { variant },
       annotations: readOnly,
     },
-    async () => run((w) => w.overview()),
+    async ({ variant }) => run((w) => on(w, variant).overview()),
   );
 
   server.registerTool(
@@ -218,10 +224,12 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       inputSchema: {
         block: z.string().describe("Block name, e.g. power"),
         detail: z.enum(["summary", "full"]).optional(),
+        variant,
       },
       annotations: readOnly,
     },
-    async ({ block, detail }) => run((w) => w.readBlock(block, detail ?? "full")),
+    async ({ block, detail, variant }) =>
+      run((w) => on(w, variant).readBlock(block, detail ?? "full")),
   );
 
   server.registerTool(
@@ -229,11 +237,13 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     {
       description:
         "Targeted lookup on the flattened netlist: 'part U3', 'net +5V', 'parts where vin_max < 15V', 'nets where pins = 1', 'unconnected'. Send 'help' for syntax.",
-      inputSchema: { expr: z.string() },
+      inputSchema: { expr: z.string(), variant },
       annotations: readOnly,
     },
-    async ({ expr }) =>
-      expr.trim() === "help" ? reply({ ok: true, text: queryUsage }) : run((w) => w.query(expr)),
+    async ({ expr, variant }) =>
+      expr.trim() === "help"
+        ? reply({ ok: true, text: queryUsage })
+        : run((w) => on(w, variant).query(expr)),
   );
 
   server.registerTool(
@@ -244,10 +254,15 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       inputSchema: {
         patch: z.string(),
         dry_run: z.boolean().optional().describe("Report the effect without writing files"),
+        variants: z
+          .array(z.string())
+          .optional()
+          .describe('"main" and/or variant names (default ["main"])'),
       },
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ patch, dry_run }) => run((w) => w.apply(patch, { dryRun: dry_run ?? false })),
+    async ({ patch, dry_run, variants }) =>
+      run((w) => w.applyTo(patch, variants ?? [], { dryRun: dry_run ?? false })),
   );
 
   server.registerTool(
@@ -255,29 +270,30 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     {
       description:
         "Run all checks; lists each unwaived issue as file:line:col severity code message.",
+      inputSchema: { variant },
       annotations: readOnly,
     },
-    async () => run((w) => w.validate()),
+    async ({ variant }) => run((w) => on(w, variant).validate()),
   );
 
   server.registerTool(
     "read_doc",
     {
-      description: `Read ${PROJECT_FILE} or a notes/*.md file.`,
-      inputSchema: { file: z.string() },
+      description: `Read ${PROJECT_FILE} (a variant's overrides) or a notes/*.md file.`,
+      inputSchema: { file: z.string(), variant },
       annotations: readOnly,
     },
-    async ({ file }) => run((w) => w.readDoc(file)),
+    async ({ file, variant }) => run((w) => on(w, variant).readDoc(file)),
   );
 
   server.registerTool(
     "write_doc",
     {
-      description: `Replace ${PROJECT_FILE} or a notes/*.md file with text; for the project file, reports its issues (and refuses one that would not load).`,
-      inputSchema: { file: z.string(), text: z.string() },
+      description: `Replace ${PROJECT_FILE} (a variant's: only keys it overrides) or a notes/*.md file; for the project file, reports its issues and refuses one that would not load.`,
+      inputSchema: { file: z.string(), text: z.string(), variant },
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ file, text }) => run((w) => w.writeDoc(file, text)),
+    async ({ file, text, variant }) => run((w) => on(w, variant).writeDoc(file, text)),
   );
 
   server.registerTool(
@@ -343,10 +359,11 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
         "Write kicad/ (schematic, symbols, netlist; never the PCB) and verify it with kicad-cli (netlist round-trip, ERC). Needs a design without errors. Only when asked.",
       inputSchema: {
         check: z.boolean().optional().describe("Run kicad-cli checks (default true)"),
+        variant,
       },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
-    async ({ check }) => run((w) => w.kicadExport({ check: check ?? true })),
+    async ({ check, variant }) => run((w) => on(w, variant).kicadExport({ check: check ?? true })),
   );
 
   server.registerTool(
@@ -382,9 +399,10 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     {
       description:
         "Resolve generic parts to library MPNs (preferring the project's distributors), update bom.lock and write bom.csv. Only when asked.",
+      inputSchema: { variant },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
-    async () => run((w) => w.bomExport()),
+    async ({ variant }) => run((w) => on(w, variant).bomExport()),
   );
 
   server.registerTool(
@@ -402,10 +420,10 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     {
       description:
         "Circuit changes by statement since: checkpoint (default; not yet approved), last (your previous diff; use at the start of a turn), or a checkpoint id.",
-      inputSchema: { since: z.string().optional() },
+      inputSchema: { since: z.string().optional(), variant },
       annotations: readOnly,
     },
-    async ({ since }) => run((w) => w.diff(since ?? "checkpoint")),
+    async ({ since, variant }) => run((w) => on(w, variant).diff(since ?? "checkpoint")),
   );
 
   server.registerTool(
@@ -422,11 +440,15 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "variant",
     {
       description:
-        "Parallel design versions on git branches: list, create NAME (from the last checkpoint; edit it in .partstyle/variants/NAME), diff NAME.",
-      inputSchema: { op: z.enum(["list", "create", "diff"]), name: z.string().optional() },
+        "Variants share every block they don't change: list, create NAME [description], diff NAME (from main).",
+      inputSchema: {
+        op: z.enum(["list", "create", "diff"]),
+        name: z.string().optional(),
+        description: z.string().optional(),
+      },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
-    async ({ op, name }) => run((w) => w.variant(op, name)),
+    async ({ op, name, description }) => run((w) => w.variant(op, name, description)),
   );
 
   // Procedures, fetched only when needed (the CLI prints the same text: partstyle prompt NAME).

@@ -57,9 +57,12 @@ commit of the project) is their approval.
 - If \`overview\` says \`review mode: accept\` (the person's switch in the viewer), edit only
   through \`partstyle apply\`: each patch waits as a pending change (P1, P2, ...) until the person
   accepts it in the viewer.
-- To try an alternative (say an LDO against a buck stage), \`partstyle variant create NAME\`
-  makes a parallel copy under \`.partstyle/variants/NAME\`; edit it with \`partstyle -p\` that
-  folder and compare with \`variant diff NAME\`. The person adopts or removes it.
+- To explore an alternative (say a buck stage instead of the LDO), \`partstyle variant create
+  NAME "what it explores"\`. A variant shares every block it doesn't change, so edits to main
+  reach it. Pass \`--variant NAME\` to any command; \`apply\` takes \`--variant\` several times
+  (\`main\` is the main circuit) to change several versions at once. A variant's own blocks are in
+  \`variants/NAME/circuit/\`, and its \`${PROJECT_FILE}\` holds only overrides of main's. Compare
+  with \`variant diff NAME\`; the person adopts or removes it.
 
 ## Editing
 
@@ -137,12 +140,14 @@ ${start}## Workflow
    them in the viewer.
 6. Start each turn with diff since=last: it shows the person's reverts and edits. Don't redo a
    change they reverted; ask.
-7. Generics for passives: res(10k, 1%, 0603), cap(100n, 16V, X7R, 0603), led(red, 0603);
+7. A variant (variant create NAME) shares every block it doesn't change. Read one with
+   variant=NAME; apply to several with variants=[...] ("main" is the main circuit).
+8. Generics for passives: res(10k, 1%, 0603), cap(100n, 16V, X7R, 0603), led(red, 0603);
    lib:ID for everything else, part_search first. Add records only for parts you know exist
    (from memory or a datasheet), never an MPN extrapolated from a series.
-8. Record rationale in notes/decisions.md and layout constraints in notes/pcb.md.
-9. checkpoint, bom_export and kicad_export only when the person asks. Never edit the kicad/
-   output: change the design and export again.
+9. Record rationale in notes/decisions.md and layout constraints in notes/pcb.md.
+10. checkpoint, bom_export and kicad_export only when the person asks. Never edit the kicad/
+    output: change the design and export again.
 `;
 }
 

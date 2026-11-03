@@ -24,7 +24,11 @@ export interface ValidationResult {
 
 /** Parse, elaborate and run structural ERC over a project, then apply waivers. */
 export function validateProject(source: ProjectSource): ValidationResult {
-  const { config, issues } = parseProjectConfig(source.project.text, source.project.file);
+  const { config, issues } = parseProjectConfig(
+    source.project.text,
+    source.project.file,
+    source.projectOverride,
+  );
 
   const blocks: CktFile[] = [];
   for (const f of source.circuits) {
@@ -42,7 +46,16 @@ export function validateProject(source: ProjectSource): ValidationResult {
 
   const elaborated = elaborate(blocks, library, TOP_BLOCK);
   issues.push(
-    ...elaborated.issues,
+    // A variant that stops using one of main's blocks (replacing it with its own) is not
+    // warned about it: the block is main's.
+    ...elaborated.issues.filter(
+      (i) =>
+        !(
+          source.variant !== undefined &&
+          i.code === "elab.unused-block" &&
+          i.location?.file.startsWith("circuit/")
+        ),
+    ),
     ...runErc(elaborated.netlist),
     ...draftIssues(elaborated.netlist, library),
     ...partChecks(elaborated.netlist, { capDerating: config.checks.cap_derating }),

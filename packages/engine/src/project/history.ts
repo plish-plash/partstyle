@@ -67,11 +67,32 @@ export async function readCircuits(root: string): Promise<Record<string, string>
  */
 export class History {
   private queue: Promise<unknown> = Promise.resolve();
+  /** The folder whose circuit/ is tracked: the project, or a variant's folder. */
+  private readonly dir: string;
 
-  constructor(readonly root: string) {}
+  /**
+   * `folder` (relative to the project, forward slashes) is a variant's: its own block files are
+   * logged, in .partstyle/<folder>/history.json.
+   */
+  constructor(
+    readonly root: string,
+    private readonly folder = "",
+  ) {
+    this.dir = path.join(root, folder);
+  }
 
   private file() {
-    return path.join(this.root, HISTORY_FILE);
+    return this.folder
+      ? path.join(this.root, ".partstyle", this.folder, "history.json")
+      : path.join(this.root, HISTORY_FILE);
+  }
+
+  /** The tracked circuit files at a commit, keyed like readCircuits (circuit/x.ckt). */
+  private async filesAtCommit(commit: string): Promise<Record<string, string>> {
+    const sub = this.folder ? `${this.folder}/circuit` : "circuit";
+    const strip = this.folder ? this.folder.length + 1 : 0;
+    const files = await filesAt(this.root, commit, sub);
+    return Object.fromEntries([...files].map(([f, t]) => [f.slice(strip), t]));
   }
 
   /** Runs `op` after every earlier call has finished. */
@@ -103,10 +124,10 @@ export class History {
     const state = await this.read();
     if (state && state.checkpoint === checkpoint) return state;
     const snapshot = checkpoint
-      ? Object.fromEntries(await filesAt(this.root, checkpoint, "circuit"))
+      ? await this.filesAtCommit(checkpoint)
       : state
         ? state.snapshot
-        : await readCircuits(this.root);
+        : await readCircuits(this.dir);
     const fresh = { checkpoint, snapshot, changesets: [], next: 1 };
     this.restarted.add(fresh);
     return fresh;
@@ -122,7 +143,7 @@ export class History {
   record(source: ChangeSource = "edit", note?: string): Promise<Changeset | undefined> {
     return this.serial(async () => {
       const state = await this.current();
-      const now = await readCircuits(this.root);
+      const now = await readCircuits(this.dir);
       const paths = [...new Set([...Object.keys(state.snapshot), ...Object.keys(now)])].filter(
         (p) => state.snapshot[p] !== now[p],
       );
@@ -181,11 +202,17 @@ export class History {
       const checkpoint = (await lastCommit(this.root))?.id ?? null;
       await this.write({
         checkpoint,
-        snapshot: await readCircuits(this.root),
+        snapshot: await readCircuits(this.dir),
         changesets: [],
         next: 1,
       });
     });
+  }
+
+  /** The tracked files at the checkpoint the log counts from (undefined without one). */
+  async atCheckpoint(): Promise<Record<string, string> | undefined> {
+    const cp = await lastCommit(this.root);
+    return cp ? this.filesAtCommit(cp.id) : undefined;
   }
 
   /** The circuit when `diff --since last` last ran, replaced by the current one. */

@@ -5,8 +5,10 @@ partstyle [-p DIR] <command> [args] [options]
 ```
 
 Every command works on one project folder: `-p/--project DIR`, or the current directory.
-Each command except `init`, `grammar` and `schema` reads the project fresh, so edits made by
-hand or by another tool are always picked up.
+`--variant NAME` makes it work on one of the project's [variants](#variant-list--create-name-description--diffadoptremove-name)
+instead of the main circuit (`apply` takes it several times). Each command except `init`,
+`grammar` and `schema` reads the project fresh, so edits made by hand or by another tool are
+always picked up.
 
 Every MCP tool has a matching command with identical output (see
 [claude-code.md](claude-code.md)). Output is terse text meant for both people and AI.
@@ -534,15 +536,14 @@ at another repository's worktree list) are not supported.
   `.partstyle/history.json`.
 - **Checkpoint:** a commit of the project folder, the person's approval of the changes so far.
   It starts a new changeset log.
-- **Variant:** a parallel version on its own branch, with a working copy of that branch under
-  `.partstyle/variants/NAME` (git-ignored). The copy is a plain folder marked by
-  `.partstyle-variant.json`; Partstyle's checkpoints there commit to the variant's branch (the
-  git CLI run inside it sees the main repository instead).
+- **Variant:** an alternative version of the design that shares every block it doesn't change
+  (see [`variant`](#variant-list--create-name-description--diffadoptremove-name)). It is a
+  folder of project files, so a checkpoint covers main and every variant.
 
 The viewer's Changes tab shows all of this: changes since the checkpoint are highlighted on the
 sheets (added green, modified amber), and each changeset or single statement can be reverted,
-pending patches previewed, accepted or rejected, checkpoints made and variants opened, adopted
-or removed.
+pending patches previewed, accepted or rejected, checkpoints made and variants created, adopted
+or removed. The header's switcher picks which version of the design is shown.
 
 ### `diff [--since checkpoint|last|ID]`
 
@@ -585,20 +586,46 @@ previews it in the viewer and accepts it (then it applies, as a changeset) or re
 file edits still land immediately; the project's CLAUDE.md tells the AI to edit only through
 `apply` in this mode. The AI cannot change the mode.
 
-### `variant list|create|diff|adopt|remove [NAME]`
+### `variant list | create NAME [DESCRIPTION...] | diff|adopt|remove NAME`
 
-| Op            | Does                                                                               |
-| ------------- | ---------------------------------------------------------------------------------- |
-| `list`        | variants and how many statements each differs from the main line                   |
-| `create NAME` | a new branch from the last checkpoint, copied out under `.partstyle/variants/NAME` |
-| `diff NAME`   | main line → variant, statement by statement                                        |
-| `adopt NAME`  | copies the variant's design files over the main line's, as one changeset           |
-| `remove NAME` | deletes the working copy and its branch                                            |
+A variant explores an alternative to the same core circuit: another regulator in one block, or
+what has to change for a hotter environment. It holds only what differs from main:
 
-Work on a variant like any project: `partstyle -p .partstyle/variants/NAME/<project path> ...`,
-including its own checkpoints. The viewer opens it with `?variant=NAME`. Uncheckpointed changes
-on the main line are not carried into a new variant. The MCP `variant` tool offers only `list`,
-`create` and `diff`: adopting and removing are the person's decisions.
+```
+variants/buck/
+  variant.yaml             # description; main's hash of each block when the variant copied it
+  circuit/power.ckt        # replaces main's power block; every other block is main's
+  partstyle-project.yaml   # optional: only the keys it overrides
+```
+
+- **Blocks.** The variant's design is main's `circuit/` with its own block files in place of
+  main's of the same name. Editing a block the variant takes from main copies it in first; a
+  block edited back to main's text is removed again, so the variant follows main for it. Main's
+  blocks that the variant no longer uses are not warned about.
+- **Project file.** The variant's file is merged over main's: mappings merge key by key, lists
+  and single values replace main's, `null` removes a key. So `environment: {temp_c: [0, 85]}`
+  changes only the temperature range; `doc read`/`doc write partstyle-project.yaml` in a variant
+  read and write these overrides.
+- **Working on variants.** `--variant NAME` makes any command work on that variant. `apply`
+  takes `--variant` several times (`main` is the main circuit) and applies the patch to each,
+  all or nothing. With `main` among them, a variant gets only the edits to blocks of its own:
+  main's edit already reaches the rest. Changesets, pending patches, `diff --since last` and
+  the export outputs (`bom.csv`, the locks, `kicad/`) are the variant's own, under
+  `variants/NAME/`; the locks fall back to main's, so shared parts keep their refdes. Layout
+  hints on a block the variant takes from main go to main's file. KiCad import works on main
+  only.
+- **Shared.** Parts, notes, comments and checkpoints.
+
+| Op                          | Does                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`                      | each variant: description, its own blocks and project file, and blocks main changed since the variant copied them                        |
+| `create NAME [DESCRIPTION]` | an empty variant, the same as main                                                                                                       |
+| `diff NAME`                 | main → variant, statement by statement, and where main moved on                                                                          |
+| `adopt NAME`                | makes the variant's blocks and overrides main's (one changeset; comments in main's project file are kept); the variant then matches main |
+| `remove NAME`               | deletes the variant's folder                                                                                                             |
+
+The MCP `variant` tool offers only `list`, `create` and `diff`: adopting and removing are the
+person's decisions.
 
 ## Reference
 

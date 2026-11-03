@@ -1,116 +1,138 @@
-import { appendFile, copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { PROJECT_FILE } from "./config.js";
-import {
-  createVariantCopy,
-  deleteBranch,
-  GitError,
-  headCommit,
-  isIgnored,
-  projectFiles,
-  type RepoInfo,
-  readVariantMarker,
-} from "./git.js";
 
-/** Variant working copies live here, inside the (gitignored) local state folder. */
-export const VARIANTS_DIR = ".partstyle/variants";
+/**
+ * Variants are alternative versions of the design that share everything they do not change.
+ * Each is a folder `variants/NAME/` in the project, committed with it: `variant.yaml`, the block
+ * files it overrides (`circuit/*.ckt`), and optionally a project file of overrides. Every other
+ * block comes from main, so edits to main reach the variant.
+ */
+export const VARIANTS_DIR = "variants";
+export const VARIANT_FILE = "variant.yaml";
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/;
 
-export interface Variant {
+export interface VariantMeta {
+  description?: string;
+  /** For each block file copied from main (circuit/x.ckt): main's text hash at the copy. */
+  base: Record<string, string>;
+}
+
+export interface Variant extends VariantMeta {
   name: string;
-  branch: string;
-  /** The working copy's root: the whole repository's files at the variant's branch. */
-  copy: string;
-  /** The project folder inside it. */
+  /** The variant's folder. */
   dir: string;
 }
 
-function branchFor(info: RepoInfo, name: string): string {
-  const project = (info.prefix.replace(/\/$/, "") || path.basename(info.top)).replace(
-    /[^A-Za-z0-9._-]+/g,
-    "-",
-  );
-  return `variant/${project}/${name}`;
-}
+export const hashText = (text: string) =>
+  createHash("sha1").update(text).digest("hex").slice(0, 12);
+
+export const variantDir = (root: string, name: string) => path.join(root, VARIANTS_DIR, name);
 
 export function checkVariantName(name: string): string | undefined {
+  if (name === "main") return "'main' is the main circuit; choose another variant name";
   return NAME.test(name)
     ? undefined
     : `variant names are letters, digits, '.', '_' and '-' (got '${name}')`;
 }
 
-export async function listVariants(root: string, info: RepoInfo): Promise<Variant[]> {
-  const base = path.join(root, VARIANTS_DIR);
-  const variants: Variant[] = [];
-  for (const name of await readdir(base).catch(() => [])) {
-    const copy = path.join(base, name);
-    const marker = await readVariantMarker(copy);
-    if (!marker) continue;
-    variants.push({ name, branch: marker.branch, copy, dir: path.join(copy, info.prefix) });
+function parseMeta(text: string): VariantMeta {
+  let data: unknown;
+  try {
+    data = parseYaml(text);
+  } catch {
+    data = undefined;
   }
-  return variants.sort((a, b) => a.name.localeCompare(b.name));
+  const d = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
+  const base = typeof d.base === "object" && d.base !== null ? d.base : {};
+  return {
+    ...(typeof d.description === "string" &&
+      d.description !== "" && {
+        description: d.description,
+      }),
+    base: Object.fromEntries(
+      Object.entries(base).filter((e): e is [string, string] => typeof e[1] === "string"),
+    ),
+  };
 }
 
-/** Makes sure git ignores the variants folder, so a checkpoint never sweeps a copy in. */
-async function ensureIgnored(root: string, info: RepoInfo): Promise<boolean> {
-  if (await isIgnored(info, `${info.prefix}${VARIANTS_DIR}/x`)) return false;
-  const file = path.join(root, ".gitignore");
-  const text = await readFile(file, "utf8").catch(() => "");
-  await appendFile(file, `${text === "" || text.endsWith("\n") ? "" : "\n"}.partstyle/\n`, "utf8");
-  return true;
+export async function readVariant(root: string, name: string): Promise<Variant | undefined> {
+  const dir = variantDir(root, name);
+  const text = await readFile(path.join(dir, VARIANT_FILE), "utf8").catch(() => undefined);
+  return text === undefined ? undefined : { name, dir, ...parseMeta(text) };
 }
 
-/** Creates a variant on a new branch from the last commit, copied out under VARIANTS_DIR. */
+export async function writeMeta(v: Variant): Promise<void> {
+  const data = {
+    ...(v.description !== undefined && { description: v.description }),
+    ...(Object.keys(v.base).length > 0 && { base: v.base }),
+  };
+  const body = Object.keys(data).length > 0 ? stringifyYaml(data) : "";
+  await writeFile(
+    path.join(v.dir, VARIANT_FILE),
+    `# A Partstyle variant: the blocks in circuit/ replace main's; every other block is main's.\n${body}`,
+    "utf8",
+  );
+}
+
+export async function listVariants(root: string): Promise<Variant[]> {
+  const names = await readdir(path.join(root, VARIANTS_DIR)).catch(() => [] as string[]);
+  const found = await Promise.all(names.map((n) => readVariant(root, n)));
+  return found
+    .filter((v): v is Variant => v !== undefined)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function createVariant(
   root: string,
-  info: RepoInfo,
   name: string,
-): Promise<{ variant: Variant; ignoredNow: boolean }> {
-  const copy = path.join(root, VARIANTS_DIR, name);
-  const branch = branchFor(info, name);
-  const commit = await headCommit(info);
-  if (!commit) throw new GitError("the repository has no commits yet: make a checkpoint first");
-  const ignoredNow = await ensureIgnored(root, info);
-  await createVariantCopy(info, commit, branch, copy);
-  return { variant: { name, branch, copy, dir: path.join(copy, info.prefix) }, ignoredNow };
+  description?: string,
+): Promise<Variant> {
+  const v: Variant = {
+    name,
+    dir: variantDir(root, name),
+    base: {},
+    ...(description?.trim() && { description: description.trim() }),
+  };
+  await mkdir(v.dir, { recursive: true });
+  await writeMeta(v);
+  return v;
 }
 
-export async function removeVariant(info: RepoInfo, v: Variant): Promise<void> {
-  await rm(v.copy, { recursive: true, force: true });
-  await deleteBranch(info, v.branch);
+export async function removeVariant(v: Variant): Promise<void> {
+  await rm(v.dir, { recursive: true, force: true });
 }
 
-/** The design files a variant carries over when adopted (not exports, review or local state). */
-const adoptable = (f: string) =>
-  /^(circuit|parts|notes)\//.test(f) || [PROJECT_FILE, "bom.lock", "annotation.lock"].includes(f);
+/** Main's circuit files with a variant's laid over them, file by file. */
+export function overlayCircuits(
+  main: Record<string, string>,
+  overlay: Record<string, string>,
+): Record<string, string> {
+  return { ...main, ...overlay };
+}
 
-/**
- * Copies a variant's design files over the main project's, deleting circuit files the variant
- * no longer has. Returns the paths that changed.
- */
-export async function adoptVariant(root: string, v: Variant): Promise<string[]> {
-  const listed = async (dir: string) => (await projectFiles(dir)).filter(adoptable);
-  const theirs = await listed(v.dir);
-  const ours = await listed(root);
-  const changed: string[] = [];
-  for (const f of theirs) {
-    const from = path.join(v.dir, f);
-    const to = path.join(root, f);
-    const [a, b] = await Promise.all([
-      readFile(from, "utf8"),
-      readFile(to, "utf8").catch(() => undefined),
-    ]);
-    if (a === b) continue;
-    await mkdir(path.dirname(to), { recursive: true });
-    await copyFile(from, to);
-    changed.push(f);
-  }
-  for (const f of ours) {
-    if (f.startsWith("circuit/") && !theirs.includes(f)) {
-      await rm(path.join(root, f));
-      changed.push(f);
-    }
-  }
-  return changed;
+/** The variant's own block files, and those whose main copy changed since the variant copied it. */
+export function forkStatus(
+  v: Variant,
+  main: Record<string, string>,
+  own: Record<string, string>,
+): { blocks: string[]; diverged: string[] } {
+  const blocks = Object.keys(own).sort();
+  const diverged = blocks.filter((f) => {
+    const base = v.base[f];
+    const now = main[f];
+    return base !== undefined && now !== undefined && hashText(now) !== base;
+  });
+  return { blocks, diverged };
+}
+
+/** Whether a variant has a project file of overrides. */
+export async function hasProjectOverrides(v: Variant): Promise<boolean> {
+  return readFile(path.join(v.dir, PROJECT_FILE), "utf8").then(
+    () => true,
+    () => false,
+  );
 }

@@ -19,10 +19,12 @@ let { versions, variant, preview, onpreview, onvariant, onshow, ondone }: Props 
 
 let message = $state("");
 let newVariant = $state("");
+let newDescription = $state("");
 let busy = $state(false);
 let result = $state("");
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const blockName = (file: string) => file.replace(/^.*\//, "").replace(/\.ckt$/, "");
 const opClass = (op: string) => (op === "+" ? "added" : op === "-" ? "removed" : "modified");
 
 async function run(action: () => Promise<{ ok: boolean; text: string }>) {
@@ -51,17 +53,21 @@ function createVariant() {
   const name = newVariant.trim();
   if (!name) return;
   void run(async () => {
-    const r = await api.variantOp("create", name);
-    if (r.ok) newVariant = "";
+    const r = await api.variantOp("create", name, newDescription.trim() || undefined);
+    if (r.ok) {
+      newVariant = "";
+      newDescription = "";
+      onvariant(name);
+    }
     return r;
   });
 }
 function adopt(name: string) {
-  if (!confirm(`Copy variant ${name}'s design over the main line? It becomes one changeset you can revert.`)) return;
+  if (!confirm(`Make variant ${name}'s changes the main circuit's? It becomes one changeset you can revert, and the variant then matches main.`)) return;
   void run(() => api.variantOp("adopt", name));
 }
 function remove(name: string) {
-  if (!confirm(`Delete variant ${name} and its branch? Its unsaved and checkpointed work is lost.`)) return;
+  if (!confirm(`Delete variant ${name}? Its blocks are lost unless a checkpoint holds them.`)) return;
   if (variant === name) onvariant(undefined);
   void run(() => api.variantOp("remove", name));
 }
@@ -71,7 +77,7 @@ function remove(name: string) {
   {#if !versions.git}
     <p class="hint">This project is not in a git repository, so changes are tracked but cannot be checkpointed. Run <code>git init</code> in the project to enable checkpoints and variants.</p>
   {:else}
-    <h3>Checkpoint{variant ? ` (variant ${variant})` : ""}</h3>
+    <h3>Checkpoint <span class="muted">(main and every variant)</span></h3>
     <p class="muted">
       {#if versions.checkpoint}
         Last: <code>{versions.checkpoint.id}</code> “{versions.checkpoint.message}”, {new Date(versions.checkpoint.date).toLocaleString()}
@@ -118,7 +124,7 @@ function remove(name: string) {
     {/each}
   {/if}
 
-  <h3>Changes since the checkpoint</h3>
+  <h3>Changes since the checkpoint{variant ? ` to variant ${variant}` : ""}</h3>
   {#if versions.changesets.length === 0}
     <p class="muted">None.</p>
   {/if}
@@ -145,29 +151,39 @@ function remove(name: string) {
     </div>
   {/each}
 
-  {#if versions.git && !variant}
-    <h3>Variants</h3>
-    {#each versions.variants as v (v)}
-      <div class="row variant">
-        <button class="link" onclick={() => onvariant(v)}>{v}</button>
-        <span class="actions">
-          <button disabled={busy} onclick={() => adopt(v)}>Adopt</button>
-          <button disabled={busy} onclick={() => remove(v)}>Remove</button>
-        </span>
-      </div>
-    {/each}
-    <form
-      class="row"
-      onsubmit={(e) => {
-        e.preventDefault();
-        createVariant();
-      }}
-    >
-      <input bind:value={newVariant} placeholder="New variant name, e.g. buck" />
-      <button type="submit" disabled={busy || !newVariant.trim()}>Create</button>
-    </form>
-    <p class="hint">A variant starts from the last checkpoint. Open one to view and review it; adopting copies its design here as one changeset.</p>
-  {/if}
+  <h3>Variants</h3>
+  {#each versions.variants as v (v.name)}
+    <div class="row variant">
+      <button class="link" class:active={variant === v.name} onclick={() => onvariant(v.name)}>{v.name}</button>
+      {#if v.description}<span class="muted">{v.description}</span>{/if}
+      <span class="actions">
+        <button disabled={busy} onclick={() => adopt(v.name)}>Adopt</button>
+        <button disabled={busy} onclick={() => remove(v.name)}>Remove</button>
+      </span>
+      <span class="blocks muted">
+        {#if v.blocks.length === 0 && !v.projectFile}
+          same as main
+        {:else}
+          own: {[...(v.projectFile ? ["project file"] : []), ...v.blocks.map(blockName)].join(", ")}
+        {/if}
+        {#if v.diverged.length > 0}
+          · <span class="warn">main changed {v.diverged.map(blockName).join(", ")} since</span>
+        {/if}
+      </span>
+    </div>
+  {/each}
+  <form
+    class="row"
+    onsubmit={(e) => {
+      e.preventDefault();
+      createVariant();
+    }}
+  >
+    <input bind:value={newVariant} placeholder="Name, e.g. buck" />
+    <input bind:value={newDescription} placeholder="What it explores (optional)" />
+    <button type="submit" disabled={busy || !newVariant.trim()}>Create</button>
+  </form>
+  <p class="hint">A variant shares every block it doesn't change, so edits to main reach it. Switch between versions in the header; adopting makes a variant's changes main's, as one changeset.</p>
 
   {#if result}<p class="message">{result}</p>{/if}
 </section>

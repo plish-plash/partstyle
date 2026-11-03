@@ -45,6 +45,7 @@ A project is a folder of text files, split by who reads them: the AI reads circu
 ```
 my-board/
   partstyle-project.yaml  # name, description, design context, preferred distributors, checks
+  variants/buck/          # an alternative: only the blocks (and project-file keys) it changes
   circuit/
     main.ckt              # top level: instantiates blocks, joins ports
     power.ckt             # one file per functional block
@@ -228,12 +229,12 @@ Auto-apply is the default. A per-project setting switches to accept-before-apply
 
 Git is the storage engine; the app gives it schematic vocabulary so the user never needs git commands.
 
-| User concept | Git mechanism                        | Notes                                                                          |
-| ------------ | ------------------------------------ | ------------------------------------------------------------------------------ |
-| Checkpoint   | Commit                               | Message written by the human or proposed by the AI                             |
-| Changeset    | Working-copy edits, logged per apply | One per AI `apply` call; applied at once, revertible until the next checkpoint |
-| Variant      | Branch, with a working copy          | Parallel versions (e.g. "LDO" vs "buck" power stage) viewable side by side     |
-| Compare      | Semantic diff between any two refs   | Reports parts added/removed/changed and net membership changes, not text lines |
+| User concept | Git mechanism                        | Notes                                                                                                                                                                                        |
+| ------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checkpoint   | Commit                               | Message written by the human or proposed by the AI                                                                                                                                           |
+| Changeset    | Working-copy edits, logged per apply | One per AI `apply` call; applied at once, revertible until the next checkpoint                                                                                                               |
+| Variant      | A folder of overrides, committed     | An alternative ("buck" vs the LDO power stage) holding only the blocks and project-file keys it changes; main's edits reach every block it shares, and one patch can change several versions |
+| Compare      | Semantic diff between any two refs   | Reports parts added/removed/changed and net membership changes, not text lines                                                                                                               |
 
 The semantic diff is computed by the engine from the parsed models, so a reordered file shows as no change, and a layout-only change is marked as such.
 

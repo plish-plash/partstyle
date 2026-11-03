@@ -48,9 +48,12 @@ commit of the project) is their approval.
 - If `overview` says `review mode: accept` (the person's switch in the viewer), edit only
   through `partstyle apply`: each patch waits as a pending change (P1, P2, ...) until the person
   accepts it in the viewer.
-- To try an alternative (say an LDO against a buck stage), `partstyle variant create NAME`
-  makes a parallel copy under `.partstyle/variants/NAME`; edit it with `partstyle -p` that
-  folder and compare with `variant diff NAME`. The person adopts or removes it.
+- To explore an alternative (say a buck stage instead of the LDO), `partstyle variant create
+  NAME "what it explores"`. A variant shares every block it doesn't change, so edits to main
+  reach it. Pass `--variant NAME` to any command; `apply` takes `--variant` several times
+  (`main` is the main circuit) to change several versions at once. A variant's own blocks are in
+  `variants/NAME/circuit/`, and its `partstyle-project.yaml` holds only overrides of main's. Compare
+  with `variant diff NAME`; the person adopts or removes it.
 
 ## Editing
 

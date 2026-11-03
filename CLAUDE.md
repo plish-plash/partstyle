@@ -96,9 +96,12 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     (revert plans as patches). Node side: `project/git.ts` (isomorphic-git; no git CLI
     needed; comparisons hash working files against commit trees), `project/history.ts`
     (changeset log in .partstyle/history.json, recorded on every `Workspace` load),
-    `project/pending.ts` (accept mode) and `project/variants.ts` (working copies under
-    .partstyle/variants/, marked by `.partstyle-variant.json`, each committing to its own
-    branch). Only the test checking the result with the git CLI uses `skipIf`.
+    `project/pending.ts` (accept mode) and `project/variants.ts` (variants as overlays in
+    `variants/NAME/`: their own block files and project-file overrides over main's). A
+    `Workspace` with `variant` set (`forVariant`) loads the overlaid design, writes blocks
+    copy-on-write through `writeCircuit`, and keeps its own history, pending and export outputs;
+    `applyTo` applies one patch to several. Only the test checking the result with the git CLI
+    uses `skipIf`.
 - `packages/server`: local HTTP server for the viewer (model API, SSE live reload, focus,
   comments, verify); 127.0.0.1 only, Host-header and custom-header checks. Started by
   `partstyle view` and by the MCP server.

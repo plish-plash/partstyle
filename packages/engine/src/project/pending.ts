@@ -11,6 +11,8 @@ export interface PendingChange {
   /** The edits, one line each, as `apply` reports them. */
   log: string[];
   created: string;
+  /** The variant it applies to; absent for the main circuit. */
+  variant?: string;
 }
 
 interface PendingFile {
@@ -37,11 +39,22 @@ export async function readPending(root: string): Promise<PendingChange[]> {
   return (await load(root)).changes;
 }
 
-/** Holds a patch; returns its new id. */
-export async function addPending(root: string, patch: string, log: string[]): Promise<string> {
+/** Holds a patch (for a variant, when given); returns its new id. */
+export async function addPending(
+  root: string,
+  patch: string,
+  log: string[],
+  variant?: string,
+): Promise<string> {
   const data = await load(root);
   const id = `P${data.next++}`;
-  data.changes.push({ id, patch, log, created: new Date().toISOString() });
+  data.changes.push({
+    id,
+    patch,
+    log,
+    created: new Date().toISOString(),
+    ...(variant !== undefined && { variant }),
+  });
   await save(root, data);
   return id;
 }

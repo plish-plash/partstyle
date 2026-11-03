@@ -117,7 +117,7 @@ onMount(() => {
 });
 
 function publish() {
-  void api.sendFocus({ selection, sheet: prefix }).catch(() => {});
+  void api.sendFocus({ selection, sheet: prefix, ...(variant && { variant }) }).catch(() => {});
 }
 function select(subjects: string[], additive: boolean) {
   if (additive) {
@@ -159,6 +159,7 @@ function setVariant(name: string | undefined) {
   if (name) url.searchParams.set("variant", name);
   else url.searchParams.delete("variant");
   history.replaceState(null, "", url);
+  publish();
   void refresh();
 }
 function setPreview(id: string | undefined) {
@@ -195,8 +196,18 @@ function showChange(c: { block: string; kind: string; key: string }) {
       <button class:active={p.prefix === prefix} onclick={() => open(p.prefix)}>{pageLabel(p)}</button>
     {/each}
   </nav>
-  {#if variant}
-    <span class="chip variant-chip">variant {variant} <button class="link" onclick={() => setVariant(undefined)}>back to main</button></span>
+  {#if model?.versions && (model.versions.variants.length > 0 || variant)}
+    <label class="variant-switch" class:on={variant !== undefined} title="Which version of the design to show">
+      <select
+        value={variant ?? ""}
+        onchange={(e) => setVariant(e.currentTarget.value || undefined)}
+      >
+        <option value="">main circuit</option>
+        {#each model.versions.variants as v (v.name)}
+          <option value={v.name}>{v.name}{v.description ? ` — ${v.description}` : ""}</option>
+        {/each}
+      </select>
+    </label>
   {/if}
   {#if preview}<span class="chip meh">previewing {preview}</span>{/if}
   {#if model && params.get("project") && params.get("project") !== model.project}
@@ -222,7 +233,9 @@ function showChange(c: { block: string; kind: string; key: string }) {
         {selection}
         onselect={select}
         onenter={open}
-        changes={tab === "changes" ? (model.preview?.changed ?? model.versions?.changed ?? []) : []}
+        changes={model.preview?.changed ??
+          (tab === "changes" ? model.versions?.changed : model.versions?.vsMain) ??
+          []}
       />
     {:else}
       <p class="error">Nothing to draw: fix the errors listed on the right.</p>

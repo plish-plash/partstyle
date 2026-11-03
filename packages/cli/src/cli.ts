@@ -63,8 +63,8 @@ commands:
   checkpoint MESSAGE...                    commit the project folder (the person's approval)
   checkpoints                              recent checkpoints
   pending accept|reject ID                 decide a patch held in accept mode
-  variant list|create|diff|adopt|remove [NAME]
-                                           parallel versions on git branches
+  variant list | create NAME [DESCRIPTION...] | diff|adopt|remove NAME
+                                           alternative versions sharing the blocks they keep
   prompt [NAME [ARGS...]]                  list or print a procedure (design-review, ingest-part,
                                            prepare-handoff)
   grammar                                  print the .ckt and patch reference
@@ -72,6 +72,7 @@ commands:
 
 options:
   -p, --project DIR   project folder (default: current directory)
+  --variant NAME      work on a variant (main: the main circuit); apply takes it repeatedly
   -h, --help          this summary
   --version           print Partstyle's version
 
@@ -93,6 +94,7 @@ function parse(argv: string[]) {
     allowPositionals: true,
     options: {
       project: { type: "string", short: "p" },
+      variant: { type: "string", multiple: true },
       json: { type: "boolean" },
       "dry-run": { type: "boolean" },
       "no-check": { type: "boolean" },
@@ -153,7 +155,15 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
   if (values.version) return { stdout: `partstyle ${partstyleVersion()}`, exitCode: 0 };
   if (command === undefined) return usageError("missing command");
 
-  const ws = new Workspace(values.project ?? ".");
+  const project = new Workspace(values.project ?? ".");
+  const variants = values.variant ?? [];
+  if (variants.length > 1 && command !== "apply") {
+    return usageError("only apply takes --variant more than once");
+  }
+  // The design most commands work on: main, or the one variant named.
+  const ws = project.forVariant(
+    variants[0] === undefined || variants[0] === "main" ? undefined : variants[0],
+  );
   switch (command) {
     case "init": {
       if (args.length > 1) return usageError("usage: init [DIR] [--name NAME]");
@@ -205,7 +215,7 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
     case "apply": {
       if (args.length > 1) return usageError("usage: apply [FILE|-] [--dry-run]");
       return withInput(args[0], io, async (patch) =>
-        fromText(await ws.apply(patch, { dryRun: values["dry-run"] ?? false })),
+        fromText(await project.applyTo(patch, variants, { dryRun: values["dry-run"] ?? false })),
       );
     }
 
@@ -262,11 +272,11 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         return usageError("--port must be a port number");
       }
       try {
-        const probe = await ws.overview(); // fail early, with the usual message, outside a project
+        const probe = await project.overview(); // fail early, with the usual message, outside a project
         if (!probe.ok) return { stdout: "", stderr: probe.text, exitCode: 1 };
-        const viewer = await startViewer(ws, port === undefined ? {} : { port });
+        const viewer = await startViewer(project, port === undefined ? {} : { port });
         return {
-          stdout: `viewer for ${ws.root} at ${viewer.url} (Ctrl-C to stop)`,
+          stdout: `viewer for ${project.root} at ${viewer.url} (Ctrl-C to stop)`,
           exitCode: 0,
           close: viewer.close,
         };
@@ -307,10 +317,21 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
 
     case "variant": {
       const op = oneOf(args[0], ["list", "create", "diff", "adopt", "remove"] as const);
-      if (!op || args.length > 2 || (op !== "list" && args.length !== 2)) {
-        return usageError("usage: variant list | variant create|diff|adopt|remove NAME");
+      const fits =
+        op === "list"
+          ? args.length === 1
+          : op === "create"
+            ? args.length >= 2
+            : op !== undefined && args.length === 2;
+      if (!op || !fits) {
+        return usageError(
+          "usage: variant list | variant create NAME [DESCRIPTION...] | variant diff|adopt|remove NAME",
+        );
       }
-      return fromText(await ws.variant(op, args[1]));
+      const description = args.slice(2).join(" ");
+      return fromText(
+        await project.variant(op, args[1], description === "" ? undefined : description),
+      );
     }
 
     case "prompt": {

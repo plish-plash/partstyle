@@ -167,11 +167,27 @@ describe("viewer server", () => {
     expect(relevantChange(".partstyle/pending.json")).toBe(true);
     expect(relevantChange(".partstyle/history.json")).toBe(true);
     expect(relevantChange(".partstyle/review.json")).toBe(true);
-    expect(relevantChange(".partstyle\\variants\\buck\\examples\\b\\circuit\\power.ckt")).toBe(
-      true,
-    );
-    expect(relevantChange(".partstyle/variants/buck/.git")).toBe(false);
+    expect(relevantChange("variants\\buck\\circuit\\power.ckt")).toBe(true);
+    expect(relevantChange(".partstyle/variants/buck/history.json")).toBe(true);
+    expect(relevantChange(".partstyle/variants/buck/other.json")).toBe(false);
+    expect(relevantChange("variants/buck/kicad/x.kicad_sch")).toBe(false);
     expect(relevantChange("kicad/x.kicad_sch")).toBe(false);
+  });
+
+  it("shows a variant and creates one", async () => {
+    const created = await post("api/variant", {
+      op: "create",
+      name: "buck",
+      description: "try it",
+    });
+    expect(((await created.json()) as { ok: boolean }).ok).toBe(true);
+    const model = (await (await fetch(new URL("api/model?variant=buck", viewer.url))).json()) as {
+      versions: { variants: { name: string; description: string }[]; vsMain: unknown[] };
+    };
+    expect(model.versions.variants).toEqual([
+      { name: "buck", description: "try it", projectFile: false, blocks: [], diverged: [] },
+    ]);
+    expect(model.versions.vsMain).toEqual([]);
   });
 
   it.skipIf(!viewerBuilt)("serves the built web app", async () => {

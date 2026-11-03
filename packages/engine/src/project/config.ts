@@ -45,32 +45,73 @@ export function projectData(text: string): Record<string, unknown> | undefined {
   }
 }
 
+const isMapping = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * A variant's project file laid over main's: mappings merge key by key at any depth, lists and
+ * single values replace main's, and null removes a key.
+ */
+export function mergeProjectData(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (value === null) delete out[key];
+    else if (isMapping(value) && isMapping(out[key])) {
+      out[key] = mergeProjectData(out[key] as Record<string, unknown>, value);
+    } else out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * The project's settings and context from its project file, with a variant's overrides (another
+ * file) merged over them when given.
+ */
 export function parseProjectConfig(
   text: string,
   file: string,
+  override?: { text: string; file: string },
 ): { config?: ProjectConfig; issues: Issue[] } {
-  const fail = (message: string, line = 1, col = 1) => ({
+  const fail = (message: string, line = 1, col = 1, at = file) => ({
     issues: [
       {
         code: "project.config",
         severity: "error" as const,
         message,
-        location: { file, line, col },
+        location: { file: at, line, col },
         subjects: [],
       },
     ],
   });
+  const read = (t: string): { data: unknown } | { error: string; line: number; col: number } => {
+    try {
+      return { data: parseYaml(t) ?? {} };
+    } catch (e) {
+      const err = e as { message?: string; linePos?: { line: number; col: number }[] };
+      const pos = err.linePos?.[0];
+      return {
+        error: `invalid YAML: ${(err.message ?? String(e)).split("\n")[0] ?? ""}`,
+        line: pos?.line ?? 1,
+        col: pos?.col ?? 1,
+      };
+    }
+  };
 
-  let data: unknown;
-  try {
-    data = parseYaml(text);
-  } catch (e) {
-    const err = e as { message?: string; linePos?: { line: number; col: number }[] };
-    const message = (err.message ?? String(e)).split("\n")[0] ?? "";
-    const pos = err.linePos?.[0];
-    return fail(`invalid YAML: ${message}`, pos?.line ?? 1, pos?.col ?? 1);
+  const main = read(text);
+  if ("error" in main) return fail(main.error, main.line, main.col);
+  let data = main.data;
+  if (override) {
+    const over = read(override.text);
+    if ("error" in over) return fail(over.error, over.line, over.col, override.file);
+    if (!isMapping(over.data)) {
+      return fail("a variant's project file holds a mapping of overrides", 1, 1, override.file);
+    }
+    if (isMapping(data)) data = mergeProjectData(data, over.data);
   }
-  const result = ProjectConfigSchema.safeParse(data ?? {});
+  const result = ProjectConfigSchema.safeParse(data);
   if (!result.success) {
     const first = result.error.issues[0];
     return fail(

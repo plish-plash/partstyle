@@ -117,47 +117,161 @@ describe("versioning", () => {
     expect(await readFile(power(), "utf8")).not.toContain("TP3");
   });
 
-  it("creates, compares, adopts and removes variants", async () => {
-    await ws.checkpoint("with R90");
-    const created = await ws.variant("create", "ldo");
-    expect(created.text).toMatch(
-      /^created variant ldo at \.partstyle\/variants\/ldo\/examples\/bench-sensor/,
-    );
-    const variant = new Workspace(
-      path.join(project, ".partstyle", "variants", "ldo", "examples", "bench-sensor"),
-    );
-    const vPower = path.join(variant.root, "circuit", "power.ckt");
-    const text = await readFile(vPower, "utf8");
-    expect(text).toContain("part R90 res(10k");
-    await writeFile(vPower, text.replace("part R90 res(10k", "part R90 res(22k"));
-    expect((await ws.variant("list")).text).toMatch(/^ldo: 1 statements differ from main/);
-    expect((await ws.variant("diff", "ldo")).text).toContain("~ part R90 res(22k");
+  describe("variants", () => {
+    const own = (v: string, f: string) => path.join(project, "variants", v, f);
+    const has = (f: string) =>
+      readFile(f, "utf8").then(
+        () => true,
+        () => false,
+      );
 
-    const adopted = await ws.variant("adopt", "ldo");
-    expect(adopted.text).toMatch(/^adopted variant ldo as C1: circuit\/power.ckt/);
-    expect(await readFile(power(), "utf8")).toContain("res(22k");
-    // The main project's checkpoint never sweeps the variant's copy in.
-    expect((await changedFiles(project)).join(" ")).not.toContain("variants");
+    it("share main's blocks until they change one", async () => {
+      await ws.setReviewMode("auto");
+      await ws.checkpoint("with R90");
+      expect((await ws.variant("create", "buck", "buck regulator")).text).toMatch(
+        /^created variant buck \(variants\/buck\): the same as main/,
+      );
+      expect((await ws.variant("create", "main")).ok).toBe(false);
+      expect((await ws.overview()).text).toContain('  buck "buck regulator": same as main');
 
-    // A checkpoint in the variant commits to its branch, not the main line.
-    await writeFile(vPower, text.replace("part R90 res(10k", "part R90 res(47k"));
-    expect((await variant.checkpoint("try 47k")).ok).toBe(true);
-    expect((await variant.checkpoints()).text).toMatch(/^[0-9a-f]{7} \S+ \S+ try 47k\n/);
-    expect((await ws.checkpoints()).text).not.toContain("try 47k");
+      const buck = ws.forVariant("buck");
+      const r = await ws.applyTo("in power\n+ part R91 res(1k, 1%, 0603)\n", ["buck"]);
+      expect(r.text).toMatch(/^applied 1 edit to variants\/buck\/circuit\/power\.ckt/);
+      expect(await readFile(power(), "utf8")).not.toContain("R91");
+      expect(await readFile(own("buck", "variant.yaml"), "utf8")).toMatch(/circuit\/power\.ckt: /);
 
-    expect((await ws.variant("remove", "ldo")).ok).toBe(true);
-    expect((await ws.variant("list")).text).toMatch(/^no variants/);
+      // An edit to a block buck takes from main reaches it.
+      await ws.apply("in mcu\n+ part R85 res(10k, 1%, 0603)\n");
+      expect((await buck.query("part R85")).text).toMatch(/^MCU\/R85 /);
+      expect((await buck.overview()).text).toMatch(/^project bench-sensor, variant buck\n/);
+
+      // Main moving on in a block buck has its own copy of is flagged.
+      await ws.apply("in power\n+ part R86 res(10k, 1%, 0603)\n");
+      expect((await ws.variant("list")).text).toBe(
+        'buck "buck regulator": own power; main changed power since',
+      );
+      const diff = (await ws.variant("diff", "buck")).text;
+      expect(diff).toContain("+ part R91 res(1k, 1%, 0603)");
+      expect(diff).toMatch(/- part R86\b/);
+      expect(diff).toContain("main changed circuit/power.ckt since the variant copied it");
+    });
+
+    it("apply to main and variants at once, all or nothing", async () => {
+      const both = await ws.applyTo("in mcu\n+ part R87 res(10k, 1%, 0603)\n", ["main", "buck"]);
+      expect(both.text).toMatch(/^main:\n {2}applied 1 edit to circuit\/mcu\.ckt/);
+      expect(both.text).toContain("buck:\n  takes the edited blocks from main");
+      expect(await has(own("buck", "circuit/mcu.ckt"))).toBe(false);
+
+      const power2 = "in power\n+ part R88 res(10k, 1%, 0603)\n";
+      const twice = await ws.applyTo(power2, ["main", "buck"]);
+      expect(twice.text).toContain("buck:\n  applied 1 edit to variants/buck/circuit/power.ckt");
+
+      // R86 is only main's: removing it fails in buck, so main is not touched either.
+      const bad = await ws.applyTo("in power\n- part R86\n", ["buck"]);
+      expect(bad.ok).toBe(false);
+      const split = await ws.applyTo("in power\n- part R91\n", ["main", "buck"]);
+      expect(split.ok).toBe(false);
+      expect(split.text).toMatch(
+        /^the patch does not apply everywhere; nothing was applied\nmain:/,
+      );
+      expect(await readFile(own("buck", "circuit/power.ckt"), "utf8")).toContain("R91");
+    });
+
+    it("override main's project file key by key", async () => {
+      const buck = ws.forVariant("buck");
+      const doc = "partstyle-project.yaml";
+      expect((await buck.readDoc(doc)).text).toMatch(/^# Variant buck: overrides of the main/);
+      const wrote = await buck.writeDoc(doc, "environment:\n  temp_c: [-55, 50]\n");
+      expect(wrote.text).toMatch(/^wrote variants\/buck\/partstyle-project\.yaml \(2 lines\)/);
+      expect((await buck.validate()).text).toContain("context.temperature");
+      expect((await ws.validate()).text).not.toContain("context.temperature");
+      // Merged: buck keeps main's other environment keys.
+      expect((await buck.overview()).text).toContain(
+        '  environment: {"temp_c":[-55,50],"indoor":true}',
+      );
+      await buck.writeDoc(doc, "environment:\n  temp_c: [-55, 50]\n  indoor: null\n");
+      expect((await buck.overview()).text).toContain('  environment: {"temp_c":[-55,50]}');
+      expect((await buck.writeDoc(doc, "environment: [\n")).text).toMatch(/^not written: /);
+      expect((await ws.variant("list")).text).toContain("own project file, power");
+    });
+
+    it("keep their own history, pending changes and exports", async () => {
+      const buck = ws.forVariant("buck");
+      await ws.setFocus({ selection: ["PWR/R91"], variant: "buck" });
+      expect((await ws.focus()).text).toMatch(
+        /^viewing variant buck .*\nselected in the viewer:\n {2}PWR\/R91 /,
+      );
+
+      // A hint on a block buck takes from main is main's: it does not copy the block.
+      expect((await buck.setLayout("sensor_afe", "R4", "rotate")).ok).toBe(true);
+      expect(await readFile(path.join(project, "circuit/sensor_afe.ckt"), "utf8")).toContain(
+        "part R4 res(100k, 1%, 0603) [r90]",
+      );
+      expect(await has(own("buck", "circuit/sensor_afe.ckt"))).toBe(false);
+
+      const changes = (await buck.changes()).text;
+      expect(changes).toMatch(/^C1 apply /m);
+      expect((await buck.revert("C2")).ok).toBe(true);
+      expect(await readFile(own("buck", "circuit/power.ckt"), "utf8")).not.toContain("R88");
+      expect(await readFile(power(), "utf8")).toContain("R88");
+
+      await ws.setReviewMode("accept");
+      const held = await ws.applyTo("in power\n+ part R89 res(10k, 1%, 0603)\n", ["buck"]);
+      const id = /held as (P\d+)/.exec(held.text)?.[1] as string;
+      expect((await ws.versionState()).pending).toEqual([]);
+      expect((await buck.versionState()).pending.map((p) => p.id)).toEqual([id]);
+      expect((await ws.pendingAccept(id)).ok).toBe(true);
+      expect(await readFile(own("buck", "circuit/power.ckt"), "utf8")).toContain("R89");
+      expect(await readFile(power(), "utf8")).not.toContain("R89");
+      await ws.setReviewMode("auto");
+
+      expect((await buck.bomExport()).text).toMatch(/^wrote variants\/buck\/bom\.csv: /);
+      expect(await has(own("buck", "bom.lock"))).toBe(true);
+    });
+
+    it("drop a block identical to main's, and adopt and remove whole", async () => {
+      await ws.variant("create", "tmp");
+      const tmpV = ws.forVariant("tmp");
+      await ws.applyTo("in mcu\n+ part R95 res(1k)\n", ["tmp"]);
+      expect(await has(own("tmp", "circuit/mcu.ckt"))).toBe(true);
+      await ws.applyTo("in mcu\n- part R95\n", ["tmp"]);
+      expect(await has(own("tmp", "circuit/mcu.ckt"))).toBe(false);
+      expect(await readFile(own("tmp", "variant.yaml"), "utf8")).not.toContain("base");
+      expect((await tmpV.validate()).text).toBe((await ws.validate()).text);
+
+      await ws.applyTo("in mcu\n+ part R96 res(2k)\n", ["tmp"]);
+      await tmpV.writeDoc("partstyle-project.yaml", "use_case: adopted\n");
+      const adopted = await ws.variant("adopt", "tmp");
+      expect(adopted.text).toMatch(
+        /^adopted variant tmp as C\d+: circuit\/mcu\.ckt, partstyle-project\.yaml/,
+      );
+      expect(await readFile(path.join(project, "circuit/mcu.ckt"), "utf8")).toContain("R96");
+      const projectFile = await readFile(path.join(project, "partstyle-project.yaml"), "utf8");
+      expect(projectFile).toContain("use_case: adopted");
+      // Main's comments survive the merge.
+      expect(projectFile).toMatch(/^# A Partstyle project/);
+      expect((await ws.variant("list")).text).toContain("tmp: same as main");
+
+      expect((await ws.variant("remove", "tmp")).text).toBe("removed variant tmp");
+      expect(await has(own("tmp", "variant.yaml"))).toBe(false);
+      expect((await tmpV.overview()).text).toBe("no variant 'tmp' (see variant list)");
+
+      // Variants are project files: a checkpoint commits them with main.
+      await ws.checkpoint("variants");
+      expect(await changedFiles(project)).toEqual([]);
+    });
   });
 
   it.skipIf(!hasGit)("writes a repository the git CLI reads", async () => {
-    // (The removed variant's checkpoint is left dangling, as after git branch -D.)
-    expect(await gitCli(tmp, ["fsck", "--strict", "--no-dangling"])).toBe("");
-    expect(await gitCli(tmp, ["log", "--format=%s"])).toBe("with R90\ntweaks\ninitial design\n");
-    // Checkpoints stage what they commit; the adopted, not yet checkpointed edit shows.
-    expect(await gitCli(tmp, ["status", "--porcelain", "--", "examples"])).toBe(
-      " M examples/bench-sensor/circuit/power.ckt\n",
+    expect(await gitCli(tmp, ["fsck", "--strict"])).toBe("");
+    expect(await gitCli(tmp, ["log", "--format=%s"])).toBe(
+      "variants\nwith R90\ntweaks\ninitial design\n",
     );
+    // Checkpoints stage what they commit.
+    expect(await gitCli(tmp, ["status", "--porcelain", "--", "examples"])).toBe("");
     expect(await gitCli(tmp, ["ls-tree", "--name-only", "HEAD"])).toBe("examples\n");
-    expect(await gitCli(tmp, ["branch", "--list", "variant/*"])).toBe("");
+    expect(
+      await gitCli(tmp, ["ls-tree", "--name-only", "HEAD", "examples/bench-sensor/variants/"]),
+    ).toBe("examples/bench-sensor/variants/buck\n");
   });
 });

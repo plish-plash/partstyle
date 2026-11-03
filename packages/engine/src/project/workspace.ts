@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { isMap, parseDocument, parse as parseYaml } from "yaml";
 import { formatBomCsv, resolveBom } from "../bom.js";
 import type { LayoutHint } from "../ckt/ast.js";
 import { printStatement } from "../ckt/print.js";
@@ -30,9 +31,20 @@ import {
   type ReviewMode,
 } from "../review.js";
 import { type ValidationResult, validateProject } from "../validate.js";
-import { describeChange, diffCircuits, formatChanges, opOf } from "../versions/diff.js";
+import {
+  describeChange,
+  diffCircuits,
+  formatChanges,
+  opOf,
+  type StatementChange,
+} from "../versions/diff.js";
 import { planRevert, type RevertPlan } from "../versions/revert.js";
-import { buildViewerModel, type VersionState, type ViewerModel } from "../viewer-model.js";
+import {
+  buildViewerModel,
+  type VariantSummary,
+  type VersionState,
+  type ViewerModel,
+} from "../viewer-model.js";
 import { countIssues, formatValidation, issueSummary, overview, readBlock } from "../views.js";
 import { PROJECT_FILE, parseProjectConfig, TOP_BLOCK } from "./config.js";
 import {
@@ -62,12 +74,17 @@ import { defaultStateDir, readSettings, type Settings } from "./settings.js";
 import { projectSkeleton } from "./skeleton.js";
 import type { ProjectSource } from "./source.js";
 import {
-  adoptVariant,
   checkVariantName,
   createVariant,
+  forkStatus,
+  hashText,
+  hasProjectOverrides,
   listVariants,
+  overlayCircuits,
+  readVariant,
   removeVariant,
-  type Variant,
+  VARIANTS_DIR,
+  writeMeta,
 } from "./variants.js";
 import { partstyleVersion } from "./version.js";
 
@@ -80,6 +97,9 @@ export type LayoutOp = (typeof layoutOps)[number];
 const toPosix = (p: string) => p.split(path.sep).join("/");
 
 const CLAUDE_SIDECAR = "CLAUDE.partstyle.md";
+
+const VARIANT_OVERRIDES_NOTE = (name: string) =>
+  `# Variant ${name}: overrides of the main ${PROJECT_FILE}. Mappings merge key by key; lists and\n# values replace main's; null removes a key. Write back only the keys that differ.`;
 
 /** The project file and Markdown files under notes/ (no hidden or parent segments). */
 const isDoc = (f: string) =>
@@ -119,14 +139,85 @@ export class Workspace {
   readonly stateDir: string;
   /** The global-mode server's shared library, used before the user's; else the remembered one. */
   readonly sharedLibrary: string | undefined;
-  /** The changeset log since the last checkpoint. */
+  /**
+   * The variant this workspace works on (undefined: the main circuit). A variant's design is
+   * main's with its own block files and project-file overrides laid over it.
+   */
+  readonly variantName: string | undefined;
+  /** Where this workspace's own files live: the project, or the variant's folder. */
+  readonly own: string;
+  /** The changeset log since the last checkpoint (of the variant's own files, for a variant). */
   readonly history: History;
 
-  constructor(dir: string, opts: { stateDir?: string; sharedLibrary?: string } = {}) {
+  constructor(
+    dir: string,
+    opts: { stateDir?: string; sharedLibrary?: string; variant?: string } = {},
+  ) {
     this.root = path.resolve(dir);
     this.stateDir = path.resolve(opts.stateDir ?? defaultStateDir());
     this.sharedLibrary = opts.sharedLibrary;
-    this.history = new History(this.root);
+    this.variantName = opts.variant;
+    const folder = opts.variant === undefined ? "" : `${VARIANTS_DIR}/${opts.variant}`;
+    this.own = path.join(this.root, folder);
+    this.history = new History(this.root, folder);
+  }
+
+  /** The same project's main circuit (undefined) or one of its variants. */
+  forVariant(variant: string | undefined): Workspace {
+    if (variant === this.variantName) return this;
+    return new Workspace(this.root, {
+      stateDir: this.stateDir,
+      ...(this.sharedLibrary !== undefined && { sharedLibrary: this.sharedLibrary }),
+      ...(variant !== undefined && { variant }),
+    });
+  }
+
+  /** The circuit as this workspace sees it, keyed circuit/x.ckt: main's, with a variant's over it. */
+  private async circuitsNow(): Promise<Record<string, string>> {
+    const main = await readCircuits(this.root);
+    return this.variantName === undefined
+      ? main
+      : overlayCircuits(main, await readCircuits(this.own));
+  }
+
+  /** Where a circuit file (circuit/x.ckt, or a variant's own path) is written from here. */
+  private circuitTarget(file: string): string {
+    const logical = file.replace(/^variants\/[^/]+\//, "");
+    return this.variantName === undefined
+      ? logical
+      : `${VARIANTS_DIR}/${this.variantName}/${logical}`;
+  }
+
+  /**
+   * Writes a circuit file. In a variant, a block copied from main records main's text as its
+   * base, and a block that ends up identical to main's is deleted so main's applies again.
+   */
+  private async writeCircuit(file: string, text: string): Promise<void> {
+    const target = this.circuitTarget(file);
+    const full = path.join(this.root, target);
+    const logical = file.replace(/^variants\/[^/]+\//, "");
+    if (this.variantName !== undefined) {
+      const v = await readVariant(this.root, this.variantName);
+      const main = await readFile(path.join(this.root, logical), "utf8").catch(() => undefined);
+      if (v) {
+        const forked = await readFile(full, "utf8").then(
+          () => true,
+          () => false,
+        );
+        if (main !== undefined && text === main) {
+          await rm(full, { force: true });
+          delete v.base[logical];
+          await writeMeta(v);
+          return;
+        }
+        if (!forked && main !== undefined) {
+          v.base[logical] = hashText(main);
+          await writeMeta(v);
+        }
+      }
+    }
+    await mkdir(path.dirname(full), { recursive: true });
+    await writeFile(full, text, "utf8");
   }
 
   private kicadInstall?: { key: string; found: Promise<KicadInstall> };
@@ -152,7 +243,7 @@ export class Workspace {
   }
 
   private async source(): Promise<ProjectSource> {
-    return loadProject(this.root, (await this.settings()).libraries);
+    return loadProject(this.root, (await this.settings()).libraries, this.variantName);
   }
 
   /** Loads and validates, adding footprint checks for the library parts in use when KiCad is installed. */
@@ -185,10 +276,20 @@ export class Workspace {
     return { ...(power && { power }), symbolCandidates };
   }
 
+  /** A file of this workspace's own (a variant's under its folder), as written from here. */
+  private ownFile(name: string): string {
+    return this.variantName === undefined ? name : `${VARIANTS_DIR}/${this.variantName}/${name}`;
+  }
+
+  /** A variant's own lock, else main's: parts both share keep their refdes and part choices. */
+  private async lock(name: string): Promise<string> {
+    return (await this.readOptional(this.ownFile(name))) || (await this.readOptional(name));
+  }
+
   private async locks(): Promise<{ annotation: string; bom: string }> {
     return {
-      annotation: await this.readOptional("annotation.lock"),
-      bom: await this.readOptional("bom.lock"),
+      annotation: await this.lock("annotation.lock"),
+      bom: await this.lock("bom.lock"),
     };
   }
 
@@ -221,6 +322,14 @@ export class Workspace {
     return this.guard(async () => {
       const f = toPosix(file).replace(/^\.\//, "");
       if (!isDoc(f)) return fail(`docs are ${PROJECT_FILE} and notes/*.md (got ${file})`);
+      if (f === PROJECT_FILE && this.variantName !== undefined) {
+        await this.requireVariant();
+        const own = await this.readOptional(this.ownFile(f));
+        return {
+          ok: true,
+          text: `${VARIANT_OVERRIDES_NOTE(this.variantName)}\n${own || "# (none yet)\n"}`,
+        };
+      }
       const text = await this.readOptional(f);
       if (text) return { ok: true, text };
       const docs = await this.docs();
@@ -239,22 +348,41 @@ export class Workspace {
       if (!(await exists(path.join(this.root, PROJECT_FILE)))) {
         return fail(`${this.root} is not a project (no ${PROJECT_FILE})`);
       }
+      // A variant's project file holds only its overrides of main's.
+      const target = f === PROJECT_FILE ? this.ownFile(f) : f;
       if (f === PROJECT_FILE) {
-        const broken = parseProjectConfig(text, f).issues[0];
+        if (this.variantName !== undefined) await this.requireVariant();
+        const broken = (
+          this.variantName === undefined
+            ? parseProjectConfig(text, f)
+            : parseProjectConfig(await this.readOptional(PROJECT_FILE), PROJECT_FILE, {
+                text,
+                file: target,
+              })
+        ).issues[0];
         if (broken) return fail(`not written: ${formatIssue(broken)}`);
       }
-      const full = path.join(this.root, f);
+      const full = path.join(this.root, target);
       await mkdir(path.dirname(full), { recursive: true });
       await writeFile(full, text.endsWith("\n") ? text : `${text}\n`, "utf8");
       const n = text.replace(/\n$/, "").split("\n").length;
-      const lines = [`wrote ${f} (${n} line${n === 1 ? "" : "s"})`];
+      const lines = [`wrote ${target} (${n} line${n === 1 ? "" : "s"})`];
       if (f === PROJECT_FILE) {
         const { result } = await this.load();
-        const issues = result.issues.filter((i) => i.location?.file === PROJECT_FILE);
-        lines.push(...(issues.length > 0 ? issues.map(formatIssue) : [`${f}: no issues`]));
+        const issues = result.issues.filter(
+          (i) => i.location?.file === PROJECT_FILE || i.location?.file === target,
+        );
+        lines.push(...(issues.length > 0 ? issues.map(formatIssue) : [`${target}: no issues`]));
       }
       return { ok: true, text: lines.join("\n") };
     });
+  }
+
+  /** Fails (as a load error) when this workspace's variant does not exist. */
+  private async requireVariant(): Promise<void> {
+    if (this.variantName !== undefined && !(await readVariant(this.root, this.variantName))) {
+      throw new ProjectLoadError(`no variant '${this.variantName}' (see variant list)`);
+    }
   }
 
   private async readOptional(file: string): Promise<string> {
@@ -377,6 +505,75 @@ export class Workspace {
     );
   }
 
+  /**
+   * Applies one patch to several versions of the design ("main" and variant names) at once.
+   * Every target is tried first; if the patch fails on any, nothing is written. One target
+   * reports as `apply` does; several report a section each.
+   */
+  applyTo(patch: string, targets: string[], opts: { dryRun?: boolean } = {}): Promise<TextResult> {
+    return this.guard(async () => {
+      const names = [...new Set(targets.length > 0 ? targets : ["main"])];
+      if (names.length === 1) {
+        const only = names[0] as string;
+        return this.forVariant(only === "main" ? undefined : only).apply(patch, opts);
+      }
+      // Main first: its edits reach every variant that takes the edited block from it, so with
+      // main among the targets a variant gets only the edits to blocks of its own.
+      names.sort((a, b) => Number(b === "main") - Number(a === "main"));
+      const withMain = names.includes("main");
+      const plans = [];
+      for (const name of names) {
+        const w = this.forVariant(name === "main" ? undefined : name);
+        await w.requireVariant();
+        plans.push({
+          name,
+          w,
+          patch: name !== "main" && withMain ? await w.ownSections(patch) : patch,
+        });
+      }
+      const failed: string[] = [];
+      for (const p of plans) {
+        if (!p.patch) continue;
+        const r = await p.w.applyPatchText(p.patch, { dryRun: true, hold: false, source: "apply" });
+        if (!r.ok) failed.push(`${p.name}:`, ...r.text.split("\n").map((l) => `  ${l}`));
+      }
+      if (failed.length > 0) {
+        return fail(
+          ["the patch does not apply everywhere; nothing was applied", ...failed].join("\n"),
+        );
+      }
+      const lines: string[] = [];
+      for (const p of plans) {
+        const r = p.patch
+          ? await p.w.applyPatchText(p.patch, {
+              dryRun: opts.dryRun ?? false,
+              hold: true,
+              source: "apply",
+            })
+          : { ok: true, text: "takes the edited blocks from main, so main's edit reaches it" };
+        lines.push(`${p.name}:`, ...r.text.split("\n").map((l) => `  ${l}`));
+      }
+      return { ok: true, text: lines.join("\n") };
+    });
+  }
+
+  /**
+   * The parts of a patch (its `in BLOCK` sections) that edit blocks this variant has of its
+   * own; empty when there are none. A patch without `in` lines is kept whole.
+   */
+  private async ownSections(patch: string): Promise<string> {
+    const own = new Set(Object.keys(await readCircuits(this.own)).map(blockOf));
+    const lines = patch.split(/\r?\n/);
+    if (!lines.some((l) => /^\s*in\s+\S/.test(l))) return patch;
+    let keep = false;
+    const kept = lines.filter((l) => {
+      const m = /^\s*in\s+(\S+)/.exec(l);
+      if (m) keep = own.has(m[1] as string);
+      return keep;
+    });
+    return kept.some((l) => l.trim() && !/^\s*(#|in\s)/.test(l)) ? kept.join("\n") : "";
+  }
+
   private async applyPatchText(
     patch: string,
     opts: { dryRun: boolean; hold: boolean; source: ChangeSource; note?: string },
@@ -391,13 +588,9 @@ export class Workspace {
     const held = opts.hold && !opts.dryRun && (await this.reviewMode()) === "accept";
     let pendingId: string | undefined;
     if (held) {
-      pendingId = await addPending(this.root, patch, patched.log);
+      pendingId = await addPending(this.root, patch, patched.log, this.variantName);
     } else if (!opts.dryRun) {
-      for (const f of patched.changed) {
-        const file = path.join(this.root, f.file);
-        await mkdir(path.dirname(file), { recursive: true });
-        await writeFile(file, f.text, "utf8");
-      }
+      for (const f of patched.changed) await this.writeCircuit(f.file, f.text);
       await this.history.record(opts.source, opts.note ?? patched.log.join("\n"));
     }
     const n = patched.log.length;
@@ -407,7 +600,7 @@ export class Workspace {
         ? `held as ${pendingId} for review; would apply`
         : "applied";
     const lines = [
-      `${verb} ${n} edit${n === 1 ? "" : "s"} to ${patched.changed.map((f) => f.file).join(", ")}`,
+      `${verb} ${n} edit${n === 1 ? "" : "s"} to ${patched.changed.map((f) => this.circuitTarget(f.file)).join(", ")}`,
       ...patched.log.map((l) => `  ${l}`),
     ];
     if (added.length > 0) lines.push("new issues:", ...added.map((i) => `  ${formatIssue(i)}`));
@@ -470,7 +663,8 @@ export class Workspace {
       const { cli, footprints, symbols } = await this.kicad();
       const x = await exportKicad(result, await this.locks(), await this.libraries(result));
 
-      const dir = path.join(this.root, KICAD_DIR);
+      const kicadDir = this.ownFile(KICAD_DIR);
+      const dir = path.join(this.root, kicadDir);
       await mkdir(dir, { recursive: true });
       const lines: string[] = [];
       for (const f of await readdir(dir)) {
@@ -479,21 +673,25 @@ export class Workspace {
         const text = await readFile(path.join(dir, f), "utf8");
         if (text.includes('(generator "partstyle")')) {
           await rm(path.join(dir, f));
-          lines.push(`removed stale ${KICAD_DIR}/${f}`);
+          lines.push(`removed stale ${kicadDir}/${f}`);
         }
       }
       for (const [f, text] of x.files) await writeFile(path.join(dir, f), text, "utf8");
       const proFile = path.join(dir, x.projectFile.name);
       if (!(await exists(proFile))) {
         await writeFile(proFile, x.projectFile.text, "utf8");
-        lines.push(`created ${KICAD_DIR}/${x.projectFile.name}`);
+        lines.push(`created ${kicadDir}/${x.projectFile.name}`);
       }
-      await writeFile(path.join(this.root, "annotation.lock"), x.annotationLock, "utf8");
-      await writeFile(path.join(this.root, "bom.lock"), x.bom.lock, "utf8");
+      await writeFile(
+        path.join(this.root, this.ownFile("annotation.lock")),
+        x.annotationLock,
+        "utf8",
+      );
+      await writeFile(path.join(this.root, this.ownFile("bom.lock")), x.bom.lock, "utf8");
 
       const sheets = x.schematic.instances.length;
       lines.unshift(
-        `exported ${KICAD_DIR}/: ${x.rootSchematic} (${sheets} sheet${sheets === 1 ? "" : "s"}), ` +
+        `exported ${kicadDir}/: ${x.rootSchematic} (${sheets} sheet${sheets === 1 ? "" : "s"}), ` +
           `partstyle.kicad_sym (${x.schematic.symbols.length} symbols), ${x.netlistFile}`,
       );
       const fromKicad = x.symbols.filter((s) => !s.generated);
@@ -603,7 +801,7 @@ export class Workspace {
         }
       }
       lines.push(
-        `next: open ${KICAD_DIR}/${x.projectFile.name}; in the PCB editor use Tools > Update PCB from Schematic`,
+        `next: open ${kicadDir}/${x.projectFile.name}; in the PCB editor use Tools > Update PCB from Schematic`,
       );
       return { ok, text: lines.join("\n") };
     });
@@ -617,6 +815,9 @@ export class Workspace {
    */
   kicadImport(source: string, opts: { replace?: boolean } = {}): Promise<TextResult> {
     return this.guard(async () => {
+      if (this.variantName !== undefined) {
+        return fail("KiCad import replaces the main circuit; run it without a variant");
+      }
       const hasProject = await exists(path.join(this.root, PROJECT_FILE));
       const { cli, symbols } = await this.kicad();
       if (!cli) {
@@ -750,8 +951,13 @@ export class Workspace {
   /** What the person has selected in the viewer, and the open review comments. */
   focus(): Promise<TextResult> {
     return this.guard(async () => {
-      const { result } = await this.load();
       const { comments, focus } = await this.review();
+      // The selection names parts of the design the person is looking at.
+      const viewed =
+        focus.variant !== undefined && (await readVariant(this.root, focus.variant))
+          ? this.forVariant(focus.variant)
+          : this.forVariant(undefined);
+      const { result } = await viewed.load();
       let url: string | undefined;
       try {
         url = (JSON.parse(await this.readOptional(VIEWER_FILE)) as { url?: string }).url;
@@ -859,6 +1065,11 @@ export class Workspace {
       const { result } = await this.load();
       const ast = result.blocks.find((b) => b.block.name === block);
       if (!ast) return fail(`no block ${block}`);
+      // A hint arranges the drawing, not the circuit: on a block the variant takes from main,
+      // it goes to main's file rather than copying the block into the variant.
+      if (this.variantName !== undefined && ast.file.startsWith("circuit/")) {
+        return this.forVariant(undefined).setLayout(block, ref, op);
+      }
       if (!result.netlist || !result.config) return fail("the design does not elaborate yet");
       const drawing = await prepareDrawing(
         result,
@@ -987,17 +1198,28 @@ export class Workspace {
 
   // --- Review and versioning -------------------------------------------------------------
 
-  /** The circuit at the last checkpoint, or where the change log starts when there is no git. */
+  /**
+   * The circuit at the last checkpoint, or where the change log starts when there is no git.
+   * A variant's is main's base with the variant's own base laid over it.
+   */
   private async baseCircuits(): Promise<{ files: Record<string, string>; label: string }> {
+    const own = await this.ownBase();
+    if (this.variantName === undefined) return own;
+    const main = await this.forVariant(undefined).ownBase();
+    return { files: overlayCircuits(main.files, own.files), label: own.label };
+  }
+
+  /** This workspace's own circuit files at the base (main's circuit/, or a variant's blocks). */
+  private async ownBase(): Promise<{ files: Record<string, string>; label: string }> {
     const cp = await lastCommit(this.root);
     if (cp) {
       return {
-        files: Object.fromEntries(await filesAt(this.root, cp.id, "circuit")),
+        files: (await this.history.atCheckpoint()) ?? {},
         label: `checkpoint ${cp.id.slice(0, 7)} "${cp.message}" (${cp.date.slice(0, 16).replace("T", " ")})`,
       };
     }
     const { changesets } = await this.history.changesets();
-    const files: Record<string, string> = await readCircuits(this.root);
+    const files: Record<string, string> = await readCircuits(this.own);
     // Undo the log, newest first, so each file ends at its earliest recorded text.
     for (const c of [...changesets].reverse()) {
       for (const [p, t] of Object.entries(c.before)) {
@@ -1014,7 +1236,24 @@ export class Workspace {
     const cp = await lastCommit(this.root);
     const { changesets } = await this.history.changesets();
     const base = await this.baseCircuits();
-    const now = await readCircuits(this.root);
+    const now = await this.circuitsNow();
+    const asItem = (c: StatementChange) => ({
+      block: c.block,
+      kind: c.kind,
+      key: c.key,
+      op: opOf(c),
+    });
+    const main = await readCircuits(this.root);
+    const variants = [];
+    for (const v of await listVariants(this.root)) {
+      const status = forkStatus(v, main, await readCircuits(v.dir));
+      variants.push({
+        name: v.name,
+        ...(v.description !== undefined && { description: v.description }),
+        projectFile: await hasProjectOverrides(v),
+        ...status,
+      });
+    }
     return {
       git: info !== undefined,
       mode: await this.reviewMode(),
@@ -1033,18 +1272,14 @@ export class Workspace {
           text: describeChange(c),
         })),
       })),
-      pending: (await readPending(this.root)).map((p) => ({
-        id: p.id,
-        created: p.created,
-        log: p.log,
-      })),
-      changed: diffCircuits(toFiles(base.files), toFiles(now)).map((c) => ({
-        block: c.block,
-        kind: c.kind,
-        key: c.key,
-        op: opOf(c),
-      })),
-      variants: info ? (await listVariants(this.root, info)).map((v) => v.name) : [],
+      pending: (await readPending(this.root))
+        .filter((p) => p.variant === this.variantName)
+        .map((p) => ({ id: p.id, created: p.created, log: p.log })),
+      changed: diffCircuits(toFiles(base.files), toFiles(now)).map(asItem),
+      variants,
+      ...(this.variantName !== undefined && {
+        vsMain: diffCircuits(toFiles(main), toFiles(now)).map(asItem),
+      }),
     };
   }
 
@@ -1053,7 +1288,11 @@ export class Workspace {
     const st = await this.versionState();
     const n = st.changed.length;
     const summary =
-      n === 0 ? "none" : `${n} statements in ${st.changesets.length} changesets (see diff)`;
+      n === 0
+        ? "none"
+        : this.variantName === undefined
+          ? `${n} statements in ${st.changesets.length} changesets (see diff)`
+          : `${n} statements, main's included; ${st.changesets.length} changesets of its own (see diff)`;
     const lines = [
       !st.git
         ? `changes: ${summary}; no checkpoints (not a git repository)`
@@ -1067,7 +1306,13 @@ export class Workspace {
     if (st.pending.length > 0) {
       lines.push(`pending review: ${st.pending.map((p) => p.id).join(", ")}`);
     }
-    if (st.variants.length > 0) lines.push(`variants: ${st.variants.join(", ")}`);
+    if (this.variantName !== undefined) {
+      const me = st.variants.find((v) => v.name === this.variantName);
+      if (me) lines.push(`this variant: ${variantLine(me)}`);
+      lines.push(`differs from main in ${st.vsMain?.length ?? 0} statements (variant diff)`);
+    } else if (st.variants.length > 0) {
+      lines.push("variants (pass variant=NAME):", ...st.variants.map((v) => `  ${variantLine(v)}`));
+    }
     return lines;
   }
 
@@ -1078,7 +1323,7 @@ export class Workspace {
   diff(since = "checkpoint"): Promise<TextResult> {
     return this.guard(async () => {
       await this.load();
-      const now = await readCircuits(this.root);
+      const now = await this.circuitsNow();
       const seen = await this.history.swapSeen(now);
       let base: Record<string, string>;
       let label: string;
@@ -1089,7 +1334,7 @@ export class Workspace {
         ({ files: base, label } = await this.baseCircuits());
       } else {
         try {
-          base = Object.fromEntries(await filesAt(this.root, since, "circuit"));
+          base = await this.circuitsAt(since);
         } catch (e) {
           return fail(`unknown checkpoint '${since}': ${(e as Error).message}`);
         }
@@ -1108,9 +1353,23 @@ export class Workspace {
     });
   }
 
+  /** The circuit as this workspace sees it at a commit. */
+  private async circuitsAt(ref: string): Promise<Record<string, string>> {
+    const main = Object.fromEntries(await filesAt(this.root, ref, "circuit"));
+    if (this.variantName === undefined) return main;
+    const prefix = `${VARIANTS_DIR}/${this.variantName}/`;
+    const own = await filesAt(this.root, ref, `${prefix}circuit`);
+    return overlayCircuits(
+      main,
+      Object.fromEntries([...own].map(([f, t]) => [f.slice(prefix.length), t])),
+    );
+  }
+
   /** Files outside circuit/ changed since the checkpoint (context, parts, notes, locks). */
   private async otherChangedFiles(): Promise<string[]> {
-    return (await changedFiles(this.root)).filter((f) => !/^(circuit|kicad)\//.test(f));
+    return (await changedFiles(this.root)).filter(
+      (f) => !/^(circuit|kicad)\//.test(f) && !/^variants\/[^/]+\/(circuit|kicad)\//.test(f),
+    );
   }
 
   /** The changesets since the last checkpoint with numbered statements, and pending patches. */
@@ -1147,16 +1406,13 @@ export class Workspace {
     if (plan.patch) {
       const patched = applyPatch(await this.source(), plan.patch);
       if (patched.issues.length > 0) return patched.issues.map(formatIssue).join("\n");
-      for (const f of patched.changed) {
-        await mkdir(path.dirname(path.join(this.root, f.file)), { recursive: true });
-        await writeFile(path.join(this.root, f.file), f.text, "utf8");
-      }
+      for (const f of patched.changed) await this.writeCircuit(f.file, f.text);
     }
-    for (const f of plan.deleteFiles) await rm(path.join(this.root, f), { force: true });
-    for (const f of plan.writeFiles) {
-      await mkdir(path.dirname(path.join(this.root, f.file)), { recursive: true });
-      await writeFile(path.join(this.root, f.file), f.text, "utf8");
+    // A variant's revert only touches its own files: deleting one brings main's back.
+    for (const f of plan.deleteFiles) {
+      await rm(path.join(this.root, this.circuitTarget(f)), { force: true });
     }
+    for (const f of plan.writeFiles) await this.writeCircuit(f.file, f.text);
     return undefined;
   }
 
@@ -1176,7 +1432,7 @@ export class Workspace {
       const items = m[2] === undefined ? all : all.slice(Number(m[2]) - 1, Number(m[2]));
       if (items.length === 0) return fail(`${cs.id} has no statement ${m[2]}`);
 
-      const plan = planRevert(items, toFiles(await readCircuits(this.root)), toFiles(cs.before));
+      const plan = planRevert(items, toFiles(await this.circuitsNow()), toFiles(cs.before));
       const conflicts = plan.conflicts.map((c) => `  not reverted: ${c}`);
       if (plan.reverted === 0) return fail(["nothing reverted", ...conflicts].join("\n"));
       const error = await this.carryOut(plan);
@@ -1241,7 +1497,8 @@ export class Workspace {
       const list = await readPending(this.root);
       const p = list.find((x) => x.id === id);
       if (!p) return fail(`no pending change ${id}`);
-      const r = await this.applyPatchText(p.patch, {
+      // A pending change applies to the variant it was made for, whichever view accepts it.
+      const r = await this.forVariant(p.variant).applyPatchText(p.patch, {
         dryRun: false,
         hold: false,
         source: "accept",
@@ -1260,103 +1517,104 @@ export class Workspace {
     });
   }
 
-  private async findVariant(name: string): Promise<Variant | string> {
-    const info = await repoInfo(this.root);
-    if (!info) return "not in a git repository: variants need git";
-    const v = (await listVariants(this.root, info)).find((x) => x.name === name);
-    return v ?? `no variant '${name}' (see variant list)`;
-  }
-
-  /** A workspace for a variant's working copy, for the viewer. */
+  /** A workspace for one of the project's variants, or undefined if there is no such variant. */
   async variantWorkspace(name: string): Promise<Workspace | undefined> {
-    const v = await this.findVariant(name);
-    return typeof v === "string"
-      ? undefined
-      : new Workspace(v.dir, {
-          stateDir: this.stateDir,
-          ...(this.sharedLibrary !== undefined && { sharedLibrary: this.sharedLibrary }),
-        });
+    return (await readVariant(this.root, name)) ? this.forVariant(name) : undefined;
   }
 
   /**
-   * Variants are parallel versions of the design on their own git branches, each with a
-   * working copy under .partstyle/variants/ (checkpoints there commit to its branch). list, create NAME and diff NAME are for anyone; adopt NAME
-   * (copy a variant's design over the main line, as one changeset) and remove NAME are the
-   * person's decisions.
+   * Variants share every block they do not change. list, create NAME and diff NAME are for
+   * anyone; adopt NAME (make the variant's changes main's, as one changeset) and remove NAME are
+   * the person's decisions.
    */
-  variant(op: "list" | "create" | "diff" | "adopt" | "remove", name?: string): Promise<TextResult> {
+  variant(
+    op: "list" | "create" | "diff" | "adopt" | "remove",
+    name?: string,
+    description?: string,
+  ): Promise<TextResult> {
     return this.guard(async () => {
-      await this.load();
-      const info = await repoInfo(this.root);
-      if (!info) return fail("not in a git repository: variants need git (run 'git init')");
+      const main = this.forVariant(undefined);
+      await main.load();
       if (op === "list") {
-        const vs = await listVariants(this.root, info);
-        if (vs.length === 0)
+        const st = await main.versionState();
+        if (st.variants.length === 0) {
           return { ok: true, text: "no variants (create one with: variant create NAME)" };
-        const now = toFiles(await readCircuits(this.root));
-        const lines = [];
-        for (const v of vs) {
-          const n = diffCircuits(now, toFiles(await readCircuits(v.dir))).length;
-          const rel = toPosix(path.relative(this.root, v.dir));
-          lines.push(
-            `${v.name}: ${n === 0 ? "same as main" : `${n} statements differ from main`} (${rel})`,
-          );
         }
-        return { ok: true, text: lines.join("\n") };
+        return { ok: true, text: st.variants.map(variantLine).join("\n") };
       }
       if (name === undefined) return fail(`usage: variant ${op} NAME`);
       if (op === "create") {
         const bad = checkVariantName(name);
         if (bad) return fail(bad);
-        if (typeof (await this.findVariant(name)) !== "string") {
-          return fail(`variant '${name}' already exists`);
-        }
-        try {
-          const { variant: v, ignoredNow } = await createVariant(this.root, info, name);
-          const cp = await lastCommit(this.root);
-          const rel = toPosix(path.relative(this.root, v.dir));
-          return {
-            ok: true,
-            text: [
-              `created variant ${name} at ${rel} (branch ${v.branch}) from checkpoint ${cp?.id.slice(0, 7) ?? "HEAD"}`,
-              "changes not yet checkpointed are not in it",
-              `edit it with: partstyle -p ${rel} ...; compare with: variant diff ${name}`,
-              ...(ignoredNow ? ["added .partstyle/ to .gitignore"] : []),
-            ].join("\n"),
-          };
-        } catch (e) {
-          return fail((e as Error).message);
-        }
-      }
-      const v = await this.findVariant(name);
-      if (typeof v === "string") return fail(v);
-      if (op === "diff") {
-        const changes = diffCircuits(
-          toFiles(await readCircuits(this.root)),
-          toFiles(await readCircuits(v.dir)),
-        );
-        return {
-          ok: true,
-          text:
-            changes.length === 0
-              ? `variant ${name} has the same circuit as the main line`
-              : [`main line -> variant ${name}:`, ...formatChanges(changes)].join("\n"),
-        };
-      }
-      if (op === "adopt") {
-        const files = await adoptVariant(this.root, v);
-        if (files.length === 0) return { ok: true, text: `variant ${name} matches the main line` };
-        const logged = await this.history.record("adopt", `adopted variant ${name}`);
+        if (await readVariant(this.root, name)) return fail(`variant '${name}' already exists`);
+        const v = await createVariant(this.root, name, description);
         return {
           ok: true,
           text: [
-            `adopted variant ${name}${logged ? ` as ${logged.id}` : ""}: ${files.join(", ")}`,
-            "review it, then checkpoint (the variant itself is kept until removed)",
+            `created variant ${name} (${toPosix(path.relative(this.root, v.dir))}): the same as main until it changes a block`,
+            `read it with variant=${name}; apply to it with variants=["${name}"] (or with main: ["main", "${name}"])`,
           ].join("\n"),
         };
       }
-      await removeVariant(info, v);
-      return { ok: true, text: `removed variant ${name} and its branch ${v.branch}` };
+      const v = await readVariant(this.root, name);
+      if (!v) return fail(`no variant '${name}' (see variant list)`);
+      const mainFiles = await readCircuits(this.root);
+      const own = await readCircuits(v.dir);
+      if (op === "diff") {
+        const changes = diffCircuits(toFiles(mainFiles), toFiles(overlayCircuits(mainFiles, own)));
+        const status = forkStatus(v, mainFiles, own);
+        const lines =
+          changes.length === 0
+            ? [`variant ${name} has the same circuit as main`]
+            : [`main -> variant ${name}:`, ...formatChanges(changes)];
+        if (await hasProjectOverrides(v)) {
+          lines.push(
+            `project file overrides: ${toPosix(path.relative(this.root, v.dir))}/${PROJECT_FILE}`,
+          );
+        }
+        for (const f of status.diverged) {
+          lines.push(
+            `main changed ${f} since the variant copied it; compare and carry over what applies`,
+          );
+        }
+        return { ok: true, text: lines.join("\n") };
+      }
+      if (op === "adopt") {
+        const changed: string[] = [];
+        for (const [f, text] of Object.entries(own)) {
+          if (mainFiles[f] === text) continue;
+          await mkdir(path.join(this.root, "circuit"), { recursive: true });
+          await writeFile(path.join(this.root, f), text, "utf8");
+          changed.push(f);
+        }
+        const overrides = await readFile(path.join(v.dir, PROJECT_FILE), "utf8").catch(
+          () => undefined,
+        );
+        if (overrides !== undefined) {
+          const file = path.join(this.root, PROJECT_FILE);
+          await writeFile(file, applyOverrides(await readFile(file, "utf8"), overrides), "utf8");
+          changed.push(PROJECT_FILE);
+        }
+        if (changed.length === 0) return { ok: true, text: `variant ${name} matches main` };
+        // The variant now equals main, and follows it again.
+        await rm(path.join(v.dir, "circuit"), { recursive: true, force: true });
+        await rm(path.join(v.dir, PROJECT_FILE), { force: true });
+        await writeMeta({ ...v, base: {} });
+        const logged = await main.history.record("adopt", `adopted variant ${name}`);
+        return {
+          ok: true,
+          text: [
+            `adopted variant ${name}${logged ? ` as ${logged.id}` : ""}: ${changed.join(", ")}`,
+            "review it, then checkpoint (the variant is kept, now the same as main, until removed)",
+          ].join("\n"),
+        };
+      }
+      await removeVariant(v);
+      await rm(path.join(this.root, ".partstyle", VARIANTS_DIR, name), {
+        recursive: true,
+        force: true,
+      });
+      return { ok: true, text: `removed variant ${name}` };
     });
   }
 
@@ -1368,23 +1626,25 @@ export class Workspace {
         return fail(`cannot build a BOM: ${issueSummary(result)}`);
       const { table } = annotate(
         result.netlist.parts.map((p) => p.path),
-        parseAnnotationLock(await this.readOptional("annotation.lock")),
+        parseAnnotationLock(await this.lock("annotation.lock")),
       );
       const preferred = result.config.sourcing.distributors;
       const bom = resolveBom(
         result.netlist,
         result.library,
-        await this.readOptional("bom.lock"),
+        await this.lock("bom.lock"),
         preferred,
       );
       const csv = formatBomCsv(bom.entries, (p) => table.get(p) ?? p, preferred);
-      await writeFile(path.join(this.root, "annotation.lock"), formatAnnotationLock(table), "utf8");
-      await writeFile(path.join(this.root, "bom.lock"), bom.lock, "utf8");
-      await writeFile(path.join(this.root, "bom.csv"), csv, "utf8");
+      const out = (name: string) => path.join(this.root, this.ownFile(name));
+      await mkdir(this.own, { recursive: true });
+      await writeFile(out("annotation.lock"), formatAnnotationLock(table), "utf8");
+      await writeFile(out("bom.lock"), bom.lock, "utf8");
+      await writeFile(out("bom.csv"), csv, "utf8");
 
       const count = (s: string) => bom.entries.filter((e) => e.status === s).length;
       const lines = [
-        `wrote bom.csv: ${csv.trimEnd().split("\n").length - 1} lines for ${bom.entries.length} parts ` +
+        `wrote ${this.ownFile("bom.csv")}: ${csv.trimEnd().split("\n").length - 1} lines for ${bom.entries.length} parts ` +
           `(${count("library")} library, ${count("resolved")} resolved generics, ${count("unresolved")} unresolved)`,
         ...summarizeLockChanges(bom.changes),
         ...bom.issues.map((i) => formatIssue(i)),
@@ -1400,6 +1660,36 @@ export class Workspace {
 }
 
 const KICAD_DIR = "kicad";
+
+const blockOf = (file: string) => path.posix.basename(file, ".ckt");
+
+/** One line about a variant: what it overrides, and where main moved on since. */
+function variantLine(v: VariantSummary): string {
+  const parts = [...(v.projectFile ? ["project file"] : []), ...v.blocks.map(blockOf)];
+  const diverged = v.diverged.map(blockOf);
+  return `${v.name}${v.description ? ` "${v.description}"` : ""}: ${
+    parts.length > 0 ? `own ${parts.join(", ")}` : "same as main"
+  }${diverged.length > 0 ? `; main changed ${diverged.join(", ")} since` : ""}`;
+}
+
+/**
+ * Main's project file with a variant's overrides written into it, keeping its comments and
+ * layout: mappings merge key by key, anything else replaces, null removes.
+ */
+function applyOverrides(mainText: string, overridesText: string): string {
+  const doc = parseDocument(mainText);
+  const over = parseYaml(overridesText) as unknown;
+  const isMapping = (x: unknown): x is Record<string, unknown> =>
+    typeof x === "object" && x !== null && !Array.isArray(x);
+  const walk = (at: string[], value: unknown): void => {
+    if (value === null) doc.deleteIn(at);
+    else if (isMapping(value) && isMap(doc.getIn(at, true))) {
+      for (const [k, v] of Object.entries(value)) walk([...at, k], v);
+    } else doc.setIn(at, value);
+  };
+  if (isMapping(over)) for (const [k, v] of Object.entries(over)) walk([k], v);
+  return doc.toString();
+}
 const VIEWER_FILE = ".partstyle/viewer.json";
 const IMPORT_NOTES = "notes/kicad-import.md";
 

@@ -1,6 +1,6 @@
 import { printSpec } from "./ckt/print.js";
 import { formatIssue } from "./diagnostics.js";
-import { PROJECT_FILE, projectData } from "./project/config.js";
+import { mergeProjectData, PROJECT_FILE, projectData } from "./project/config.js";
 import type { ProjectSource } from "./project/source.js";
 import type { TextResult } from "./query.js";
 import { parseComments } from "./review.js";
@@ -31,8 +31,10 @@ export function formatValidation(result: ValidationResult, fallbackName: string)
 
 /** The design context and settings, without the name and the description (prose for people). */
 function contextLines(source: ProjectSource): string[] {
-  const fm = projectData(source.project.text);
-  if (!fm) return [];
+  const main = projectData(source.project.text);
+  if (!main) return [];
+  const over = source.projectOverride && projectData(source.projectOverride.text);
+  const fm = over ? mergeProjectData(main, over) : main;
   const lines = [`context: ${String(fm.use_case ?? "(no use_case)")}`];
   for (const [key, value] of Object.entries(fm)) {
     const skip = ["partstyle_version", "name", "description", "use_case", "external_interfaces"];
@@ -55,7 +57,10 @@ export function overview(
   versions: string[] = [],
 ): string {
   const name = result.config?.name ?? `(invalid ${PROJECT_FILE})`;
-  const lines = [`project ${name}`, ...contextLines(source)];
+  const lines = [
+    `project ${name}${source.variant === undefined ? "" : `, variant ${source.variant}`}`,
+    ...contextLines(source),
+  ];
 
   lines.push("blocks:");
   for (const b of result.blocks) {

@@ -34,15 +34,12 @@ const ignored = /(^|[\\/])(\.git|node_modules|kicad|\.partstyle)([\\/]|$)|bom\.c
 
 /**
  * Whether a change (path relative to the project) can change what the viewer shows: project
- * files, a variant's files, or the pending and history state other processes write.
+ * files (variants/ included), or the pending, history and review state other processes write.
  */
 export function relevantChange(file: string): boolean {
   const f = file.replace(/\\/g, "/");
-  if (["pending.json", "history.json", "review.json"].some((s) => f === `.partstyle/${s}`)) {
-    return true;
-  }
-  const variant = /^\.partstyle\/variants\/[^/]+\/(.+)$/.exec(f);
-  return !ignored.test(variant ? (variant[1] as string) : f);
+  if (/^\.partstyle\/(variants\/[^/]+\/)?(pending|history|review)\.json$/.test(f)) return true;
+  return !ignored.test(f);
 }
 
 function viewerDist(): string {
@@ -183,6 +180,7 @@ export async function startViewer(
         await ws.setFocus({
           selection,
           ...(typeof body.sheet === "string" && { sheet: body.sheet }),
+          ...(typeof body.variant === "string" && body.variant !== "" && { variant: body.variant }),
         });
         send(200, { ok: true });
         return;
@@ -241,7 +239,11 @@ export async function startViewer(
         if (op !== "create" && op !== "adopt" && op !== "remove") {
           throw new HttpError(400, "bad op");
         }
-        send(200, await ws.variant(op, str(body.name, "name", 60)));
+        const description =
+          op === "create" && typeof body.description === "string" && body.description.trim()
+            ? body.description.slice(0, 200)
+            : undefined;
+        send(200, await ws.variant(op, str(body.name, "name", 60), description));
         return;
       }
       throw new HttpError(404, "not found");

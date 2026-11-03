@@ -439,8 +439,32 @@ svg text {
   margin-left: auto;
 }
 
-.variant-chip {
+/* Which version of the design is shown: tinted while it is a variant. */
+.variant-switch select {
+  font: inherit;
+  font-size: 0.85rem;
+  border: 1px solid var(--ui-line);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  background: white;
+}
+
+.variant-switch.on select {
   background: #e8eefc;
+  border-color: #9db3ea;
+}
+
+.changes .variant .blocks {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+}
+
+.changes .variant .warn {
+  color: #9a5b00;
+}
+
+.changes .variant .active {
+  font-weight: 600;
 }
 
 /* Changes since the checkpoint (or by a previewed patch): added green, modified amber. */

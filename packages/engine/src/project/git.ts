@@ -1,32 +1,23 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import * as iso from "isomorphic-git";
 
-// Git through isomorphic-git, so checkpoints and variants work without git installed. The index
-// is only written for the main line's checkpoints (to keep `git status` truthful); comparisons
-// hash the working files against the commit's tree instead.
+// Git through isomorphic-git, so checkpoints work without git installed. The index is written
+// for checkpoints (to keep `git status` truthful); comparisons hash the working files against
+// the commit's tree instead.
 
 export class GitError extends Error {}
 
-/** A variant's working copy names the repository and the branch it commits to in this file. */
-export const VARIANT_MARKER = ".partstyle-variant.json";
-
-export interface VariantMarker {
-  /** The repository's git directory, relative to the working copy. */
-  gitdir: string;
-  branch: string;
-}
-
 export interface RepoInfo {
-  /** The repository's working-tree root (a variant's working copy for a variant). */
+  /** The repository's working-tree root. */
   top: string;
   /** The project folder relative to `top`, with a trailing slash ("" at the root). */
   prefix: string;
   gitdir: string;
-  /** What checkpoints advance: "HEAD" on the main line, a variant's branch otherwise. */
+  /** What checkpoints advance: always "HEAD". */
   ref: string;
 }
 
@@ -47,13 +38,8 @@ const toPosix = (p: string) => p.split(path.sep).join("/");
 
 const isNotFound = (e: unknown) => e instanceof iso.Errors.NotFoundError;
 
-/** What the folder `d` holds: a repository, a variant copy, nothing (undefined) or a stop (null). */
+/** What the folder `d` holds: a repository, nothing (undefined) or a stop (null). */
 async function gitdirAt(d: string): Promise<{ gitdir: string; ref: string } | null | undefined> {
-  const marker = await readFile(path.join(d, VARIANT_MARKER), "utf8").catch(() => undefined);
-  if (marker !== undefined) {
-    const m = JSON.parse(marker) as VariantMarker;
-    return { gitdir: path.resolve(d, m.gitdir), ref: `refs/heads/${m.branch}` };
-  }
   const dotgit = path.join(d, ".git");
   const st = await stat(dotgit).catch(() => undefined);
   if (st === undefined) return undefined;
@@ -193,7 +179,7 @@ export async function filesAt(dir: string, ref: string, sub: string): Promise<Ma
 }
 
 /** Whether git ignores `file` (relative to the repository root; a trailing "/" for folders). */
-export function isIgnored(r: RepoInfo, file: string): Promise<boolean> {
+function isIgnored(r: RepoInfo, file: string): Promise<boolean> {
   return iso.isIgnored({ fs, dir: r.top, gitdir: r.gitdir, filepath: file });
 }
 
@@ -211,7 +197,7 @@ async function compare(r: RepoInfo, dir: string) {
   const walk = async (rel: string): Promise<void> => {
     for (const e of await readdir(path.join(dir, rel), { withFileTypes: true })) {
       const f = `${rel}${e.name}`;
-      if (e.name === ".git" || f === ".partstyle" || f === VARIANT_MARKER) continue;
+      if (e.name === ".git" || f === ".partstyle") continue;
       if (e.isDirectory()) {
         const tracked = [...base.keys()].some((k) => k.startsWith(`${f}/`));
         if (tracked || !(await isIgnored(r, `${r.prefix}${f}/`))) await walk(`${f}/`);
@@ -225,11 +211,6 @@ async function compare(r: RepoInfo, dir: string) {
   for (const [f, data] of files) if (base.get(f)?.oid !== blobOid(data)) changed.add(f);
   for (const f of base.keys()) if (!files.has(f) && !f.startsWith(".partstyle/")) changed.add(f);
   return { commit, base, files, changed: [...changed].sort() };
-}
-
-/** The project's files (relative to `dir`) that git would track (git ls-files -co). */
-export async function projectFiles(dir: string): Promise<string[]> {
-  return [...(await compare(await mustRepo(dir), dir)).files.keys()].sort();
 }
 
 /** Project files (relative to `dir`) that differ from the line's last commit. */
@@ -352,33 +333,4 @@ export async function commitProject(dir: string, message: string): Promise<strin
   // A detached HEAD moves itself.
   if (!branch) await iso.writeRef({ fs, gitdir: r.gitdir, ref: "HEAD", value: id, force: true });
   return id;
-}
-
-/** Starts a variant: a branch at `commit` and a working copy of that commit's files in `copy`. */
-export async function createVariantCopy(
-  r: RepoInfo,
-  commit: string,
-  branch: string,
-  copy: string,
-): Promise<void> {
-  await iso.writeRef({ fs, gitdir: r.gitdir, ref: `refs/heads/${branch}`, value: commit });
-  for (const [f, e] of await treeFiles(r, commit, "")) {
-    const { blob } = await iso.readBlob({ fs, gitdir: r.gitdir, oid: e.oid });
-    const file = path.join(copy, f);
-    await fs.promises.mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, blob);
-  }
-  const marker: VariantMarker = { gitdir: toPosix(path.relative(copy, r.gitdir)), branch };
-  await writeFile(path.join(copy, VARIANT_MARKER), `${JSON.stringify(marker)}\n`, "utf8");
-}
-
-export async function readVariantMarker(copy: string): Promise<VariantMarker | undefined> {
-  const text = await readFile(path.join(copy, VARIANT_MARKER), "utf8").catch(() => undefined);
-  return text === undefined ? undefined : (JSON.parse(text) as VariantMarker);
-}
-
-export async function deleteBranch(r: RepoInfo, branch: string): Promise<void> {
-  await iso.deleteBranch({ fs, gitdir: r.gitdir, ref: branch }).catch((e: unknown) => {
-    if (!isNotFound(e)) throw e;
-  });
 }

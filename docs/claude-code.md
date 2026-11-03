@@ -127,7 +127,8 @@ identical.
 | `focus`                                                                           | `partstyle focus`                                                                |
 | `diff(since)`                                                                     | `partstyle diff [--since ...]`                                                   |
 | `checkpoint(message)`                                                             | `partstyle checkpoint MESSAGE`                                                   |
-| `variant(op, name)`                                                               | `partstyle variant list\|create\|diff NAME`                                      |
+| `variant(op, name, description)`                                                  | `partstyle variant list\|create\|diff NAME [DESCRIPTION]`                        |
+| `variant` on the read, doc, diff and export tools; `variants` on `apply`          | `--variant NAME` (repeatable for `apply`)                                        |
 | `grammar`, and resource `partstyle://grammar`                                     | `partstyle grammar`                                                              |
 | (person only: viewer and CLI)                                                     | `partstyle changes`, `revert`, `pending`, `variant adopt\|remove`, `checkpoints` |
 | (viewer, started with the server)                                                 | `partstyle view [--port N]`                                                      |
@@ -145,6 +146,14 @@ project in that folder.
 
 `kicad_import`: `path` is relative to the open project, or with `new_project` (global mode) to
 the projects folder, importing into a new project of that name, which then opens.
+
+Variants: `overview`, `read_block`, `query`, `validate`, `read_doc`, `write_doc`, `diff`,
+`bom_export` and `kicad_export` take an optional `variant` (omitted or `"main"`: the main
+circuit), so Claude works on any version of the design without reopening the project. `apply`
+takes `variants`, a list such as `["main", "buck"]`, and applies the patch to each, all or
+nothing; with `"main"` among them, a variant gets only the edits to blocks of its own. `focus`
+says which variant the person is viewing. See
+[the variant model](cli.md#variant-list--create-name-description--diffadoptremove-name).
 
 `read_doc` and `write_doc` cover `partstyle-project.yaml` and Markdown files under `notes/`;
 writing the project file reports its issues, and a project file that would not load is refused.
