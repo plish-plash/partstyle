@@ -38,8 +38,7 @@ const usage = `usage: partstyle [-p DIR] <command>
 Every command mirrors an MCP tool and gives the same output.
 
 commands:
-  init [DIR] [--name NAME] [--library PATH]...
-                                           create a project skeleton (DIR defaults to -p or .)
+  init [DIR] [--name NAME]                 create a project skeleton (DIR defaults to -p or .)
   projects [--dir DIR]                     projects in DIR (default ~/Documents/partstyle)
                                            and ones the MCP server opened elsewhere
   overview                                 project summary: blocks, parts, issues, context
@@ -47,13 +46,12 @@ commands:
   query EXPR...                            targeted lookup; 'partstyle query help' for syntax
   validate [DIR] [--json]                  parse, connect and ERC-check (exit 1 on errors)
   apply [FILE|-] [--dry-run]               apply a .ckt patch from FILE or stdin
-  doc read FILE | doc write FILE [SRC|-]   read or replace context.md or a notes/*.md file
+  doc read FILE | doc write FILE [SRC|-]   read or replace the project file or a notes/*.md file
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
   kicad export [--no-check]                write kicad/ and verify it with kicad-cli
-  kicad import PATH [--replace] [--library PATH]...
-                                           import a KiCad project (creates the project if needed)
+  kicad import PATH [--replace]            import a KiCad project (creates the project if needed)
   bom export                               resolve generics, write bom.lock and bom.csv
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
   mcp [--project DIR | --projects-dir DIR] [--viewer-port N] [--no-viewer]
@@ -103,7 +101,6 @@ function parse(argv: string[]) {
       tier: { type: "string" },
       scope: { type: "string" },
       name: { type: "string" },
-      library: { type: "string", multiple: true },
       port: { type: "string" },
       since: { type: "string" },
       dir: { type: "string" },
@@ -159,14 +156,10 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
   const ws = new Workspace(values.project ?? ".");
   switch (command) {
     case "init": {
-      if (args.length > 1) return usageError("usage: init [DIR] [--name NAME] [--library PATH]...");
+      if (args.length > 1) return usageError("usage: init [DIR] [--name NAME]");
       const target = args[0] === undefined ? ws : new Workspace(args[0]);
       return fromText(
-        await target.init({
-          // Library paths on the command line are relative to the current directory.
-          libraryPaths: (values.library ?? []).map((p) => path.resolve(p)),
-          ...(values.name !== undefined && { name: values.name }),
-        }),
+        await target.init({ ...(values.name !== undefined && { name: values.name }) }),
       );
     }
 
@@ -252,13 +245,10 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         return fromText(
           await ws.kicadImport(path.resolve(args[1] as string), {
             replace: values.replace ?? false,
-            libraryPaths: (values.library ?? []).map((p) => path.resolve(p)),
           }),
         );
       }
-      return usageError(
-        "usage: kicad export [--no-check] | kicad import PATH [--replace] [--library PATH]...",
-      );
+      return usageError("usage: kicad export [--no-check] | kicad import PATH [--replace]");
 
     case "bom":
       if (args[0] !== "export" || args.length > 1) return usageError("usage: bom export");

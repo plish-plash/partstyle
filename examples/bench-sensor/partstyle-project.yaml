@@ -1,4 +1,12 @@
----
+# A Partstyle project: its name, design context and settings. Checks and design review
+# read the context; the description is plain paragraphs for people.
+partstyle_version: "0.1.0"
+name: bench-sensor
+description: |
+  A bench interface that reads a remote analog sensor and reports over UART.
+  The sensor sits on a 2 m cable, so the input is clamped and filtered at the
+  connector before a unity-gain buffer drives the MCU's ADC.
+
 use_case: Benchtop sensor interface
 environment:
   temp_c: [0, 50]
@@ -21,8 +29,6 @@ external_interfaces:
     signal: 3.3 V UART
     hazards:
       - ESD
----
 
-A bench interface that reads a remote analog sensor and reports over UART.
-The sensor sits on a 2 m cable, so the input is clamped and filtered at the
-connector before a unity-gain buffer drives the MCU's ADC.
+sourcing:
+  distributors: [lcsc, digikey]

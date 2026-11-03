@@ -1,26 +1,10 @@
-import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { Issue, Location } from "../diagnostics.js";
 import type { FlatNet, FlatPart, Netlist } from "../netlist/elaborate.js";
-import type { TextFile } from "../project/source.js";
 import { parseQuantity } from "../units.js";
 import { isGroundNet, isPowerNet, passiveSpec, volts } from "./nets.js";
 
-/** Front matter of context.md, or undefined if absent or malformed. */
-export function contextFrontMatter(text: string): Record<string, unknown> | undefined {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-  if (!m) return undefined;
-  try {
-    const data = parseYaml(m[1] as string);
-    return typeof data === "object" && data !== null
-      ? (data as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** The parts of context.md's front matter that checks read; anything else is for people. */
+/** The parts of the design context that checks read; anything else is for people. */
 const ContextSchema = z.looseObject({
   environment: z.looseObject({ temp_c: z.tuple([z.number(), z.number()]).optional() }).optional(),
   assembly: z.looseObject({ method: z.string().optional() }).optional(),
@@ -39,12 +23,16 @@ const ContextSchema = z.looseObject({
 const finePitch = /BGA|QFN|DFN|LGA|WLCSP|CSP|\b0201\b|\b01005\b/i;
 
 /**
- * Checks against the environment in context.md: each external interface's hazards at its
- * connector, the operating temperature range and the assembly method.
+ * Checks against the design context in the project file (`data`, its parsed YAML): each
+ * external interface's hazards at its connector, the operating temperature range and the
+ * assembly method.
  */
-export function contextChecks(netlist: Netlist, context: TextFile | undefined): Issue[] {
-  if (!context) return [];
-  const location: Location = { file: context.file, line: 1, col: 1 };
+export function contextChecks(
+  netlist: Netlist,
+  data: Record<string, unknown>,
+  file: string,
+): Issue[] {
+  const location: Location = { file, line: 1, col: 1 };
   const issue = (code: string, message: string, subjects: string[]): Issue => ({
     code,
     severity: "warning",
@@ -52,26 +40,13 @@ export function contextChecks(netlist: Netlist, context: TextFile | undefined): 
     location,
     subjects,
   });
-  const fm = contextFrontMatter(context.text);
-  if (!fm) {
-    // Front matter that does not parse would otherwise skip every check without a word.
-    return /^---\r?\n/.test(context.text)
-      ? [
-          issue(
-            "context.invalid",
-            "context.md front matter is not a YAML mapping; its checks were skipped",
-            [],
-          ),
-        ]
-      : [];
-  }
-  const parsed = ContextSchema.safeParse(fm);
+  const parsed = ContextSchema.safeParse(data);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return [
       issue(
         "context.invalid",
-        `context.md front matter: ${first ? `${first.path.join(".")}: ${first.message}` : "invalid"}; its checks were skipped`,
+        `design context: ${first ? `${first.path.join(".")}: ${first.message}` : "invalid"}; its checks were skipped`,
         [],
       ),
     ];
@@ -179,7 +154,7 @@ export function contextChecks(netlist: Netlist, context: TextFile | undefined): 
       issues.push(
         issue(
           "context.temperature",
-          `lib:${id} (${u.paths.join(" ")}) is rated ${range[0]} to ${range[1]} °C; context.md needs ${lo} to ${hi} °C`,
+          `lib:${id} (${u.paths.join(" ")}) is rated ${range[0]} to ${range[1]} °C; the environment needs ${lo} to ${hi} °C`,
           [id, ...u.paths],
         ),
       );

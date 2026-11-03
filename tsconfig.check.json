@@ -10,7 +10,7 @@
       "@partstyle/mcp": ["./packages/mcp/src/serve.ts"]
     }
   },
-  "include": ["packages/*/src", "vitest.config.ts"],
+  "include": ["packages/*/src", "vitest.config.ts", "vitest.setup.ts"],
   // The Svelte viewer is checked by svelte-check (pnpm --filter @partstyle/viewer check).
   "exclude": ["packages/viewer"]
 }

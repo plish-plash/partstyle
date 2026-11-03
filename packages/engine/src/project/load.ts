@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PartSource } from "../parts/library.js";
-import { parseProjectConfig } from "./config.js";
+import { PROJECT_FILE } from "./config.js";
 import type { ProjectSource, TextFile } from "./source.js";
 
 export class ProjectLoadError extends Error {}
@@ -29,16 +29,19 @@ async function readText(root: string, file: string): Promise<TextFile> {
   return { file: rel(root, file), text: await readFile(file, "utf8") };
 }
 
-/** Reads project.toml, circuit/*.ckt, the configured global part libraries and project parts/. */
-export async function loadProject(dir: string): Promise<ProjectSource> {
+/**
+ * Reads the project file, circuit/*.ckt, the global part libraries (absolute folders, from the
+ * user's settings) and the project's parts/.
+ */
+export async function loadProject(dir: string, libraries: string[]): Promise<ProjectSource> {
   const root = path.resolve(dir);
-  let config: TextFile;
+  let project: TextFile;
   try {
-    config = await readText(root, path.join(root, "project.toml"));
+    project = await readText(root, path.join(root, PROJECT_FILE));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") {
       throw new ProjectLoadError(
-        `no project.toml in ${root} (create a project with: partstyle init)`,
+        `no ${PROJECT_FILE} in ${root} (create a project with: partstyle init)`,
       );
     }
     throw e;
@@ -48,11 +51,9 @@ export async function loadProject(dir: string): Promise<ProjectSource> {
     (await listFiles(path.join(root, "circuit"), [".ckt"])).map((f) => readText(root, f)),
   );
 
-  // A broken config is reported by validateProject; here we just skip the global libraries.
-  const libraryPaths = parseProjectConfig(config.text, config.file).config?.library.paths ?? [];
   const partFiles: { file: string; layer: PartSource["layer"] }[] = [];
-  for (const lib of libraryPaths) {
-    for (const f of await listFiles(path.resolve(root, lib), [".yaml", ".yml"])) {
+  for (const lib of libraries) {
+    for (const f of await listFiles(lib, [".yaml", ".yml"])) {
       partFiles.push({ file: f, layer: "global" });
     }
   }
@@ -68,7 +69,6 @@ export async function loadProject(dir: string): Promise<ProjectSource> {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
       throw e;
     });
-  const context = await optional("context.md");
   const comments = await optional("comments.yaml");
-  return { config, circuits, parts, ...(context && { context }), ...(comments && { comments }) };
+  return { project, circuits, parts, ...(comments && { comments }) };
 }

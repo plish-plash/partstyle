@@ -48,7 +48,9 @@ describe("Workspace review", () => {
     project = path.join(tmp, "examples/bench-sensor");
     await cp(repo("examples/bench-sensor"), project, { recursive: true });
     await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
-    ws = new Workspace(project);
+    // Verifying writes the record, so the settings list this copy of the library.
+    await writeFile(path.join(tmp, "settings.yaml"), "libraries: [library]\n");
+    ws = new Workspace(project, { stateDir: tmp });
   });
   afterEach(async () => {
     await rm(tmp, { recursive: true, force: true });
@@ -113,7 +115,7 @@ describe("Workspace review", () => {
   });
 
   it("still returns issues for a design that does not elaborate", async () => {
-    await writeFile(path.join(project, "project.toml"), 'name = "x"\ntop = "nowhere"\n');
+    await rm(path.join(project, "circuit/main.ckt"));
     const m = await ws.viewerModel();
     expect(m.sheets).toEqual([]);
     expect(m.issues.map((i) => i.code)).toContain("elab.unknown-top");

@@ -70,10 +70,10 @@ How each client is set up, and the full list of MCP tools, is in
 
 ## A typical session
 
-1. **Start a project.** Ask Claude to create one. It writes the skeleton (`project.toml`,
-   `context.md`, `circuit/main.ckt`, `notes/`) and gives you a link to the viewer, a local web
-   page that redraws as the design changes.
-2. **Describe the board.** Claude fills in `context.md` with you: what the board does, where it
+1. **Start a project.** Ask Claude to create one. It writes the skeleton
+   (`partstyle-project.yaml`, `circuit/main.ckt`, `notes/`) and gives you a link to the viewer,
+   a local web page that redraws as the design changes.
+2. **Describe the board.** Claude fills in `partstyle-project.yaml` with you: what the board does, where it
    runs, how it's powered and assembled, and every external connection with its hazards (ESD,
    reverse polarity, ...). Checks and design reviews use this.
 3. **Design block by block.** Claude plans one block per functional area (power, MCU, sensor

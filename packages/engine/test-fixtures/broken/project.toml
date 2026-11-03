@@ -1,4 +1,0 @@
-name = "broken"
-
-[library]
-paths = ["../../../../library"]

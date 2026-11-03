@@ -1,3 +1,5 @@
+import { PROJECT_FILE } from "./project/config.js";
+
 /**
  * Repeatable procedures for the AI, kept out of every conversation until needed. Served as MCP
  * prompts, printed by `partstyle prompt NAME`, and written into projects as Claude Code slash
@@ -25,13 +27,13 @@ const designReview: PromptDef = {
     block,
   }) => `Review ${block ? `block ${block} of ` : ""}this Partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
 
-1. Gather: \`partstyle overview\`, \`partstyle validate\`, context.md, notes/decisions.md, then ${
+1. Gather: \`partstyle overview\`, \`partstyle validate\`, ${PROJECT_FILE}, notes/decisions.md, then ${
     block ? `\`partstyle read-block ${block}\`` : "each block with `partstyle read-block`"
   }. For every library part, \`partstyle part get ID --tier pins\`.
 2. Check, citing refdes and nets:
    - Each validate issue: its cause, and a fix or a waiver with a real reason.
    - Datasheet requirements not marked [checked]: is each one met, and how?
-   - Each external interface in context.md: is every listed hazard handled at the connector
+   - Each external interface in the project file: is every listed hazard handled at the connector
      (ESD, overvoltage, reverse polarity, shorts, cable length)? The engine checks ESD clamps,
      voltage hazards on signal pins and reverse-polarity parts; judge the rest.
    - Values against each \`@ intent\`: dividers, filter corners, gain, LED and pull-up currents.
@@ -39,7 +41,7 @@ const designReview: PromptDef = {
      stability (output capacitance and ESR), linear regulator dissipation, power sequencing,
      inputs that can float.
    - Parts: unverified or draft records, lifecycle, rating margins, temperature range and
-     packages against context.md's environment and assembly method.
+     packages against the project file's environment and assembly method.
    - Manufacture and test: test points, programming and debug access, connector polarity.
 3. Write the findings to notes/review.md, one line each, most severe first:
    \`- [critical|major|minor|note] SUBJECT: finding -> suggestion\`
@@ -91,7 +93,7 @@ const prepareHandoff: PromptDef = {
    (ingest_part) or confirm it can stay generic for the assembler to choose.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
-   (context.md's external interfaces), thermal relief for regulators, sensitive analog nets,
+   (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,
    suggested layer count and keep-outs.
 4. \`partstyle kicad export\`: the netlist round trip and KiCad ERC must be clean.
 5. Summarise for the person: open \`kicad/<name>.kicad_pro\`, run Tools > Update PCB from

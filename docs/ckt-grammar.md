@@ -57,7 +57,42 @@ net GND  : PWR.GND MCU.GND
 ```
 
 Parts inside an instance get path names (`PWR/U1`), and so do nets that are not joined to a
-parent net (`PWR/VIN_RAW`). The top block is `top` in `project.toml`, which defaults to `main`.
+parent net (`PWR/VIN_RAW`). The top block is always `main`, in `circuit/main.ckt`.
+
+## Conventions
+
+- Refdes prefixes: R, C, L, D (diodes and LEDs), Q, U (ICs), J (connectors), Y (crystals),
+  F (fuses), SW, TP. Unique within a block.
+- Net names: rails as `+3V3`, `+5V`, `+12V`, `GND`; signals in UPPER_SNAKE_CASE.
+- Each block declares a port for everything crossing its boundary: `ground` for GND,
+  `power_out` for rails it supplies, `power_in` for rails it consumes, and
+  `input`/`output`/`bidir`/`passive` for signals.
+- Add `{voltage: ...}` to rails and to signals with a known range (`5V`, `12V ±10%`,
+  `0-3.3V`); a rail named like `+3V3` is assumed to be that voltage. Checks compare it with
+  pin limits (`vmax`) and capacitor ratings. A rail fed from a connector or through a passive
+  part (fuse, diode) has no `power_out` pin, so add `{source: ...}`.
+- Give passives a voltage or power rating where it matters: `cap(10u, 25V, X5R, 0805)`.
+- Put an `@ intent` on every part and on nets whose purpose is not obvious.
+
+## Example block
+
+```
+block power "12 V barrel input, 5 V linear rail"
+
+port +5V : power_out
+port GND : ground
+
+part J1 lib:barrel_jack_2.1mm       @ 12 V wall adapter input
+part D1 lib:1N5819                  @ reverse-polarity protection
+part U1 lib:L7805CV
+part C1 cap(330n, 50V, X7R, 0603)   @ per U1 datasheet input cap
+part C2 cap(100n, 16V, X7R, 0603)   @ per U1 datasheet output cap
+
+net VIN_RAW : J1.TIP D1.A           {voltage: 12V ±10%}
+net +12V    : D1.K U1.IN C1.1       {voltage: 11.5V, source: J1 through D1}
+net +5V     : U1.OUT C2.1           -> port +5V {voltage: 5V}
+net GND     : J1.SLEEVE J1.SWITCH U1.GND C1.2 C2.2 -> port GND
+```
 
 ## Patches (`apply`)
 
@@ -81,28 +116,29 @@ the issues they added or resolved. Use `dry_run` to preview.
 
 ## Issue codes
 
-| Code                                                             | Severity                           | Meaning                                                           |
-| ---------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
-| `parse.syntax`, `parse.missing-block`                            | error                              | malformed statement                                               |
-| `elab.unknown-part/-pin/-ref/-port/-block/-top`                  | error                              | name does not resolve                                             |
-| `elab.duplicate-ref/-net/-port/-block`, `elab.port-bound-twice`  | error                              | declared twice                                                    |
-| `elab.pin-multiple-nets`                                         | error                              | pin on two nets (a short)                                         |
-| `elab.unbound-port`, `elab.bad-generic`, `elab.recursive-use`    | error                              |                                                                   |
-| `erc.unconnected-pin`                                            | error for `power_in`, else warning | pin on no net (`nc` pins exempt)                                  |
-| `erc.output-conflict`                                            | error                              | outputs of two parts on one net                                   |
-| `erc.unsourced-power`                                            | error                              | `power_in` pins, no `power_out`, no `source`, no ground port      |
-| `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`    | warning                            |                                                                   |
-| `elab.unused-block`, `elab.attr-conflict`, `waive.unused`        | warning                            |                                                                   |
-| `patch.error`                                                    | error                              | patch rejected; nothing was applied                               |
-| `layout.connectivity`, `layout.failed`                           | error                              | auto-layout bug: the drawing does not match the design            |
-| `layout.bad-hint`                                                | warning                            | a rotation on a part that only flips, or a flip on one that turns |
-| `part.footprint-pads`                                            | error                              | record's pins and footprint pads differ                           |
-| `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint |
-| `kicad.symbol-fallback`                                          | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated    |
-| `part.draft`                                                     | warning                            | a KiCad import draft record is in use; complete or replace it     |
-| `part.overvoltage`                                               | error                              | a pin's `vmax` is below its net's voltage                         |
-| `part.cap-voltage`                                               | error over rating, else warning    | capacitor rated below the voltage across it, or under derating    |
-| `part.requirement`                                               | warning                            | a datasheet requirement with a check is not met                   |
-| `context.hazard`                                                 | warning                            | an external interface's hazard is not handled at its connector    |
-| `context.temperature`, `context.assembly`                        | warning                            | part outside context's temperature range; hard to hand-solder     |
-| `context.unknown-connector`, `context.invalid`                   | warning                            | interface names no part; context.md front matter is malformed     |
+| Code                                                             | Severity                           | Meaning                                                            |
+| ---------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| `parse.syntax`, `parse.missing-block`                            | error                              | malformed statement                                                |
+| `elab.unknown-part/-pin/-ref/-port/-block/-top`                  | error                              | name does not resolve                                              |
+| `elab.duplicate-ref/-net/-port/-block`, `elab.port-bound-twice`  | error                              | declared twice                                                     |
+| `elab.pin-multiple-nets`                                         | error                              | pin on two nets (a short)                                          |
+| `elab.unbound-port`, `elab.bad-generic`, `elab.recursive-use`    | error                              |                                                                    |
+| `erc.unconnected-pin`                                            | error for `power_in`, else warning | pin on no net (`nc` pins exempt)                                   |
+| `erc.output-conflict`                                            | error                              | outputs of two parts on one net                                    |
+| `erc.unsourced-power`                                            | error                              | `power_in` pins, no `power_out`, no `source`, no ground port       |
+| `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`    | warning                            |                                                                    |
+| `elab.unused-block`, `elab.attr-conflict`, `waive.unused`        | warning                            |                                                                    |
+| `patch.error`                                                    | error                              | patch rejected; nothing was applied                                |
+| `layout.connectivity`, `layout.failed`                           | error                              | auto-layout bug: the drawing does not match the design             |
+| `layout.bad-hint`                                                | warning                            | a rotation on a part that only flips, or a flip on one that turns  |
+| `part.footprint-pads`                                            | error                              | record's pins and footprint pads differ                            |
+| `part.footprint-missing`, `bom.unresolved`, `kicad.no-footprint` | warning                            | KiCad has no such footprint; no part fits a generic; no footprint  |
+| `kicad.symbol-fallback`                                          | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated     |
+| `part.draft`                                                     | warning                            | a KiCad import draft record is in use; complete or replace it      |
+| `part.overvoltage`                                               | error                              | a pin's `vmax` is below its net's voltage                          |
+| `part.cap-voltage`                                               | error over rating, else warning    | capacitor rated below the voltage across it, or under derating     |
+| `part.requirement`                                               | warning                            | a datasheet requirement with a check is not met                    |
+| `context.hazard`                                                 | warning                            | an external interface's hazard is not handled at its connector     |
+| `context.temperature`, `context.assembly`                        | warning                            | part outside context's temperature range; hard to hand-solder      |
+| `context.unknown-connector`, `context.invalid`                   | warning                            | interface names no part; the design context is malformed           |
+| `project.config`                                                 | error                              | project file is not YAML or has no `name`; nothing else is checked |

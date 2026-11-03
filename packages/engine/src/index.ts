@@ -48,7 +48,6 @@ export {
   mcpInstructions,
   projectClaudeMd,
   projectSkeleton,
-  type SkeletonOptions,
 } from "./project/skeleton.js";
 export type { ProjectSource, TextFile } from "./project/source.js";
 export { findPrompt, type PromptDef, prompts, slashCommands } from "./prompts.js";

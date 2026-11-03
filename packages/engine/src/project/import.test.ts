@@ -9,12 +9,11 @@ import { Workspace } from "./workspace.js";
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
 
 // Import runs kicad-cli to resolve KiCad's connectivity; these tests are skipped without it.
-const kicad = await findKicad(process.cwd(), {});
+const kicad = await findKicad();
 
 let tmp: string;
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), "partstyle-import-"));
-  await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
   await cp(repo("examples/bench-sensor"), path.join(tmp, "examples/bench-sensor"), {
     recursive: true,
   });
@@ -59,9 +58,7 @@ describe("kicadImport", () => {
       const sheet = at("packages/engine/test-fixtures/multi/kicad/filter.kicad_sch");
 
       const ws = new Workspace(at("fresh"));
-      const first = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"), {
-        libraryPaths: [at("library")],
-      });
+      const first = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"));
       expect(first.ok).toBe(true);
       expect(first.text.split("\n")[0]).toMatch(/^created project multi in /);
       expect(first.text).toContain("KiCad multi: 3 sheets -> blocks main, filter x2; 6 parts");

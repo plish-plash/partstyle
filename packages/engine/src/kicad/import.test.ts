@@ -221,7 +221,7 @@ const input = (over: Partial<ImportInput> = {}): ImportInput => ({
 /** The imported files as a project, validated. */
 function load(x: ReturnType<typeof buildImport>) {
   return validateProject({
-    config: { file: "project.toml", text: 'name = "test"\n' },
+    project: { file: "partstyle-project.yaml", text: "name: test\n" },
     circuits: x.circuits,
     parts: [
       ...[...library.values()].map((e) => ({

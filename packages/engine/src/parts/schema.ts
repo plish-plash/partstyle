@@ -109,7 +109,7 @@ export const PartRecordSchema = z
     temp_c: z
       .tuple([z.number(), z.number()])
       .optional()
-      .describe("Operating temperature range in °C, checked against context.md"),
+      .describe("Operating temperature range in °C, checked against the project's environment"),
     requirements: z
       .array(RequirementSchema)
       .optional()

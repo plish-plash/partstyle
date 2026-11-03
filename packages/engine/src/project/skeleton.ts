@@ -1,13 +1,6 @@
 import { slashCommands } from "../prompts.js";
+import { PROJECT_FILE } from "./config.js";
 import type { TextFile } from "./source.js";
-
-export interface SkeletonOptions {
-  name: string;
-  /** Global part-library folders, relative to the project root, with forward slashes. */
-  libraryPaths: string[];
-}
-
-const tomlString = (s: string) => JSON.stringify(s);
 
 /**
  * A project's CLAUDE.md. It teaches the conventions an AI would otherwise copy from an example
@@ -25,9 +18,11 @@ Commands below are the \`partstyle\` CLI; the Partstyle MCP server has a tool fo
 
 ## Before the first edit
 
-1. Run \`partstyle grammar\` and follow it exactly.
-2. Fill in \`context.md\` with the user: use case, environment, power source, assembly and every
-   external interface with its hazards. Checks and design review use it.
+1. Run \`partstyle grammar\` and follow it exactly; it includes the naming conventions and an
+   example block.
+2. Fill in \`${PROJECT_FILE}\` with the user: use case, environment, power source, assembly,
+   external interfaces and the hazards the user names for them. Checks and design review use it.
+   It also holds the project's name and settings (distributors, capacitor derating).
 3. Plan one block per functional area (power, mcu, sensor input, ...), each in its own
    \`circuit/<block>.ckt\`, instantiated and joined in \`circuit/main.ckt\` with \`use\`.
 
@@ -59,8 +54,9 @@ commit of the project) is their approval.
   including the person's reverts and edits. Don't redo a change they reverted; ask instead.
 - \`partstyle diff\` lists everything since the last checkpoint. Make a checkpoint
   (\`partstyle checkpoint "message"\`) only when the person asks for one.
-- If \`overview\` says \`review mode: accept\`, edit only through \`partstyle apply\`: each patch
-  waits as a pending change (P1, P2, ...) until the person accepts it in the viewer.
+- If \`overview\` says \`review mode: accept\` (the person's switch in the viewer), edit only
+  through \`partstyle apply\`: each patch waits as a pending change (P1, P2, ...) until the person
+  accepts it in the viewer.
 - To try an alternative (say an LDO against a buck stage), \`partstyle variant create NAME\`
   makes a parallel copy under \`.partstyle/variants/NAME\`; edit it with \`partstyle -p\` that
   folder and compare with \`variant diff NAME\`. The person adopts or removes it.
@@ -68,19 +64,21 @@ commit of the project) is their approval.
 ## Editing
 
 Edit \`circuit/*.ckt\` directly, or send a batched patch with \`partstyle apply\` (stdin), which
-reports only the issues your edit added or resolved. Run \`partstyle validate\` after direct edits
-and fix or explain every issue.
+reports only the issues your edit added or resolved. Run \`partstyle validate\` after direct edits.
+
+Do what the person asked. Fix errors your own edit caused; anything else that changes the design
+(protection, extra parts, waivers, fixes for warnings) is the person's call: raise it with a
+suggested fix.
 
 - Use generics for passives: \`res(10k, 1%, 0603)\`, \`cap(100n, 16V, X7R, 0603)\`, \`led(red, 0603)\`.
   Use \`lib:ID\` for everything else. Find records with \`partstyle part search\`; add missing ones
-  with \`partstyle part put\` (\`partstyle schema part\` prints the schema), taking pinouts from the
-  datasheet. Leave \`verified_by: null\`: only a human verifies a record.
+  with \`partstyle part put\` (\`partstyle schema part\` prints the schema), only for parts you know
+  exist (from memory or a datasheet), never an MPN extrapolated from a series. Leave
+  \`verified_by: null\`: only a human verifies a record.
 - A design imported from KiCad (\`partstyle kicad import\`) has draft records for symbols the
   library lacked, each a \`part.draft\` warning: identify the part with the person, then complete
   the record from its datasheet (or switch the parts to an existing record or a generic).
-- Put an \`@ intent\` on every part and on nets whose purpose is not obvious.
 - Record design rationale in \`notes/decisions.md\` and layout constraints in \`notes/pcb.md\`.
-- Waive an issue only with a real reason in the waiver.
 
 ## Procedures
 
@@ -89,6 +87,8 @@ For these, follow the procedure exactly: \`/design-review [block]\`, \`/ingest-p
 Use ingest-part whenever you add a part record.
 
 ## Hand-off to KiCad
+
+Export only when the person asks.
 
 - \`partstyle bom export\` resolves generics to library parts and writes \`bom.csv\`. A generic
   stays unresolved until a library record's \`generic:\` field satisfies it, e.g.
@@ -100,47 +100,8 @@ Use ingest-part whenever you add a part record.
   happens in KiCad, and re-export never touches the PCB.
 - Keep \`annotation.lock\` and \`bom.lock\` under version control: they hold refdes and part
   choices stable across exports.
-
-${conventions}`;
-}
-
-/** Naming, ports, ratings and a worked block: the same for CLI and MCP clients. */
-const conventions = `## Conventions
-
-- Refdes prefixes: R, C, L, D (diodes and LEDs), Q, U (ICs), J (connectors), Y (crystals),
-  F (fuses), SW, TP. Unique within a block.
-- Net names: rails as \`+3V3\`, \`+5V\`, \`+12V\`, \`GND\`; signals in UPPER_SNAKE_CASE.
-- Each block declares a port for everything crossing its boundary: \`ground\` for GND,
-  \`power_out\` for rails it supplies, \`power_in\` for rails it consumes, and
-  \`input\`/\`output\`/\`bidir\`/\`passive\` for signals.
-- Add \`{voltage: ...}\` to rails and to signals with a known range (\`5V\`, \`12V ±10%\`,
-  \`0-3.3V\`); a rail named like \`+3V3\` is assumed to be that voltage. Checks compare it with
-  pin limits (\`vmax\`) and capacitor ratings. A rail fed from a connector or through a passive
-  part (fuse, diode) has no \`power_out\` pin, so add \`{source: ...}\`.
-- Give passives a voltage or power rating where it matters: \`cap(10u, 25V, X5R, 0805)\`.
-
-## Example block
-
-\`\`\`
-block power "12 V barrel input, 5 V linear rail"
-
-port +5V : power_out
-port GND : ground
-
-part J1 lib:barrel_jack_2.1mm       @ 12 V wall adapter input
-part D1 lib:1N5819                  @ reverse-polarity protection
-part U1 lib:L7805CV
-part C1 cap(330n, 50V, X7R, 0603)   @ per U1 datasheet input cap
-part C2 cap(100n, 16V, X7R, 0603)   @ per U1 datasheet output cap
-
-net VIN_RAW : J1.TIP D1.A           {voltage: 12V ±10%}
-net +12V    : D1.K U1.IN C1.1       {voltage: 11.5V, source: J1 through D1}
-net +5V     : U1.OUT C2.1           -> port +5V {voltage: 5V}
-net GND     : J1.SLEEVE J1.SWITCH U1.GND C1.2 C2.2 -> port GND
-\`\`\`
-
-and in \`main.ckt\`: \`use power as PWR\`, then \`net +5V : PWR.+5V MCU.+5V\`.
 `;
+}
 
 /**
  * The MCP server's instructions: the project CLAUDE.md's workflow in tool terms, for clients
@@ -158,63 +119,45 @@ person, who watches the drawing update and points at things there.
   return `Partstyle is a schematic editor for AI. A design is connectivity (parts, pins, nets and
 intent) in .ckt text; the drawing is generated, so never think in coordinates or wires.
 Bracketed layout hints on part lines ([2 r90 flip]) are the person's arrangement: keep them.
+A project's CLAUDE.md is these instructions in CLI terms for Claude Code: don't read it.
 
 ${start}## Workflow
 
-1. Call grammar before writing .ckt text or patches, and follow it exactly.
-2. New project: fill in context.md with the person (read_doc, write_doc): use case,
-   environment, power source, assembly and every external interface with its hazards. Then
-   plan one block per functional area; apply creates each ('+ block NAME' first) and main
-   joins them with 'use'.
+1. Call grammar before writing .ckt text or patches, and follow it exactly; it includes the
+   naming conventions and an example block.
+2. New project: fill in ${PROJECT_FILE} with the person (read_doc, write_doc): use case,
+   environment, power source, assembly, external interfaces and the hazards the person names
+   for them. It also holds the name and settings (distributors, cap derating). Then plan one
+   block per functional area, joined in main with 'use'.
 3. Read cheap first: overview, read_block (detail=summary, then full), query, part_get.
-4. Edit with apply: batched and atomic, it reports only the issues the edit added or
-   resolved. Fix or explain every issue; waive one only with a real reason.
+4. Do what the person asked. Fix errors your own edit caused; anything else that changes the
+   design (protection, extra parts, waivers, fixes for warnings) is the person's call: raise
+   it with a suggested fix.
 5. "this", "here", "the selected part": call focus. Answer open comments; the person resolves
    them in the viewer.
 6. Start each turn with diff since=last: it shows the person's reverts and edits. Don't redo a
-   change they reverted; ask. checkpoint only when asked. If overview says review mode:
-   accept, each patch waits for the person to accept it.
+   change they reverted; ask.
 7. Generics for passives: res(10k, 1%, 0603), cap(100n, 16V, X7R, 0603), led(red, 0603);
-   lib:ID for everything else. part_search first; add a missing record with part_put,
-   following the ingest_part prompt (pinouts from the datasheet, verified_by null).
-8. Put an @ intent on every part and on nets whose purpose is not obvious. Record rationale in
-   notes/decisions.md and layout constraints in notes/pcb.md.
-9. Hand-off: bom_export, then kicad_export. Never edit the kicad/ output: change the design
-   and export again.
-
-${conventions}`;
+   lib:ID for everything else, part_search first. Add records only for parts you know exist
+   (from memory or a datasheet), never an MPN extrapolated from a series.
+8. Record rationale in notes/decisions.md and layout constraints in notes/pcb.md.
+9. checkpoint, bom_export and kicad_export only when the person asks. Never edit the kicad/
+   output: change the design and export again.
+`;
 }
 
-/** Files for a new, empty project that validates clean. */
-export function projectSkeleton({ name, libraryPaths }: SkeletonOptions): TextFile[] {
+/** Files for a new, empty project that validates clean, made by Partstyle `version`. */
+export function projectSkeleton(name: string, version: string): TextFile[] {
   return [
     {
-      file: "project.toml",
-      text: `name = ${tomlString(name)}
-top = "main"
+      file: PROJECT_FILE,
+      text: `# A Partstyle project: its name, design context and settings. Checks and design review
+# read the context; the description is plain paragraphs for people.
+partstyle_version: ${JSON.stringify(version)}
+name: ${JSON.stringify(name)}
+description: |
+  TODO: what the board does, who uses it and where, and anything a reviewer should know.
 
-[library]
-# Global part-library folders shared across projects, relative to this file.
-paths = [${libraryPaths.map(tomlString).join(", ")}]
-
-[sourcing]
-# Preferred distributors for BOM resolution: "lcsc", "digikey", "mouser".
-distributors = []
-
-[review]
-# auto: the AI's edits land at once, as changesets you can revert in the viewer.
-# accept: each patch the AI applies waits for you to accept it.
-mode = "auto"
-
-[checks]
-# A capacitor's rated voltage should be at least this many times the voltage across it.
-cap_derating = 1.5
-`,
-    },
-    {
-      file: "context.md",
-      text: `---
-# YAML for the checks; prose for people goes below the closing ---.
 use_case: TODO one line, e.g. benchtop sensor interface
 environment:
   temp_c: [0, 50]
@@ -233,9 +176,13 @@ external_interfaces: []
 #    hazards:
 #      - reverse polarity
 #      - ESD
----
 
-TODO: what the board does, who uses it and where, and anything a reviewer should know.
+sourcing:
+  # Preferred distributors for BOM resolution: lcsc, digikey, mouser.
+  distributors: []
+checks:
+  # A capacitor's rated voltage should be at least this many times the voltage across it.
+  cap_derating: 1.5
 `,
     },
     {

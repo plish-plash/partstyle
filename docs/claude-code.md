@@ -54,7 +54,7 @@ Restart Claude Desktop afterwards.
 Then, in a chat:
 
 - "Start a Partstyle project for a 12 V bench supply": Claude calls `init_project`, fills in
-  `context.md` with you (`write_doc`), then designs block by block with `apply`.
+  `partstyle-project.yaml` with you (`write_doc`), then designs block by block with `apply`.
 - "Open bench-sensor" or "what Partstyle projects do I have?": `open_project`, `list_projects`.
 - Open the viewer URL Claude gives you. Select parts or nets there and say "this"; Claude calls
   `focus`. Revert changes, accept pending patches and checkpoint in the viewer's Changes tab.
@@ -70,9 +70,12 @@ Then, in a chat:
 
 **Global (recommended):** configure it once and work on any number of projects. New projects
 go in a projects folder, `~/Documents/partstyle` unless `--projects-dir` says otherwise, and
-share a part library in its `library/` subfolder (put a downloaded seed library there).
-Projects elsewhere open by path and are remembered in `~/.partstyle/recent.json`
-(`PARTSTYLE_STATE_DIR` moves it).
+share a part library in its `library/` subfolder (put a downloaded seed library there). Every
+project the server opens uses that library first, then your own libraries from
+`~/.partstyle/settings.yaml` (see [Settings](cli.md#settings)); new records go to it. The server
+remembers it in `~/.partstyle/shared-library.json` so the CLI does the same, and projects
+elsewhere open by path and are remembered in `~/.partstyle/recent.json` (`PARTSTYLE_STATE_DIR`
+moves all three).
 
 **One project:** `partstyle mcp --project <path>` serves just that folder, which need not
 exist yet: `init_project` creates the project there.
@@ -108,7 +111,7 @@ identical.
 | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `list_projects` (global mode)                                                     | `partstyle projects [--dir DIR]`                                                 |
 | `open_project(project)` (global mode)                                             | `partstyle -p DIR ...`                                                           |
-| `init_project(name, path, library_paths)`                                         | `partstyle init [DIR] --name --library`                                          |
+| `init_project(name, path)`                                                        | `partstyle init [DIR] --name NAME`                                               |
 | `overview`                                                                        | `partstyle overview`                                                             |
 | `read_block(block, detail)`                                                       | `partstyle read-block BLOCK --detail ...`                                        |
 | `query(expr)`                                                                     | `partstyle query EXPR`                                                           |
@@ -131,18 +134,20 @@ identical.
 | prompts `design_review(block)`, `ingest_part(part, datasheet)`, `prepare_handoff` | `partstyle prompt NAME [ARGS...]`, and `/design-review` etc. in Claude Code      |
 
 Until a project is open in global mode, the project tools answer with how to open one, except
-`part_search`, `part_get` and `part_put`, which work on the shared library (`library/` in the
-projects folder), so Claude can check and add parts before creating a project. (`part_put` with
-`scope: project` still needs an open project.)
+`part_search`, `part_get` and `part_put`, which work on the libraries in the settings (the first
+is where records go), so Claude can check and add parts before creating a project. (`part_put`
+with `scope: project` still needs an open project.)
 
 `init_project`: in global mode it creates `<projects dir>/NAME` (or the folder `path`, absolute
-or relative to the projects folder) using the shared library, then opens it. The library folder
-itself, and anything inside it, is refused (also for `kicad_import`'s `new_project`). With
-`--project` it creates the project in that folder; `library_paths` are relative to it.
+or relative to the projects folder), then opens it. The library folder itself, and anything
+inside it, is refused (also for `kicad_import`'s `new_project`). With `--project` it creates the
+project in that folder.
 
 `kicad_import`: `path` is relative to the open project, or with `new_project` (global mode) to
 the projects folder, importing into a new project of that name, which then opens.
 
-`read_doc` and `write_doc` cover `context.md` and Markdown files under `notes/`; writing
-`context.md` reports its issues. Grammar and documents are tools as well as files because
-clients like Claude Desktop cannot read files or resources by themselves.
+`read_doc` and `write_doc` cover `partstyle-project.yaml` and Markdown files under `notes/`;
+writing the project file reports its issues, and a project file that would not load is refused.
+Grammar and documents are tools as well as files because clients like Claude Desktop cannot read
+files or resources by themselves. Settings (`~/.partstyle/settings.yaml`) and the review mode
+(the viewer's switch) are the person's, so no tool writes them.

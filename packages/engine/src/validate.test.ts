@@ -30,9 +30,9 @@ const parts = [
   }),
 ];
 
-function project(circuits: Record<string, string>, top = "main"): ProjectSource {
+function project(circuits: Record<string, string>): ProjectSource {
   return {
-    config: { file: "project.toml", text: `name = "t"\ntop = "${top}"` },
+    project: { file: "partstyle-project.yaml", text: "name: t" },
     circuits: Object.entries(circuits).map(([name, text]) => ({
       file: `circuit/${name}.ckt`,
       text: `block ${name}\n${text}`,
@@ -103,8 +103,8 @@ describe("validateProject", () => {
       );
     });
 
-    it("reports an unknown top block", () => {
-      const r = validateProject(project({ main: good }, "other"));
+    it("reports a missing top block", () => {
+      const r = validateProject(project({ other: good }));
       expect(r.issues.map((i) => i.code)).toEqual(["elab.unknown-top", "elab.unused-block"]);
     });
   });
@@ -278,12 +278,23 @@ waive U1.OUT "regulator output unused in this test"
     });
   });
 
-  it("reports a broken project.toml and stops", () => {
+  it("reports a broken project file and stops", () => {
+    for (const text of ["name: [", "description: no name"]) {
+      const r = validateProject({
+        ...project({ main: good }),
+        project: { file: "partstyle-project.yaml", text },
+      });
+      expect(r.issues.map((i) => i.code)).toEqual(["project.config"]);
+      expect(r.netlist).toBeUndefined();
+    }
+  });
+
+  it("reports malformed design context as a warning and skips its checks", () => {
     const r = validateProject({
       ...project({ main: good }),
-      config: { file: "project.toml", text: "name = " },
+      project: { file: "partstyle-project.yaml", text: "name: t\nexternal_interfaces: nope\n" },
     });
-    expect(r.issues.map((i) => i.code)).toEqual(["project.config"]);
-    expect(r.netlist).toBeUndefined();
+    expect(r.issues.map((i) => i.code)).toEqual(["context.invalid"]);
+    expect(r.netlist).toBeDefined();
   });
 });

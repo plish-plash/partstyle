@@ -81,7 +81,7 @@ describe("diffCircuits", () => {
 
 describe("planRevert", () => {
   const source = (text: string): ProjectSource => ({
-    config: { file: "project.toml", text: 'name = "t"' },
+    project: { file: "partstyle-project.yaml", text: "name: t" },
     circuits: [file(text)],
     parts: [],
   });

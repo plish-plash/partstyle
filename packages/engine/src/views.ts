@@ -1,6 +1,6 @@
-import { contextFrontMatter } from "./checks/context.js";
 import { printSpec } from "./ckt/print.js";
 import { formatIssue } from "./diagnostics.js";
+import { PROJECT_FILE, projectData } from "./project/config.js";
 import type { ProjectSource } from "./project/source.js";
 import type { TextResult } from "./query.js";
 import { parseComments } from "./review.js";
@@ -29,13 +29,14 @@ export function formatValidation(result: ValidationResult, fallbackName: string)
   return [...result.issues.map(formatIssue), `${name}: ${issueSummary(result)}`].join("\n");
 }
 
+/** The design context and settings, without the name and the description (prose for people). */
 function contextLines(source: ProjectSource): string[] {
-  if (!source.context) return ["context: none (add context.md)"];
-  const fm = contextFrontMatter(source.context.text);
-  if (!fm) return ["context: context.md has no YAML front matter"];
+  const fm = projectData(source.project.text);
+  if (!fm) return [];
   const lines = [`context: ${String(fm.use_case ?? "(no use_case)")}`];
   for (const [key, value] of Object.entries(fm)) {
-    if (key === "use_case" || key === "external_interfaces") continue;
+    const skip = ["partstyle_version", "name", "description", "use_case", "external_interfaces"];
+    if (skip.includes(key)) continue;
     lines.push(`  ${key}: ${JSON.stringify(value)}`);
   }
   const interfaces = Array.isArray(fm.external_interfaces) ? fm.external_interfaces : [];
@@ -53,8 +54,8 @@ export function overview(
   /** Checkpoint, changes, pending and variant lines from the project's history. */
   versions: string[] = [],
 ): string {
-  const name = result.config?.name ?? "(invalid project.toml)";
-  const lines = [`project ${name} (top: ${result.config?.top ?? "?"})`, ...contextLines(source)];
+  const name = result.config?.name ?? `(invalid ${PROJECT_FILE})`;
+  const lines = [`project ${name}`, ...contextLines(source)];
 
   lines.push("blocks:");
   for (const b of result.blocks) {

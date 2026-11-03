@@ -38,7 +38,9 @@ const ignored = /(^|[\\/])(\.git|node_modules|kicad|\.partstyle)([\\/]|$)|bom\.c
  */
 export function relevantChange(file: string): boolean {
   const f = file.replace(/\\/g, "/");
-  if (f === ".partstyle/pending.json" || f === ".partstyle/history.json") return true;
+  if (["pending.json", "history.json", "review.json"].some((s) => f === `.partstyle/${s}`)) {
+    return true;
+  }
   const variant = /^\.partstyle\/variants\/[^/]+\/(.+)$/.exec(f);
   return !ignored.test(variant ? (variant[1] as string) : f);
 }
@@ -221,6 +223,11 @@ export async function startViewer(
       }
       if (url.pathname === "/api/checkpoint") {
         send(200, await w.checkpoint(str(body.message, "message", 500)));
+        return;
+      }
+      if (url.pathname === "/api/review-mode") {
+        if (body.mode !== "auto" && body.mode !== "accept") throw new HttpError(400, "bad mode");
+        send(200, await w.setReviewMode(body.mode));
         return;
       }
       if (url.pathname === "/api/pending") {

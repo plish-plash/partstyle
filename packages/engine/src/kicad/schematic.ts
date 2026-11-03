@@ -3,6 +3,7 @@ import { paperFor, papers } from "../drawing/layout.js";
 import { shapeOf } from "../drawing/plan.js";
 import type { Drawing } from "../drawing/prepare.js";
 import type { PlacedPower, PlacedText, PlacedUnit } from "../drawing/types.js";
+import { TOP_BLOCK } from "../project/config.js";
 import type { Annotation } from "./annotate.js";
 import { symbolKey } from "./libsym.js";
 import { placePower } from "./power.js";
@@ -52,7 +53,7 @@ const kicadTextWidth = (s: string) => s.length * 1.1;
 export function writeSchematics(drawing: Drawing): SchematicOutput {
   const { annotation, plan, config } = drawing;
   const project = config.name;
-  const top = config.top;
+  const top = TOP_BLOCK;
 
   const rootUuid = stableUuid(project, "root");
   const fileOf = (block: string) =>

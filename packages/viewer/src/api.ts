@@ -32,6 +32,9 @@ export const revert = (id: string, variant?: string) => post<Result>("api/revert
 export const checkpoint = (message: string, variant?: string) =>
   post<Result>("api/checkpoint", { message, variant });
 
+export const setReviewMode = (mode: "auto" | "accept", variant?: string) =>
+  post<Result>("api/review-mode", { mode, variant });
+
 export const decidePending = (op: "accept" | "reject", id: string, variant?: string) =>
   post<Result>("api/pending", { op, id, variant });
 

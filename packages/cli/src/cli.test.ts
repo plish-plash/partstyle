@@ -46,7 +46,7 @@ describe("partstyle validate", () => {
   it("exits 2 when the directory is not a project", async () => {
     const r = await cli(["validate", repo("library")]);
     expect(r.exitCode).toBe(2);
-    expect(r.stderr).toMatch(/no project\.toml/);
+    expect(r.stderr).toMatch(/no partstyle-project\.yaml/);
   });
 });
 
@@ -55,7 +55,7 @@ describe("partstyle read commands", () => {
 
   it("overview", async () => {
     const r = await inExample(["overview"]);
-    expect(r.stdout).toMatch(/^project bench-sensor \(top: main\)\n/);
+    expect(r.stdout).toMatch(/^project bench-sensor\ncontext: Benchtop sensor interface\n/);
   });
 
   it("read-block", async () => {
@@ -105,17 +105,17 @@ describe("partstyle read commands", () => {
 });
 
 describe("partstyle init", () => {
-  it("creates a project that validates, resolving --library against the cwd", async () => {
+  it("creates a project that validates and uses the libraries in the settings", async () => {
     const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-cli-"));
     try {
       const dir = path.join(tmp, "board");
-      const r = await cli(["init", dir, "--name", "My Board", "--library", repo("library")]);
+      const r = await cli(["init", dir, "--name", "My Board"]);
       expect(r.exitCode).toBe(0);
       expect(r.stdout).toMatch(/^created project My Board in /);
-      const toml = await readFile(path.join(dir, "project.toml"), "utf8");
-      expect(toml).toContain('name = "My Board"');
-      // The repo's library is far from a temp dir, so it is stored absolute.
-      expect(toml).toContain(`paths = ["${repo("library").split(path.sep).join("/")}"]`);
+      expect(await readFile(path.join(dir, "partstyle-project.yaml"), "utf8")).toContain(
+        'name: "My Board"',
+      );
+      expect((await cli(["-p", dir, "part", "search", "7805"])).stdout).toMatch(/^L7805CV: /);
       expect(await cli(["validate", dir])).toEqual({
         stdout: "My Board: 0 errors, 0 warnings",
         exitCode: 0,
@@ -131,7 +131,8 @@ describe("partstyle init", () => {
         exitCode: 0,
       });
       expect((await cli(["-p", dir, "doc", "read", "notes/power.md"])).stdout).toBe("# Power\n");
-      expect((await cli(["-p", dir, "doc", "read", "project.toml"])).exitCode).toBe(1);
+      expect((await cli(["-p", dir, "doc", "read", "partstyle-project.yaml"])).exitCode).toBe(0);
+      expect((await cli(["-p", dir, "doc", "read", "CLAUDE.md"])).exitCode).toBe(1);
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }

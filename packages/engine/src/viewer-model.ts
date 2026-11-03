@@ -5,7 +5,8 @@ import { type SymbolGraphics, symbolGraphics } from "./drawing/graphics.js";
 import type { Drawing } from "./drawing/prepare.js";
 import type { SheetLayout } from "./drawing/types.js";
 import { type PinType, requirementText } from "./parts/schema.js";
-import type { Comment, Focus } from "./review.js";
+import { TOP_BLOCK } from "./project/config.js";
+import type { Comment, Focus, ReviewMode } from "./review.js";
 import type { ValidationResult } from "./validate.js";
 import type { ChangeOp } from "./versions/diff.js";
 import { countIssues } from "./views.js";
@@ -64,7 +65,7 @@ export interface ChangeItem {
 export interface VersionState {
   /** Whether the project is in a git repository, so checkpoints and variants work. */
   git: boolean;
-  mode: "auto" | "accept";
+  mode: ReviewMode;
   checkpoint?: { id: string; message: string; date: string };
   changesets: { id: string; source: string; note?: string; time: string; items: ChangeItem[] }[];
   pending: { id: string; created: string; log: string[] }[];
@@ -187,7 +188,7 @@ export function buildViewerModel(
   const { errors, warnings } = countIssues(result);
   return {
     project: drawing.config.name,
-    top: drawing.config.top,
+    top: TOP_BLOCK,
     summary: { errors, warnings, waived: result.waived },
     issues: [...result.issues, ...drawing.issues],
     sheets,

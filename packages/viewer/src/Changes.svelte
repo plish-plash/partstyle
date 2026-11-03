@@ -91,6 +91,16 @@ function remove(name: string) {
     </form>
   {/if}
 
+  <label class="row mode" title="When on, each patch the AI applies waits here until you accept it">
+    <input
+      type="checkbox"
+      checked={versions.mode === "accept"}
+      disabled={busy}
+      onchange={(e) => run(() => api.setReviewMode(e.currentTarget.checked ? "accept" : "auto", variant))}
+    />
+    Approve each AI edit before it lands
+  </label>
+
   {#if versions.pending.length > 0}
     <h3>Waiting for your approval</h3>
     {#each versions.pending as p (p.id)}

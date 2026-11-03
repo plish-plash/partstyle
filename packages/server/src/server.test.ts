@@ -18,7 +18,9 @@ beforeEach(async () => {
   project = path.join(tmp, "examples/bench-sensor");
   await cp(repo("examples/bench-sensor"), project, { recursive: true });
   await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
-  viewer = await startViewer(new Workspace(project), { port: 0 });
+  // The viewer can verify records, so the settings list this copy of the library.
+  await writeFile(path.join(tmp, "settings.yaml"), "libraries: [library]\n");
+  viewer = await startViewer(new Workspace(project, { stateDir: tmp }), { port: 0 });
 });
 afterEach(async () => {
   await viewer.close();
@@ -122,6 +124,22 @@ describe("viewer server", () => {
     );
   });
 
+  it("sets the review mode for the project", async () => {
+    const mode = async () =>
+      (
+        (await (await fetch(new URL("api/model", viewer.url))).json()) as {
+          versions: { mode: string };
+        }
+      ).versions.mode;
+    expect(await mode()).toBe("auto");
+    expect((await post("api/review-mode", { mode: "accept" })).status).toBe(200);
+    expect(await mode()).toBe("accept");
+    expect(await readFile(path.join(project, ".partstyle/review.json"), "utf8")).toContain(
+      "accept",
+    );
+    expect((await post("api/review-mode", { mode: "sometimes" })).status).toBe(400);
+  });
+
   it("switches to another project, telling open pages", async () => {
     const other = new Workspace(path.join(tmp, "other"));
     await other.init({ name: "other" });
@@ -148,6 +166,7 @@ describe("viewer server", () => {
     expect(relevantChange(".partstyle/focus.json")).toBe(false);
     expect(relevantChange(".partstyle/pending.json")).toBe(true);
     expect(relevantChange(".partstyle/history.json")).toBe(true);
+    expect(relevantChange(".partstyle/review.json")).toBe(true);
     expect(relevantChange(".partstyle\\variants\\buck\\examples\\b\\circuit\\power.ckt")).toBe(
       true,
     );

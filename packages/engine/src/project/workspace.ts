@@ -26,13 +26,15 @@ import {
   nextCommentId,
   parseComments,
   parseFocus,
+  REVIEW_MODE_FILE,
+  type ReviewMode,
 } from "../review.js";
 import { type ValidationResult, validateProject } from "../validate.js";
 import { describeChange, diffCircuits, formatChanges, opOf } from "../versions/diff.js";
 import { planRevert, type RevertPlan } from "../versions/revert.js";
 import { buildViewerModel, type VersionState, type ViewerModel } from "../viewer-model.js";
 import { countIssues, formatValidation, issueSummary, overview, readBlock } from "../views.js";
-import { type ProjectConfig, parseProjectConfig } from "./config.js";
+import { PROJECT_FILE, parseProjectConfig, TOP_BLOCK } from "./config.js";
 import {
   changedFiles,
   commitProject,
@@ -56,6 +58,7 @@ import { type KicadDesign, readKicadDesign } from "./kicad-import.js";
 import { loadProject, ProjectLoadError } from "./load.js";
 import { writePartRecord } from "./part-put.js";
 import { addPending, readPending, removePending } from "./pending.js";
+import { defaultStateDir, readSettings, type Settings } from "./settings.js";
 import { projectSkeleton } from "./skeleton.js";
 import type { ProjectSource } from "./source.js";
 import {
@@ -66,6 +69,7 @@ import {
   removeVariant,
   type Variant,
 } from "./variants.js";
+import { partstyleVersion } from "./version.js";
 
 const fail = (text: string): TextResult => ({ ok: false, text });
 
@@ -77,9 +81,9 @@ const toPosix = (p: string) => p.split(path.sep).join("/");
 
 const CLAUDE_SIDECAR = "CLAUDE.partstyle.md";
 
-/** context.md and Markdown files under notes/ (no hidden or parent segments). */
+/** The project file and Markdown files under notes/ (no hidden or parent segments). */
 const isDoc = (f: string) =>
-  f === "context.md" || /^notes\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/.test(f);
+  f === PROJECT_FILE || /^notes\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/.test(f);
 
 async function exists(file: string): Promise<boolean> {
   try {
@@ -111,31 +115,53 @@ export async function readGrammarReference(): Promise<string> {
  */
 export class Workspace {
   readonly root: string;
+  /** Per-user settings and state: ~/.partstyle unless given (tests pass a temporary one). */
+  readonly stateDir: string;
+  /** The global-mode server's shared library, used before the user's; else the remembered one. */
+  readonly sharedLibrary: string | undefined;
   /** The changeset log since the last checkpoint. */
   readonly history: History;
 
-  constructor(dir: string) {
+  constructor(dir: string, opts: { stateDir?: string; sharedLibrary?: string } = {}) {
     this.root = path.resolve(dir);
+    this.stateDir = path.resolve(opts.stateDir ?? defaultStateDir());
+    this.sharedLibrary = opts.sharedLibrary;
     this.history = new History(this.root);
   }
 
-  private kicadInstall?: Promise<KicadInstall>;
+  private kicadInstall?: { key: string; found: Promise<KicadInstall> };
   /** Indexed lazily on the first export; kept so later exports skip the scan. */
   private symbolLibs?: KicadSymbolLibraries;
 
-  /** KiCad discovery, once per workspace. */
-  private kicad(config?: ProjectConfig): Promise<KicadInstall> {
-    this.kicadInstall ??= findKicad(this.root, config?.kicad ?? {});
-    return this.kicadInstall;
+  /** The user's settings, read fresh so an edit applies to the next call. */
+  settings(): Promise<Settings> {
+    return readSettings(this.stateDir, this.sharedLibrary);
+  }
+
+  /** KiCad discovery, repeated only when the settings' overrides change. */
+  private async kicad(): Promise<KicadInstall> {
+    const { kicad } = await this.settings();
+    const key = JSON.stringify(kicad);
+    if (this.kicadInstall?.key !== key) this.kicadInstall = { key, found: findKicad(kicad) };
+    return this.kicadInstall.found;
+  }
+
+  /** How to point Partstyle at kicad-cli, for messages when it is not found. */
+  private async kicadHint(): Promise<string> {
+    return `set kicad: {cli: PATH} in ${(await this.settings()).file}, or KICAD_CLI`;
+  }
+
+  private async source(): Promise<ProjectSource> {
+    return loadProject(this.root, (await this.settings()).libraries);
   }
 
   /** Loads and validates, adding footprint checks for the library parts in use when KiCad is installed. */
   private async load(): Promise<{ source: ProjectSource; result: ValidationResult }> {
-    const source = await loadProject(this.root);
+    const source = await this.source();
     // Edits made since the last call (by anyone) become a changeset before anything else runs.
     await this.history.record();
     const result = validateProject(source);
-    const { footprints } = await this.kicad(result.config);
+    const { footprints } = await this.kicad();
     if (footprints && result.netlist) {
       const ids = new Set(result.netlist.parts.flatMap((p) => (p.record ? [p.record.id] : [])));
       const entries = [...ids].flatMap((id) => {
@@ -151,7 +177,7 @@ export class Workspace {
 
   /** KiCad's power library and symbol candidates for the parts in use, when KiCad is installed. */
   private async libraries(result: ValidationResult): Promise<KicadLibraries> {
-    const { symbols } = await this.kicad(result.config);
+    const { symbols } = await this.kicad();
     if (!symbols || !result.netlist) return {};
     if (this.symbolLibs?.dir !== symbols) this.symbolLibs = new KicadSymbolLibraries(symbols);
     const power = await this.symbolLibs.library("power");
@@ -174,27 +200,27 @@ export class Workspace {
     };
   }
 
-  /** The project's name from project.toml, else its folder's. */
+  /** The project's name from its project file, else its folder's. */
   async name(): Promise<string> {
-    const text = await this.readOptional("project.toml");
-    return parseProjectConfig(text, "project.toml").config?.name ?? path.basename(this.root);
+    const text = await this.readOptional(PROJECT_FILE);
+    return parseProjectConfig(text, PROJECT_FILE).config?.name ?? path.basename(this.root);
   }
 
-  /** The docs (context.md, notes/*.md) that exist, by path. */
+  /** The docs (the project file, notes/*.md) that exist, by path. */
   private async docs(): Promise<string[]> {
     const notes = await readdir(path.join(this.root, "notes"), { recursive: true }).catch(() => []);
     const found = notes.map((f) => `notes/${toPosix(String(f))}`).filter((f) => isDoc(f));
     return [
-      ...((await exists(path.join(this.root, "context.md"))) ? ["context.md"] : []),
+      ...((await exists(path.join(this.root, PROJECT_FILE))) ? [PROJECT_FILE] : []),
       ...found,
     ];
   }
 
-  /** context.md or a notes/ file, for clients without file tools. */
+  /** The project file or a notes/ file, for clients without file tools. */
   readDoc(file: string): Promise<TextResult> {
     return this.guard(async () => {
       const f = toPosix(file).replace(/^\.\//, "");
-      if (!isDoc(f)) return fail(`docs are context.md and notes/*.md (got ${file})`);
+      if (!isDoc(f)) return fail(`docs are ${PROJECT_FILE} and notes/*.md (got ${file})`);
       const text = await this.readOptional(f);
       if (text) return { ok: true, text };
       const docs = await this.docs();
@@ -202,23 +228,30 @@ export class Workspace {
     });
   }
 
-  /** Replaces context.md or a notes/ file; for context.md, reports the issues it now has. */
+  /**
+   * Replaces the project file or a notes/ file. A project file that would not load is refused;
+   * otherwise the issues it now has are reported.
+   */
   writeDoc(file: string, text: string): Promise<TextResult> {
     return this.guard(async () => {
       const f = toPosix(file).replace(/^\.\//, "");
-      if (!isDoc(f)) return fail(`docs are context.md and notes/*.md (got ${file})`);
-      if (!(await exists(path.join(this.root, "project.toml")))) {
-        return fail(`${this.root} is not a project (no project.toml)`);
+      if (!isDoc(f)) return fail(`docs are ${PROJECT_FILE} and notes/*.md (got ${file})`);
+      if (!(await exists(path.join(this.root, PROJECT_FILE)))) {
+        return fail(`${this.root} is not a project (no ${PROJECT_FILE})`);
+      }
+      if (f === PROJECT_FILE) {
+        const broken = parseProjectConfig(text, f).issues[0];
+        if (broken) return fail(`not written: ${formatIssue(broken)}`);
       }
       const full = path.join(this.root, f);
       await mkdir(path.dirname(full), { recursive: true });
       await writeFile(full, text.endsWith("\n") ? text : `${text}\n`, "utf8");
       const n = text.replace(/\n$/, "").split("\n").length;
       const lines = [`wrote ${f} (${n} line${n === 1 ? "" : "s"})`];
-      if (f === "context.md") {
+      if (f === PROJECT_FILE) {
         const { result } = await this.load();
-        const issues = result.issues.filter((i) => i.location?.file === "context.md");
-        lines.push(...(issues.length > 0 ? issues.map(formatIssue) : ["context.md: no issues"]));
+        const issues = result.issues.filter((i) => i.location?.file === PROJECT_FILE);
+        lines.push(...(issues.length > 0 ? issues.map(formatIssue) : [`${f}: no issues`]));
       }
       return { ok: true, text: lines.join("\n") };
     });
@@ -242,32 +275,19 @@ export class Workspace {
   }
 
   /**
-   * How to write a path into project.toml: relative when it is near the project (so a repo of
-   * projects plus a library can move together), absolute when it is far away, e.g. a shared
-   * library elsewhere on disk.
+   * Creates a project skeleton in the root folder (created if missing). Refuses if the project
+   * file exists; other existing files are kept, not overwritten.
    */
-  private storedPath(p: string): string {
-    const absolute = path.resolve(this.root, p);
-    const relative = path.relative(this.root, absolute);
-    const climbs = relative.split(path.sep).filter((s) => s === "..").length;
-    return toPosix(path.isAbsolute(relative) || climbs > 2 ? absolute : relative);
-  }
-
-  /**
-   * Creates a project skeleton in the root folder (created if missing). Refuses if project.toml
-   * exists; other existing files are kept, not overwritten. Library paths may be absolute or
-   * relative to the project root.
-   */
-  async init(opts: { name?: string; libraryPaths?: string[] } = {}): Promise<TextResult> {
-    if (await exists(path.join(this.root, "project.toml"))) {
-      return fail(`${this.root} already has a project.toml`);
+  async init(opts: { name?: string } = {}): Promise<TextResult> {
+    if (await exists(path.join(this.root, PROJECT_FILE))) {
+      return fail(`${this.root} already has a ${PROJECT_FILE}`);
     }
-    const libraryPaths = (opts.libraryPaths ?? []).map((p) => this.storedPath(p));
+    const settings = await this.settings();
     const name = opts.name ?? path.basename(this.root);
     const created: string[] = [];
     const kept: string[] = [];
     const notes: string[] = [];
-    for (const f of projectSkeleton({ name, libraryPaths })) {
+    for (const f of projectSkeleton(name, partstyleVersion())) {
       let target = f.file;
       if (await exists(path.join(this.root, target))) {
         kept.push(target);
@@ -289,13 +309,10 @@ export class Workspace {
     const lines = [`created project ${name} in ${this.root}`, ...created.map((f) => `  ${f}`)];
     for (const f of kept) lines.push(`kept existing ${f}`);
     lines.push(...notes);
-    for (const p of libraryPaths) {
-      if (!(await exists(path.resolve(this.root, p)))) {
-        lines.push(`note: library path ${p} does not exist yet`);
-      }
-    }
-    if (libraryPaths.length === 0) {
-      lines.push("note: no global part library; part_put will write to parts/");
+    if (settings.libraries.length === 0) {
+      lines.push(
+        `note: no part libraries listed in ${settings.file}; part_put will write to parts/`,
+      );
     }
     // Checkpoints are git commits; a project already inside a repository uses that one.
     if (!(await repoInfo(this.root))) {
@@ -307,7 +324,7 @@ export class Workspace {
       }
     }
     lines.push(
-      "next: fill in context.md with the user, then add blocks (partstyle grammar shows how)",
+      `next: fill in ${PROJECT_FILE} with the user, then add blocks (partstyle grammar shows how)`,
     );
     return { ok: true, text: lines.join("\n") };
   }
@@ -371,7 +388,7 @@ export class Workspace {
 
     const after = validateProject(patched.source);
     const { added, resolved } = issueDelta(before.issues, after.issues);
-    const held = opts.hold && !opts.dryRun && before.config?.review.mode === "accept";
+    const held = opts.hold && !opts.dryRun && (await this.reviewMode()) === "accept";
     let pendingId: string | undefined;
     if (held) {
       pendingId = await addPending(this.root, patch, patched.log);
@@ -416,25 +433,23 @@ export class Workspace {
   }
 
   /**
-   * Validates a part record and writes it as `<id>.yaml`, to the first global library path
-   * (default when configured) or to the project's parts/ folder.
+   * Validates a part record and writes it as `<id>.yaml`, to the first library in the user's
+   * settings (default when there is one) or to the project's parts/ folder.
    */
   partPut(yaml: string, scope?: "global" | "project"): Promise<TextResult> {
     return this.guard(async () => {
       const { result } = await this.load();
-      const globalPath = result.config?.library.paths[0];
+      const settings = await this.settings();
+      const globalPath = settings.libraries[0];
       const where = scope ?? (globalPath === undefined ? "project" : "global");
       if (where === "global" && globalPath === undefined) {
-        return fail("no [library] paths in project.toml; use scope project");
+        return fail(`no part libraries listed in ${settings.file}; use scope project`);
       }
       return writePartRecord(yaml, {
-        dir:
-          where === "global"
-            ? path.resolve(this.root, globalPath as string)
-            : path.join(this.root, "parts"),
+        dir: where === "global" ? (globalPath as string) : path.join(this.root, "parts"),
         layer: where,
         shown: (file) => toPosix(path.relative(this.root, file)),
-        footprints: (await this.kicad(result.config)).footprints,
+        footprints: (await this.kicad()).footprints,
         exists: (id) => result.library.get(id)?.layer === where,
       });
     });
@@ -452,7 +467,7 @@ export class Workspace {
       if (countIssues(result).errors > 0 || !result.netlist || !result.config) {
         return fail(`cannot export with ${issueSummary(result)}; fix the errors first (validate)`);
       }
-      const { cli, footprints, symbols } = await this.kicad(result.config);
+      const { cli, footprints, symbols } = await this.kicad();
       const x = await exportKicad(result, await this.locks(), await this.libraries(result));
 
       const dir = path.join(this.root, KICAD_DIR);
@@ -535,9 +550,7 @@ export class Workspace {
       if (opts.check === false) {
         lines.push("checks skipped (--no-check)");
       } else if (!cli) {
-        lines.push(
-          "KiCad not found: round-trip and ERC skipped (set [kicad] cli in project.toml or KICAD_CLI)",
-        );
+        lines.push(`KiCad not found: round-trip and ERC skipped (${await this.kicadHint()})`);
       } else {
         const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-"));
         const root = path.join(dir, x.rootSchematic);
@@ -602,19 +615,13 @@ export class Workspace {
    * circuit/ as one changeset, keeping intents, net attributes, port kinds, waivers and block
    * descriptions. Symbols that match no library record become draft records in parts/.
    */
-  kicadImport(
-    source: string,
-    opts: { replace?: boolean; libraryPaths?: string[] } = {},
-  ): Promise<TextResult> {
+  kicadImport(source: string, opts: { replace?: boolean } = {}): Promise<TextResult> {
     return this.guard(async () => {
-      const hasProject = await exists(path.join(this.root, "project.toml"));
-      const config = hasProject
-        ? parseProjectConfig(await this.readOptional("project.toml"), "project.toml").config
-        : undefined;
-      const { cli, symbols } = await this.kicad(config);
+      const hasProject = await exists(path.join(this.root, PROJECT_FILE));
+      const { cli, symbols } = await this.kicad();
       if (!cli) {
         return fail(
-          "import needs kicad-cli, which resolves KiCad's connectivity (set [kicad] cli in project.toml or KICAD_CLI)",
+          `import needs kicad-cli, which resolves KiCad's connectivity (${await this.kicadHint()})`,
         );
       }
       const lines: string[] = [];
@@ -634,17 +641,14 @@ export class Workspace {
         return fail(`cannot read the KiCad project: ${(e as Error).message}`);
       }
       if (!hasProject) {
-        const created = await this.init({
-          name: design.project,
-          ...(opts.libraryPaths && { libraryPaths: opts.libraryPaths }),
-        });
+        const created = await this.init({ name: design.project });
         if (!created.ok) return created;
         lines.push(created.text.split("\n")[0] as string);
       }
 
       const { result: before } = await this.load();
       const beforeFiles = await readCircuits(this.root);
-      const { footprints } = await this.kicad(before.config);
+      const { footprints } = await this.kicad();
       const pads = new Map<string, Set<string>>();
       if (footprints) {
         const used = new Set(
@@ -704,7 +708,7 @@ export class Workspace {
       await writeFile(path.join(this.root, IMPORT_NOTES), x.notes, "utf8");
       const logged = await this.history.record("import", `imported KiCad ${design.project}`);
 
-      const after = validateProject(await loadProject(this.root));
+      const after = validateProject(await this.source());
       const files = [
         ...x.circuits.map((c) => c.file),
         ...(x.drafts.length > 0 ? [`parts/ (${x.drafts.length} drafts)`] : []),
@@ -758,11 +762,25 @@ export class Workspace {
     });
   }
 
-  /** Absolute paths of the global part libraries in project.toml, for watching. */
+  /** The global part libraries from the user's settings, for watching. */
   async libraryDirs(): Promise<string[]> {
-    const text = await this.readOptional("project.toml");
-    const paths = parseProjectConfig(text, "project.toml").config?.library.paths ?? [];
-    return paths.map((p) => path.resolve(this.root, p));
+    return (await this.settings().catch(() => ({ libraries: [] }))).libraries;
+  }
+
+  /** auto: the AI's edits land at once. accept: each patch it applies waits for the person. */
+  async reviewMode(): Promise<ReviewMode> {
+    const text = await this.readOptional(REVIEW_MODE_FILE);
+    try {
+      return (JSON.parse(text) as { mode?: unknown }).mode === "accept" ? "accept" : "auto";
+    } catch {
+      return "auto";
+    }
+  }
+
+  /** Sets the review mode: the person's choice in the viewer, kept out of the AI's files. */
+  async setReviewMode(mode: ReviewMode): Promise<TextResult> {
+    await this.writeState(REVIEW_MODE_FILE, `${JSON.stringify({ mode })}\n`);
+    return { ok: true, text: `review mode: ${mode}` };
   }
 
   /** Records the viewer's selection for `focus` (and other processes) to read. */
@@ -934,7 +952,7 @@ export class Workspace {
     const { errors, warnings } = countIssues(result);
     const empty: ViewerModel = {
       project: result.config?.name ?? path.basename(this.root),
-      top: result.config?.top ?? "main",
+      top: TOP_BLOCK,
       summary: { errors, warnings, waived: result.waived },
       issues: result.issues,
       sheets: [],
@@ -992,7 +1010,6 @@ export class Workspace {
 
   /** Checkpoint, changesets, pending changes and variants, for the viewer's review panel. */
   async versionState(): Promise<VersionState> {
-    const config = parseProjectConfig(await this.readOptional("project.toml"), "project.toml");
     const info = await repoInfo(this.root);
     const cp = await lastCommit(this.root);
     const { changesets } = await this.history.changesets();
@@ -1000,7 +1017,7 @@ export class Workspace {
     const now = await readCircuits(this.root);
     return {
       git: info !== undefined,
-      mode: config.config?.review.mode ?? "auto",
+      mode: await this.reviewMode(),
       ...(cp && { checkpoint: { id: cp.id.slice(0, 7), message: cp.message, date: cp.date } }),
       changesets: changesets.map((cs) => ({
         id: cs.id,
@@ -1128,7 +1145,7 @@ export class Workspace {
   /** Writes a planned revert to disk; returns an error message if its patch does not apply. */
   private async carryOut(plan: RevertPlan): Promise<string | undefined> {
     if (plan.patch) {
-      const patched = applyPatch(await loadProject(this.root), plan.patch);
+      const patched = applyPatch(await this.source(), plan.patch);
       if (patched.issues.length > 0) return patched.issues.map(formatIssue).join("\n");
       for (const f of patched.changed) {
         await mkdir(path.dirname(path.join(this.root, f.file)), { recursive: true });
@@ -1253,7 +1270,12 @@ export class Workspace {
   /** A workspace for a variant's working copy, for the viewer. */
   async variantWorkspace(name: string): Promise<Workspace | undefined> {
     const v = await this.findVariant(name);
-    return typeof v === "string" ? undefined : new Workspace(v.dir);
+    return typeof v === "string"
+      ? undefined
+      : new Workspace(v.dir, {
+          stateDir: this.stateDir,
+          ...(this.sharedLibrary !== undefined && { sharedLibrary: this.sharedLibrary }),
+        });
   }
 
   /**
@@ -1369,7 +1391,7 @@ export class Workspace {
       ];
       if (preferred.length === 0) {
         lines.push(
-          "note: no preferred distributors in project.toml [sourcing]; none were used to rank parts",
+          `note: no sourcing.distributors in ${PROJECT_FILE}; none were used to rank parts`,
         );
       }
       return { ok: true, text: lines.join("\n") };

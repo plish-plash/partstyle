@@ -47,10 +47,9 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
 
   beforeAll(async () => {
     tmp = await mkdtemp(path.join(tmpdir(), "partstyle-bin-"));
-    // The example's library path is ../../library.
+    // The example's parts come from the library in the test settings (vitest.setup.ts).
     project = path.join(tmp, "examples", "bench-sensor");
     await cp(repo("examples/bench-sensor"), project, { recursive: true });
-    await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
     await rm(path.join(project, ".partstyle"), { recursive: true, force: true });
   });
   afterAll(async () => {
@@ -73,6 +72,11 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
     const transport = new StdioClientTransport({
       command,
       args: [...prefix, "mcp", "--project", project],
+      // The client passes only a few variables on; the settings come from the test's state folder.
+      env: {
+        ...getDefaultEnvironment(),
+        PARTSTYLE_STATE_DIR: process.env.PARTSTYLE_STATE_DIR ?? "",
+      },
       stderr: "pipe",
     });
     let log = "";
@@ -115,7 +119,7 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
     const transport = new StdioClientTransport({
       command,
       args: [...prefix, "mcp", "--projects-dir", path.join(tmp, "examples"), "--viewer-port", "0"],
-      // Keep the recently opened list out of this user's ~/.partstyle.
+      // Keep the recently opened list and the shared library out of this user's ~/.partstyle.
       env: { ...getDefaultEnvironment(), PARTSTYLE_STATE_DIR: path.join(tmp, "state") },
     });
     const client = new Client({ name: "test", version: "0" });

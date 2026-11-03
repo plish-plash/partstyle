@@ -15,6 +15,7 @@ import type { PlacedPin, PlacedUnit, Rect, SheetLayout, WireSegment } from "./ty
 import { normalizeWires } from "./wires.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
+const seed = [repo("library")];
 
 describe("normalizeWires", () => {
   it("splits at T-connections, merges straight runs and marks junctions", () => {
@@ -309,7 +310,7 @@ describe("prepareDrawing", () => {
     return prepareDrawing(validateProject(p.source), { annotation: "", bom: "" });
   };
   beforeAll(async () => {
-    source = await loadProject(repo("examples/bench-sensor"));
+    source = await loadProject(repo("examples/bench-sensor"), seed);
     result = validateProject(source);
     drawing = await prepareDrawing(result, { annotation: "", bom: "" });
   });
@@ -487,7 +488,9 @@ describe("prepareDrawing", () => {
   });
 
   it("puts grounded parts below the wire that feeds them", async () => {
-    const r = validateProject(await loadProject(repo("packages/engine/test-fixtures/pulldowns")));
+    const r = validateProject(
+      await loadProject(repo("packages/engine/test-fixtures/pulldowns"), seed),
+    );
     const d = await prepareDrawing(r, { annotation: "", bom: "" });
     const sheet = sheetOf(d, "main");
     expect(checkConnectivity(sheet)).toEqual([]);
@@ -502,7 +505,7 @@ describe("prepareDrawing", () => {
   });
 
   it("lays out a block used twice", async () => {
-    const r = validateProject(await loadProject(repo("packages/engine/test-fixtures/multi")));
+    const r = validateProject(await loadProject(repo("packages/engine/test-fixtures/multi"), seed));
     const d = await prepareDrawing(r, { annotation: "", bom: "" });
     expect(d.issues.filter((i) => i.code.startsWith("layout"))).toEqual([]);
     expect(d.plan.instancesOf("filter").map((i) => i.prefix)).toEqual(["F1/", "F2/"]);

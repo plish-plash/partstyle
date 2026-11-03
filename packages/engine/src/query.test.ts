@@ -13,7 +13,9 @@ let result: ValidationResult;
 let netlist: Netlist;
 let source: Awaited<ReturnType<typeof loadProject>>;
 beforeAll(async () => {
-  source = await loadProject(example);
+  source = await loadProject(example, [
+    fileURLToPath(new URL("../../../library", import.meta.url)),
+  ]);
   result = validateProject(source);
   netlist = result.netlist as Netlist;
 });
@@ -105,7 +107,7 @@ describe("overview and readBlock", () => {
   it("summarises the project in a few hundred tokens", () => {
     const text = overview(source, result);
     expect(text.split("\n").slice(0, 2)).toEqual([
-      "project bench-sensor (top: main)",
+      "project bench-sensor",
       "context: Benchtop sensor interface",
     ]);
     expect(text).toContain(

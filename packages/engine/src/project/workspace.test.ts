@@ -5,24 +5,30 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { slashCommands } from "../prompts.js";
 import { findKicad } from "./kicad.js";
+import { rememberSharedLibrary } from "./settings.js";
 import { projectClaudeMd } from "./skeleton.js";
-import { Workspace } from "./workspace.js";
+import { partstyleVersion } from "./version.js";
+import { readGrammarReference, Workspace } from "./workspace.js";
 
 // Tests that need KiCad installed are skipped without it.
-const kicad = await findKicad(process.cwd(), {});
+const kicad = await findKicad();
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
 
-// A copy of the example and library, so apply and part_put can write.
+// A copy of the example and library, so apply and part_put can write, with settings listing it.
 let tmp: string;
 let ws: Workspace;
 let project: string;
+let stateDir: string;
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), "partstyle-"));
   project = path.join(tmp, "examples/bench-sensor");
   await cp(repo("examples/bench-sensor"), project, { recursive: true });
   await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
-  ws = new Workspace(project);
+  stateDir = path.join(tmp, "state");
+  await mkdir(stateDir);
+  await writeFile(path.join(stateDir, "settings.yaml"), "libraries: [../library]\n");
+  ws = new Workspace(project, { stateDir });
 });
 afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
@@ -119,21 +125,71 @@ describe("Workspace.partPut", () => {
 });
 
 it("fails cleanly outside a project", async () => {
-  expect(await new Workspace(tmp).overview()).toEqual({
+  expect(await new Workspace(tmp, { stateDir }).overview()).toEqual({
     ok: false,
-    text: `no project.toml in ${tmp} (create a project with: partstyle init)`,
+    text: `no partstyle-project.yaml in ${tmp} (create a project with: partstyle init)`,
+  });
+});
+
+describe("settings", () => {
+  it("are read on every call, so a new library applies without reopening", async () => {
+    await writeFile(path.join(stateDir, "settings.yaml"), "libraries: []\n");
+    expect((await ws.validate()).text).toContain("elab.unknown-part");
+    await writeFile(path.join(stateDir, "settings.yaml"), "libraries: [../library]\n");
+    expect((await ws.validate()).text).toBe("bench-sensor: 0 errors, 0 warnings (19 waived)");
+  });
+
+  it("report a broken settings file instead of ignoring it", async () => {
+    await writeFile(path.join(stateDir, "settings.yaml"), "libraries: nope\n");
+    expect((await ws.overview()).text).toMatch(/settings\.yaml: libraries: /);
+  });
+
+  it("put the remembered shared library first, the latest server's replacing the last", async () => {
+    await rememberSharedLibrary(stateDir, path.join(tmp, "old"));
+    await rememberSharedLibrary(stateDir, path.join(tmp, "library"));
+    expect((await ws.settings()).libraries).toEqual([path.join(tmp, "library")]);
+    await writeFile(path.join(stateDir, "settings.yaml"), "libraries: [../mine, ../library]\n");
+    expect((await ws.settings()).libraries).toEqual([
+      path.join(tmp, "library"),
+      path.join(tmp, "mine"),
+    ]);
+    // A server's own shared library wins over the remembered one.
+    const served = new Workspace(project, { stateDir, sharedLibrary: path.join(tmp, "served") });
+    expect((await served.settings()).libraries[0]).toBe(path.join(tmp, "served"));
+  });
+});
+
+describe("Workspace.writeDoc", () => {
+  it("refuses a project file that would not load", async () => {
+    const before = await read("partstyle-project.yaml");
+    const r = await ws.writeDoc("partstyle-project.yaml", "description: no name\n");
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(
+      /^not written: partstyle-project\.yaml:1:1 error project\.config name: /,
+    );
+    expect(await read("partstyle-project.yaml")).toBe(before);
+  });
+});
+
+describe("review mode", () => {
+  it("is the person's switch, kept in .partstyle/", async () => {
+    expect(await ws.reviewMode()).toBe("auto");
+    await ws.setReviewMode("accept");
+    expect(await read(".partstyle/review.json")).toBe('{"mode":"accept"}\n');
+    const r = await ws.apply("in power\n+ part C13 cap(47u, 25V) @ bulk");
+    expect(r.text).toMatch(/held as P1 for review/);
+    expect((await ws.overview()).text).toContain("review mode: accept");
   });
 });
 
 describe("Workspace.init", () => {
   it("creates a skeleton that validates clean", async () => {
     const dir = path.join(tmp, "new-board");
-    const fresh = new Workspace(dir);
-    const r = await fresh.init({ libraryPaths: [path.join(tmp, "library")] });
+    const fresh = new Workspace(dir, { stateDir });
+    const r = await fresh.init();
     expect(r.text.split("\n")).toEqual([
       `created project new-board in ${dir}`,
-      "  project.toml",
-      "  context.md",
+      "  partstyle-project.yaml",
       "  circuit/main.ckt",
       "  notes/decisions.md",
       "  notes/pcb.md",
@@ -143,10 +199,10 @@ describe("Workspace.init", () => {
       "  .claude/commands/prepare-handoff.md",
       "  .gitignore",
       "initialized a git repository for checkpoints",
-      "next: fill in context.md with the user, then add blocks (partstyle grammar shows how)",
+      "next: fill in partstyle-project.yaml with the user, then add blocks (partstyle grammar shows how)",
     ]);
-    expect(await readFile(path.join(dir, "project.toml"), "utf8")).toContain(
-      'paths = ["../library"]',
+    expect(await readFile(path.join(dir, "partstyle-project.yaml"), "utf8")).toContain(
+      `\npartstyle_version: "${partstyleVersion()}"\nname: "new-board"\n`,
     );
     expect(await fresh.validate()).toEqual({
       ok: true,
@@ -160,44 +216,34 @@ describe("Workspace.init", () => {
   });
 
   it("refuses an existing project", async () => {
-    expect(await ws.init()).toEqual({ ok: false, text: `${project} already has a project.toml` });
+    expect(await ws.init()).toEqual({
+      ok: false,
+      text: `${project} already has a partstyle-project.yaml`,
+    });
   });
 
   it("keeps existing files and writes the AI instructions alongside CLAUDE.md", async () => {
     const dir = path.join(tmp, "existing");
     await mkdir(dir);
     await writeFile(path.join(dir, "CLAUDE.md"), "# mine\n");
-    const r = await new Workspace(dir).init({ name: "x" });
+    await writeFile(path.join(stateDir, "settings.yaml"), "");
+    const r = await new Workspace(dir, { stateDir }).init({ name: "x" });
     expect(r.text).toContain("  CLAUDE.partstyle.md");
     expect(r.text).toContain("kept existing CLAUDE.md");
     expect(r.text).toContain("add the line '@CLAUDE.partstyle.md' to CLAUDE.md");
-    expect(r.text).toContain("note: no global part library; part_put will write to parts/");
+    expect(r.text).toContain("note: no part libraries listed in ");
     expect(await readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe("# mine\n");
     expect(await readFile(path.join(dir, "CLAUDE.partstyle.md"), "utf8")).toMatch(
       /^# Circuit project: x\n/,
     );
   });
-
-  it("stores a far-away library path as absolute", async () => {
-    const dir = path.join(tmp, "a/b/c/d");
-    await new Workspace(dir).init({ libraryPaths: [path.join(tmp, "library")] });
-    const toml = await readFile(path.join(dir, "project.toml"), "utf8");
-    expect(toml).toContain(
-      `paths = [${JSON.stringify(path.join(tmp, "library").split(path.sep).join("/"))}]`,
-    );
-  });
-
-  it("notes library paths that do not exist", async () => {
-    const r = await new Workspace(path.join(tmp, "b")).init({ libraryPaths: ["../nowhere"] });
-    expect(r.text).toContain("note: library path ../nowhere does not exist yet");
-  });
 });
 
-it("the CLAUDE.md template's example block validates clean against the seed library", async () => {
-  const block = /```\n(block power[\s\S]*?)```/.exec(projectClaudeMd("x"))?.[1] as string;
+it("the grammar's example block validates clean against the seed library", async () => {
+  const block = /```\n(block power[\s\S]*?)```/.exec(await readGrammarReference())?.[1] as string;
   const dir = path.join(tmp, "template-check");
-  const fresh = new Workspace(dir);
-  await fresh.init({ libraryPaths: [path.join(tmp, "library")] });
+  const fresh = new Workspace(dir, { stateDir });
+  await fresh.init();
   await writeFile(path.join(dir, "circuit/power.ckt"), block);
   await writeFile(
     path.join(dir, "circuit/main.ckt"),

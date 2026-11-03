@@ -25,7 +25,7 @@ net +5V : PWR.+5V
 
 function source(circuits: Record<string, string> = { power, main }): ProjectSource {
   return {
-    config: { file: "project.toml", text: 'name = "t"' },
+    project: { file: "partstyle-project.yaml", text: "name: t" },
     circuits: Object.entries(circuits).map(([name, text]) => ({
       file: `circuit/${name}.ckt`,
       text,

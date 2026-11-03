@@ -5,7 +5,7 @@ import { generatedSymbol, incompatibility, type SchSymbol, symbolKey } from "../
 import { type PowerLibrary, powerLibrary, type SymbolLib } from "../kicad/power.js";
 import { symbolForGeneric, symbolForRecord } from "../kicad/symbols.js";
 import type { FlatPart, Netlist } from "../netlist/elaborate.js";
-import type { ProjectConfig } from "../project/config.js";
+import { type ProjectConfig, TOP_BLOCK } from "../project/config.js";
 import type { ValidationResult } from "../validate.js";
 import { checkConnectivity } from "./connectivity.js";
 import { layoutSheet } from "./layout.js";
@@ -149,7 +149,7 @@ export async function prepareDrawing(
   const power = powerLibrary(libraries.power);
   const plan = planDrawing({
     blocks: result.blocks,
-    top: config.top,
+    top: TOP_BLOCK,
     netlist,
     symbols: chosen,
     power,

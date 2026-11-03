@@ -26,6 +26,9 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   manifest template `packages/cli/mcpb/manifest.json` (tools filled in from the server). Building
   it runs the bundle under the current Node first; `node scripts/standalone.mjs --check-mcpb`
   repeats that (the manifest promises Node >= 22, the oldest Node CI checks it under). The smoke test also runs the bundle.
+- The example and the fixtures get their parts from the libraries in `~/.partstyle/settings.yaml`
+  (list this repo's `library/` there for the CLI); tests use `vitest.setup.ts`, which points
+  `PARTSTYLE_STATE_DIR` at a temporary copy, so they never touch the repo's records.
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
   [docs/cli.md](docs/cli.md), and keep it updated when commands change. cli.md is a man page:
   command syntax and behaviour only. Installing, building, the standalone executable, CI and
@@ -45,16 +48,21 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   node-only code is behind `src/node.ts` (`@partstyle/engine/node`).
   - Pipeline: `ckt/parser` → `parts/library` → `netlist/elaborate` (hierarchy flattening,
     union-find net joining) → `erc/rules`, `checks/parts` (pin `vmax`, capacitor derating,
-    requirement checks) and `checks/context` (context.md hazards, temperature, assembly;
-    `checks/nets` has net voltages) → waivers in `validate.ts`.
+    requirement checks) and `checks/context` (the project file's interface hazards,
+    temperature, assembly; `checks/nets` has net voltages) → waivers in `validate.ts`.
+  - Configuration: `project/config.ts` (`partstyle-project.yaml`: name, description, design
+    context, `sourcing`, `checks`; the top block is always `main`), `project/settings.ts` (node:
+    the user's `settings.yaml` with libraries and KiCad overrides, read fresh per call). The
+    review mode is `.partstyle/review.json`, set only from the viewer.
   - Procedures: `prompts.ts` (design_review, ingest_part, prepare_handoff) feeds the MCP
     prompts, `partstyle prompt` and the `.claude/commands/` files `init` writes.
   - AI operations: `views.ts` (overview, read_block), `query.ts`, `patch.ts` (apply),
     `parts/search.ts`. `project/workspace.ts` wraps them over a folder, reloading per call.
 - `packages/cli` and `packages/mcp`: thin shells over `Workspace` (`partstyle mcp` runs
   `serveMcp` from `packages/mcp/src/serve.ts`). Without `--project` the MCP server is in global
-  mode: `project/projects.ts` (`Projects`: projects folder, shared `library/`, recent list in
-  `~/.partstyle` or `PARTSTYLE_STATE_DIR`; tests must pass a temporary state dir),
+  mode: `project/projects.ts` (`Projects`: projects folder, shared `library/` used before the
+  user's libraries and remembered for the CLI on start, recent list in `~/.partstyle` or
+  `PARTSTYLE_STATE_DIR`),
   `list_projects`/`open_project`, and the viewer's `switchTo`. Its instructions are
   `mcpInstructions` in `project/skeleton.ts`, sharing the conventions with the project
   CLAUDE.md template; keep the two workflows in step. Every MCP tool has a CLI

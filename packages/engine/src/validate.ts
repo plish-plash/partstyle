@@ -7,7 +7,7 @@ import { runErc } from "./erc/rules.js";
 import { elaborate, type Netlist, type WaiverScope } from "./netlist/elaborate.js";
 import { buildLibrary, type PartLibrary } from "./parts/library.js";
 import { isDraft } from "./parts/schema.js";
-import { type ProjectConfig, parseProjectConfig } from "./project/config.js";
+import { type ProjectConfig, parseProjectConfig, TOP_BLOCK } from "./project/config.js";
 import type { ProjectSource } from "./project/source.js";
 
 export interface ValidationResult {
@@ -24,7 +24,7 @@ export interface ValidationResult {
 
 /** Parse, elaborate and run structural ERC over a project, then apply waivers. */
 export function validateProject(source: ProjectSource): ValidationResult {
-  const { config, issues } = parseProjectConfig(source.config.text, source.config.file);
+  const { config, issues } = parseProjectConfig(source.project.text, source.project.file);
 
   const blocks: CktFile[] = [];
   for (const f of source.circuits) {
@@ -40,13 +40,13 @@ export function validateProject(source: ProjectSource): ValidationResult {
     return { issues: dedupeIssues(issues).sort(compareIssues), waived: 0, blocks, library };
   }
 
-  const elaborated = elaborate(blocks, library, config.top);
+  const elaborated = elaborate(blocks, library, TOP_BLOCK);
   issues.push(
     ...elaborated.issues,
     ...runErc(elaborated.netlist),
     ...draftIssues(elaborated.netlist, library),
     ...partChecks(elaborated.netlist, { capDerating: config.checks.cap_derating }),
-    ...contextChecks(elaborated.netlist, source.context),
+    ...contextChecks(elaborated.netlist, config, source.project.file),
   );
 
   const { kept, waived } = applyWaivers(dedupeIssues(issues), elaborated.waiverScopes);

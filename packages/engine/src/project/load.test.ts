@@ -4,10 +4,11 @@ import { validateProject } from "../validate.js";
 import { loadProject, ProjectLoadError } from "./load.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
+const seed = [repo("library")];
 
 describe("loadProject", () => {
   it("loads the example design, which validates clean", async () => {
-    const source = await loadProject(repo("examples/bench-sensor"));
+    const source = await loadProject(repo("examples/bench-sensor"), seed);
     expect(source.circuits.map((c) => c.file)).toEqual([
       "circuit/main.ckt",
       "circuit/mcu.ckt",
@@ -17,6 +18,7 @@ describe("loadProject", () => {
     expect(
       source.parts.every((p) => p.layer === "global" && p.file.startsWith("../../library/")),
     ).toBe(true);
+    expect(source.project.file).toBe("partstyle-project.yaml");
 
     const result = validateProject(source);
     expect(result.issues).toEqual([]);
@@ -24,7 +26,9 @@ describe("loadProject", () => {
   });
 
   it("reports one problem per check in the broken fixture", async () => {
-    const result = validateProject(await loadProject(repo("packages/engine/test-fixtures/broken")));
+    const result = validateProject(
+      await loadProject(repo("packages/engine/test-fixtures/broken"), seed),
+    );
     expect([...new Set(result.issues.map((i) => i.code))].sort()).toEqual([
       "elab.bad-generic",
       "elab.unknown-part",
@@ -41,7 +45,7 @@ describe("loadProject", () => {
     ]);
   });
 
-  it("fails clearly without project.toml", async () => {
-    await expect(loadProject(repo("library"))).rejects.toThrow(ProjectLoadError);
+  it("fails clearly without a project file", async () => {
+    await expect(loadProject(repo("library"), [])).rejects.toThrow(ProjectLoadError);
   });
 });

@@ -19,20 +19,20 @@ To install Partstyle, see [INSTALL.md](../INSTALL.md).
 
 ## Projects
 
-### `init [DIR] [--name NAME] [--library PATH]...`
+### `init [DIR] [--name NAME]`
 
 Creates a project skeleton in DIR (default: `-p` or the current directory), creating the folder
-if needed. Fails if DIR already has a `project.toml`. Existing files are never overwritten.
+if needed. Fails if DIR already has a `partstyle-project.yaml`. Existing files are never
+overwritten.
 
-| File                 | Contents                                                                    |
-| -------------------- | --------------------------------------------------------------------------- |
-| `project.toml`       | name, `top = "main"`, library paths, preferred distributors                 |
-| `context.md`         | front matter to fill in: use case, environment, power, assembly, interfaces |
-| `circuit/main.ckt`   | an empty top block                                                          |
-| `notes/decisions.md` | design rationale, keyed to refdes and nets                                  |
-| `notes/pcb.md`       | layout notes for the KiCad hand-off                                         |
-| `CLAUDE.md`          | instructions for Claude Code: workflow, conventions, an example block       |
-| `.claude/commands/`  | Claude Code slash commands for the procedures (see `prompt`)                |
+| File                     | Contents                                                           |
+| ------------------------ | ------------------------------------------------------------------ |
+| `partstyle-project.yaml` | name, description, design context to fill in, settings (see below) |
+| `circuit/main.ckt`       | an empty top block                                                 |
+| `notes/decisions.md`     | design rationale, keyed to refdes and nets                         |
+| `notes/pcb.md`           | layout notes for the KiCad hand-off                                |
+| `CLAUDE.md`              | instructions for Claude Code: workflow and procedures              |
+| `.claude/commands/`      | Claude Code slash commands for the procedures (see `prompt`)       |
 
 Later commands add `annotation.lock` and `bom.lock` (commit both), `bom.csv`, and the
 generated KiCad project in `kicad/`.
@@ -40,21 +40,57 @@ generated KiCad project in `kicad/`.
 If `CLAUDE.md` already exists, the instructions go to `CLAUDE.partstyle.md`; add the line
 `@CLAUDE.partstyle.md` to your `CLAUDE.md` to load them.
 
-`--library` adds a global part-library folder (repeatable), given relative to the current
-directory. It is stored relative to the project when at most two levels up (`../library`),
-otherwise as an absolute path. Without one, `part put` writes to the project's `parts/` folder.
-To use the seed library: `--library <repo>/library`.
-
 ```sh
-partstyle init boards/thermo --name thermo --library ~/parts
+partstyle init boards/thermo --name thermo
 ```
+
+### The project file
+
+`partstyle-project.yaml` marks a folder as a Partstyle project. It is plain YAML:
+
+| Key                     | Meaning                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `partstyle_version`     | the Partstyle version that created the project (written by `init`)             |
+| `name`                  | the project's name (required)                                                  |
+| `description`           | plain paragraphs for people, usually a `\|` block                              |
+| `use_case`              | one line; `overview` leads with it                                             |
+| `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes     |
+| `power`, others         | free-form context for people and design review                                 |
+| `assembly`              | `method` (hand soldering, SMT service, ...) is checked against packages        |
+| `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards` |
+| `sourcing.distributors` | preferred distributors for `bom export`: `lcsc`, `digikey`, `mouser`           |
+| `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                |
+
+The top block is always `main`, in `circuit/main.ckt`. A project file that is not valid YAML or
+has no `name` is a `project.config` error and nothing else is checked; malformed design context
+is a `context.invalid` warning and only the context checks are skipped.
+
+### Settings
+
+Settings for every project live in `settings.yaml` in the state folder (`~/.partstyle`, or
+`PARTSTYLE_STATE_DIR`), which also holds the MCP server's recently opened list. Each command
+reads it fresh, so a change applies to the next command. Paths may be absolute or relative to the
+state folder.
+
+```yaml
+libraries: # your part-library folders
+  - C:/Users/me/parts
+kicad: # overrides for Finding KiCad (below); normally not needed
+  cli: C:/Program Files/KiCad/10.0/bin/kicad-cli.exe
+```
+
+The MCP server in global mode puts its projects folder's `library/` before these for every
+project it opens, and remembers it (`shared-library.json` in the state folder) so commands use it
+first too; a server started on another projects folder replaces it. `part put` writes to the
+first library, or to the project's `parts/` folder when there are none.
 
 ## Reading
 
 ### `overview`
 
-The cheap first read (a few hundred tokens): blocks with part counts, ports and uses, context
-from `context.md`, part totals, issue counts and the first ten issues.
+The cheap first read (a few hundred tokens): blocks with part counts, ports and uses, the design
+context and settings from the project file (not its description), part totals, issue counts and
+the first ten issues.
 
 ### `read-block BLOCK [--detail summary|full]`
 
@@ -105,12 +141,13 @@ Besides structural ERC, every validate (and so every `apply`) runs:
   rail's name says (`+3V3` is 3.3 V). A net with none of these is not checked.
 - **Capacitor ratings.** A capacitor with a voltage (a generic's argument, or its record's
   `generic` field) is an error when the voltage across it exceeds the rating, and a warning when
-  the rating is under `[checks] cap_derating` (default 1.5) times that voltage.
+  the rating is under `checks.cap_derating` (default 1.5) times that voltage.
 - **Datasheet requirements** that carry a check in the part record: `cap` (at least one
   capacitor of at least `min` from the pin to ground or `to`, or one per pin with `each`), `res`
   (a resistor within `min`..`max`) and `tie` (the pin on the same net as `to`). `to` is a pin of
   the part or a net name. Text-only requirements are left for design review.
-- **context.md** front matter, for each external interface's connector (its instance path):
+- **Design context** in the project file, for each external interface's connector (its
+  instance path):
   - `ESD` in its hazards: every signal net on the connector (not power or ground) needs an
     ESD/TVS part (`diode(tvs)`, or a record whose summary says ESD or TVS) to ground.
   - a hazard naming a voltage (`miswiring to 12 V`): no part pin with a lower `vmax`, and no
@@ -126,11 +163,12 @@ Overview counts records not yet verified by a person; validate does not repeat i
 
 ### `doc read FILE` / `doc write FILE [SRC|-]`
 
-Reads or replaces a project document: `context.md` or a Markdown file under `notes/`, by its
-path in the project (other paths are refused). `write` takes the text from SRC or stdin,
-creates folders under `notes/` as needed, and for `context.md` also lists the issues it now has
-(or `context.md: no issues`). These exist for MCP clients without file tools (`read_doc`,
-`write_doc`); from a shell, editing the files directly is the same.
+Reads or replaces a project document: `partstyle-project.yaml` or a Markdown file under
+`notes/`, by its path in the project (other paths are refused). `write` takes the text from SRC
+or stdin and creates folders under `notes/` as needed. A project file that would not load (not
+YAML, or no `name`) is refused and nothing is written; otherwise the issues it now has are listed
+(or `partstyle-project.yaml: no issues`). These exist for MCP clients without file tools
+(`read_doc`, `write_doc`); from a shell, editing the files directly is the same.
 
 ### `apply [FILE|-] [--dry-run]`
 
@@ -198,7 +236,7 @@ requirements:
 Resolves every generic part to a library record whose `generic` field meets each constraint:
 same value, voltage/current/power at least as high, tolerance at least as tight, same
 dielectric and package when given. Among matches it prefers parts stocked by the preferred
-distributors in `project.toml` (`[sourcing] distributors`, in order), then the lowest voltage
+distributors in the project file (`sourcing.distributors`, in order), then the lowest voltage
 rating, then id. Writes:
 
 - `bom.lock`: how each generic resolved. A choice is kept until the part's spec changes or the
@@ -341,12 +379,12 @@ The command fails (exit 1) on a round-trip mismatch, KiCad ERC errors or footpri
 Next step: open `kicad/<name>.kicad_pro`, then in the PCB editor run Tools > Update PCB from
 Schematic.
 
-### `kicad import PATH [--replace] [--library PATH]...`
+### `kicad import PATH [--replace]`
 
 Imports a KiCad project: a `.kicad_pro`, its root `.kicad_sch`, or a folder holding one project.
 KiCad itself resolves the connectivity, so kicad-cli is required. It runs on a temporary copy of
-the schematics; the KiCad files are never written. Without a `project.toml` the project is
-created first (as `init` would, with `--library` paths); then:
+the schematics; the KiCad files are never written. Without a `partstyle-project.yaml` the project
+is created first (as `init` would); then:
 
 | Written                 | Contents                                                   |
 | ----------------------- | ---------------------------------------------------------- |
@@ -393,8 +431,7 @@ changed in KiCad updates the generic's value.
 ### Finding KiCad
 
 `kicad-cli` and the stock footprint and symbol libraries are located in this order:
-`[kicad] cli`, `[kicad] footprints` and `[kicad] symbols` in `project.toml` (relative to the
-project); the `KICAD_CLI`, `KICAD10_FOOTPRINT_DIR` / `KICAD9_FOOTPRINT_DIR` and
+`kicad.cli`, `kicad.footprints` and `kicad.symbols` in the [settings](#settings); the `KICAD_CLI`, `KICAD10_FOOTPRINT_DIR` / `KICAD9_FOOTPRINT_DIR` and
 `KICAD10_SYMBOL_DIR` / `KICAD9_SYMBOL_DIR` environment variables; `PATH`; then the usual install
 location (`C:\Program Files\KiCad\<version>\bin` on Windows, the highest version;
 `/Applications/KiCad` on macOS; `/usr/bin` on Linux), with the libraries beside it. Without
@@ -541,10 +578,12 @@ reported, so a revert never discards later work. The revert is itself a changese
 
 ### Accept-before-apply: `pending accept|reject ID`
 
-With `[review] mode = "accept"` in `project.toml`, `apply` does not write: it holds the patch as
-a pending change (`P1`, `P2`, ...) and reports what it would do. The person previews it in the
-viewer and accepts it (then it applies, as a changeset) or rejects it. Direct file edits still
-land immediately; the project's CLAUDE.md tells the AI to edit only through `apply` in this mode.
+When the person ticks "Approve each AI edit before it lands" in the viewer's Changes panel (accept mode,
+stored in `.partstyle/review.json` for this copy of the project), `apply` does not write: it
+holds the patch as a pending change (`P1`, `P2`, ...) and reports what it would do. The person
+previews it in the viewer and accepts it (then it applies, as a changeset) or rejects it. Direct
+file edits still land immediately; the project's CLAUDE.md tells the AI to edit only through
+`apply` in this mode. The AI cannot change the mode.
 
 ### `variant list|create|diff|adopt|remove [NAME]`
 

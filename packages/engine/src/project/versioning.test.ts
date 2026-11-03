@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,7 +97,7 @@ describe("versioning", () => {
 
   it("holds patches for approval in accept mode", async () => {
     await ws.checkpoint("tweaks");
-    await appendFile(path.join(project, "project.toml"), '\n[review]\nmode = "accept"\n');
+    await ws.setReviewMode("accept");
     const held = await ws.apply("in power\n+ part R90 res(10k, 1%, 0603)\n");
     expect(held.text).toMatch(/^held as P1 for review; would apply 1 edit/);
     expect(await readFile(power(), "utf8")).not.toContain("R90");

@@ -198,7 +198,9 @@ describe("export with KiCad symbols", () => {
   const example = fileURLToPath(new URL("../../../../examples/bench-sensor", import.meta.url));
   let result: ValidationResult;
   beforeAll(async () => {
-    result = validateProject(await loadProject(example));
+    result = validateProject(
+      await loadProject(example, [fileURLToPath(new URL("../../../../library", import.meta.url))]),
+    );
   });
   const lib = parseSymbolLib(libText);
 

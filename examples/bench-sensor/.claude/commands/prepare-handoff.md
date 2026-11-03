@@ -9,7 +9,7 @@ Prepare this design for PCB layout in KiCad.
    (ingest_part) or confirm it can stay generic for the assembler to choose.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
-   (context.md's external interfaces), thermal relief for regulators, sensitive analog nets,
+   (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,
    suggested layer count and keep-outs.
 4. `partstyle kicad export`: the netlist round trip and KiCad ERC must be clean.
 5. Summarise for the person: open `kicad/<name>.kicad_pro`, run Tools > Update PCB from

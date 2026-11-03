@@ -108,7 +108,7 @@ class Elaborator {
       this.issues.push({
         code: "elab.unknown-top",
         severity: "error",
-        message: `top block '${top}' not found (set 'top' in project.toml)`,
+        message: `top block '${top}' not found (circuit/${top}.ckt should start with 'block ${top}')`,
         subjects: [],
       });
     }

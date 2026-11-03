@@ -26,8 +26,9 @@ Optional: `partstyle-library.zip` on the releases page holds the starter part re
 repository's `library/` (20 records: regulators, an MCU, an op-amp, diodes, connectors,
 passives and LEDs), released under CC0 1.0 (public domain; see `library/LICENSE`). Unzip it
 in the projects folder (`Documents/partstyle` by default): it unpacks as `library/`, the shared
-library that projects created there already use. Records added later with `part_put` go there
-too. To use it from elsewhere, pass its folder to `partstyle init --library`.
+library every project the MCP server opens uses (and the CLI too, once the server has run).
+Records added later with `part_put` go there too. To use a library elsewhere, add its folder
+under `libraries:` in `~/.partstyle/settings.yaml` (see [Settings](docs/cli.md#settings)).
 
 ## Standalone executable
 

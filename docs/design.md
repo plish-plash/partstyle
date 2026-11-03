@@ -44,8 +44,7 @@ A project is a folder of text files, split by who reads them: the AI reads circu
 
 ```
 my-board/
-  project.toml            # name, variants, part-library paths, preferred distributors, settings
-  context.md              # use case, environment, external interfaces
+  partstyle-project.yaml  # name, description, design context, preferred distributors, checks
   circuit/
     main.ckt              # top level: instantiates blocks, joins ports
     power.ckt             # one file per functional block
@@ -118,13 +117,18 @@ provenance:
 - **Symbols are generated** from the pin table (pins grouped by type and function), so there is no separate abstract symbol to keep in sync. A record may optionally map to a KiCad library symbol for export.
 - **Footprint correctness** is checked at record creation: pad count and numbering in the referenced KiCad footprint must match the pin table.
 
-**Sourcing.** Part records hold per-distributor data (LCSC/JLCPCB, Digi-Key, Mouser). Each user picks their preferred distributors in `project.toml`, and BOM resolution and stock checks use only those.
+**Sourcing.** Part records hold per-distributor data (LCSC/JLCPCB, Digi-Key, Mouser). Each project names its preferred distributors in its project file, and BOM resolution and stock checks use only those.
 
-### Environment context (context.md)
+### The project file (partstyle-project.yaml)
 
-Structured front matter for checks, free prose below for the AI and the human.
+One YAML file marks the folder as a project and holds what the AI and the checks read about it: the name, a plain-prose description, the design context and the few per-project settings. It is plain YAML so other tools can read it; the description is a block of paragraphs, not Markdown. The AI edits it like any other file (or with `write_doc`).
+
+Where a setting belongs follows from who should change it. Per-project design facts live in the project file. Machine-specific settings (part-library folders, KiCad's location) live in the user's `~/.partstyle/settings.yaml`, shared by every project, so a new project needs no setup. The review mode (whether each AI patch waits for approval) is the person's switch in the viewer, kept in `.partstyle/`, which the AI never writes. The top block is always `main`.
 
 ```yaml
+name: bench-sensor
+description: |
+  A bench interface that reads a remote analog sensor and reports over UART.
 use_case: Benchtop sensor interface
 environment:
   temp_c: [0, 50]
@@ -142,6 +146,8 @@ external_interfaces:
     hazards:
       - ESD
       - miswiring to 12 V
+sourcing:
+  distributors: [lcsc, digikey]
 ```
 
 External interfaces are first-class: each names a connector, what is on the other end, and its hazards, so review can ask "is J4 protected against what it will actually see?"

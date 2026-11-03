@@ -56,16 +56,19 @@ provenance: { extracted_by: ai, verified_by: human }
 `,
 };
 
+/** `context` and `config` are YAML lines appended to the project file. */
 function check(circuit: string, opts: { context?: string; config?: string } = {}) {
   return validateProject({
-    config: { file: "project.toml", text: `name = "t"\n${opts.config ?? ""}` },
+    project: {
+      file: "partstyle-project.yaml",
+      text: `name: t\n${opts.context ?? ""}${opts.config ?? ""}`,
+    },
     circuits: [{ file: "circuit/main.ckt", text: circuit }],
     parts: Object.entries(records).map(([id, text]) => ({
       file: `parts/${id}.yaml`,
       text,
       layer: "project" as const,
     })),
-    ...(opts.context !== undefined && { context: { file: "context.md", text: opts.context } }),
   }).issues;
 }
 
@@ -119,7 +122,7 @@ describe("part checks", () => {
     expect(at12("cap(1u, 10V, 0603)")).toEqual([
       "error part.cap-voltage C1 cap(1u, 10V, 0603) is rated 10V but sees 12V across +12V/GND",
     ]);
-    expect(at12("cap(1u, 25V, 0603)", "[checks]\ncap_derating = 2.5\n")).toHaveLength(1);
+    expect(at12("cap(1u, 25V, 0603)", "checks: {cap_derating: 2.5}\n")).toHaveLength(1);
   });
 
   it("checks requirements that carry a check, and names what it found", () => {
@@ -156,14 +159,12 @@ net SIG : J1.SIG U1.SDA R1.2 ${protection ? "D1.1" : ""}
 net +3V3 : J1.PWR U1.VCC U1.EN C1.1 C2.1 R1.1 {source: J1}
 net GND : J1.GND U1.GND C1.2 C2.2 ${protection ? "D1.2" : ""}
 `;
-  const context = (hazards: string, more = "") => `---
-environment: {temp_c: [-20, 70]}
+  const context = (hazards: string, more = "") => `environment: {temp_c: [-20, 70]}
 assembly: {method: hand soldering}
 external_interfaces:
   - connector: J1
     hazards: [${hazards}]
-${more}---
-`;
+${more}`;
 
   it("checks an interface's ESD, voltage and reverse-polarity hazards at its connector", () => {
     const bare = check(board(""), { context: context("ESD, miswiring to 12 V, reverse polarity") });
@@ -189,7 +190,7 @@ ${more}---
       ),
     });
     expect(codes(cold, "context.temperature")).toEqual([
-      "warning context.temperature lib:LDO (U1) is rated -40 to 85 °C; context.md needs -55 to 70 °C",
+      "warning context.temperature lib:LDO (U1) is rated -40 to 85 °C; the environment needs -55 to 70 °C",
     ]);
   });
 

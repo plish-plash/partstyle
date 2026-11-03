@@ -14,9 +14,10 @@ import { GRID, symbolForGeneric, symbolForRecord } from "./symbols.js";
 import { stableUuid } from "./uuid.js";
 
 const example = fileURLToPath(new URL("../../../../examples/bench-sensor", import.meta.url));
+const seed = [fileURLToPath(new URL("../../../../library", import.meta.url))];
 let result: ValidationResult;
 beforeAll(async () => {
-  result = validateProject(await loadProject(example));
+  result = validateProject(await loadProject(example, seed));
 });
 
 describe("S-expressions", () => {
@@ -209,7 +210,7 @@ describe("exportKicad", () => {
   });
 
   it("falls back to labels when a block's instances put a net on different rails", async () => {
-    const source = await loadProject(example);
+    const source = await loadProject(example, seed);
     // Use the sensor block twice, once on +5V and once on +3V3.
     const main = `block main
 use power as PWR

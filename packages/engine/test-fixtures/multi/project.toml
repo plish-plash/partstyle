@@ -1,4 +1,0 @@
-name = "multi"
-
-[library]
-paths = ["../../../../library"]

@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -61,10 +61,10 @@ describe("MCP server", () => {
     const text = client.getInstructions() ?? "";
     expect(text).toContain("diff since=last");
     expect(text).not.toContain("open_project");
-    expect(text.length / 4).toBeLessThan(1000);
+    expect(text.length / 4).toBeLessThan(600);
   });
 
-  it("reads and writes context.md and notes", async () => {
+  it("reads and writes the project file and notes", async () => {
     const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-mcp-"));
     try {
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -75,21 +75,26 @@ describe("MCP server", () => {
       await c.connect(clientSide);
       const text = async (name: string, args: Record<string, unknown>) =>
         ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]?.text;
-      expect(await text("read_doc", { file: "context.md" })).toMatch(
-        /^---\n(#.*\n)+use_case: TODO/,
+      expect(await text("read_doc", { file: "partstyle-project.yaml" })).toMatch(
+        /^(#.*\n)+partstyle_version: "[^"]+"\nname: "docs"\ndescription: \|\n/,
       );
       expect(await text("write_doc", { file: "notes/power.md", text: "# Power\n" })).toBe(
         "wrote notes/power.md (1 line)",
       );
       expect(await text("read_doc", { file: "notes/nope.md" })).toBe(
-        "no notes/nope.md; docs: context.md, notes/decisions.md, notes/pcb.md, notes/power.md",
+        "no notes/nope.md; docs: partstyle-project.yaml, notes/decisions.md, notes/pcb.md, notes/power.md",
       );
       expect(await text("write_doc", { file: "../escape.md", text: "x" })).toMatch(
-        /^docs are context.md and notes\/\*.md/,
+        /^docs are partstyle-project.yaml and notes\/\*.md/,
       );
       expect(
-        await text("write_doc", { file: "context.md", text: "---\nnot: [valid\n---\n" }),
-      ).toMatch(/^wrote context.md \(3 lines\)\ncontext.md:1:1 warning context.invalid /);
+        await text("write_doc", {
+          file: "partstyle-project.yaml",
+          text: "name: docs\nexternal_interfaces: nope\n",
+        }),
+      ).toMatch(
+        /^wrote partstyle-project.yaml \(2 lines\)\npartstyle-project.yaml:1:1 warning context.invalid /,
+      );
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
@@ -160,6 +165,8 @@ describe("MCP server for many projects", () => {
   beforeAll(async () => {
     tmp = await mkdtemp(path.join(tmpdir(), "partstyle-global-"));
     projects = new Projects(path.join(tmp, "designs"), path.join(tmp, "state"));
+    // As `partstyle mcp` does on start.
+    await projects.ensureLibrary();
   });
   afterAll(async () => {
     await rm(tmp, { recursive: true, force: true });
@@ -191,10 +198,16 @@ describe("MCP server for many projects", () => {
   }
 
   it("uses the shared library for parts before any project is open", async () => {
-    const shelf = new Projects(path.join(tmp, "shelf"), path.join(tmp, "state"));
+    const shelf = new Projects(path.join(tmp, "shelf"), path.join(tmp, "shelf-state"));
+    await shelf.ensureLibrary();
+    // The user's own libraries come after the shared one, which is where new records go.
+    await writeFile(
+      path.join(tmp, "shelf-state", "settings.yaml"),
+      `libraries: [${JSON.stringify(path.join(tmp, "mine"))}]\n`,
+    );
     const { text } = await connect([], shelf);
     expect(await text("part_search", { q: "regulator" })).toEqual({
-      text: `no part records in the shared library ${shelf.libraryDir} yet (unzip partstyle-library.zip in ${shelf.dir}, or add records with part_put)`,
+      text: `no part records in the libraries yet (unzip partstyle-library.zip in ${shelf.dir}, or add records with part_put)`,
       isError: false,
     });
     await cp(repo("library"), shelf.libraryDir, { recursive: true });
@@ -243,13 +256,21 @@ describe("MCP server for many projects", () => {
     const root = path.join(tmp, "designs", "psu");
     expect(r.text).toMatch(/^created project psu in /);
     expect(r.text).toContain(
-      `\nopened psu (${root})\nviewer: http://127.0.0.1:7766/?project=psu\n\nproject psu (top: main)`,
+      `\nopened psu (${root})\nviewer: http://127.0.0.1:7766/?project=psu\n\nproject psu\n`,
     );
     expect(opened).toEqual([root]);
-    expect(await readFile(path.join(root, "project.toml"), "utf8")).toContain(
-      'paths = ["../library"]',
+    expect(await readFile(path.join(root, "partstyle-project.yaml"), "utf8")).toContain(
+      'name: "psu"',
     );
     expect((await text("validate")).text).toBe("psu: 0 errors, 0 warnings");
+    // Records written from the project go to the shared library listed in the settings.
+    const yaml = (await readFile(repo("library/1N5819.yaml"), "utf8")).replace(
+      "id: 1N5819",
+      "id: TEST-D2",
+    );
+    expect((await text("part_put", { record: yaml })).text).toMatch(
+      /^created \.\.\/library\/TEST-D2\.yaml/,
+    );
     // Not in the shared library, nor inside it (nor Library where case is ignored).
     const caseless = process.platform === "win32" || process.platform === "darwin";
     for (const args of [
@@ -263,7 +284,7 @@ describe("MCP server for many projects", () => {
         /is the shared part library .* or inside it: choose another name$/,
       );
     }
-    expect(await readdir(path.join(tmp, "designs", "library"))).toEqual([]);
+    expect(await readdir(path.join(tmp, "designs", "library"))).toEqual(["TEST-D2.yaml"]);
     await text("init_project", { name: "amp", path: path.join(tmp, "elsewhere", "amp") });
     expect((await text("list_projects")).text).toBe(
       [
@@ -284,6 +305,6 @@ describe("MCP server for many projects", () => {
       /^opened amp /,
     );
     expect(opened.map((p) => path.basename(p))).toEqual(["psu", "amp"]);
-    expect((await text("overview")).text).toMatch(/^project amp /);
+    expect((await text("overview")).text).toMatch(/^project amp\n/);
   });
 });

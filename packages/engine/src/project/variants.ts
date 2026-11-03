@@ -1,5 +1,6 @@
 import { appendFile, copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { PROJECT_FILE } from "./config.js";
 import {
   createVariantCopy,
   deleteBranch,
@@ -82,7 +83,7 @@ export async function removeVariant(info: RepoInfo, v: Variant): Promise<void> {
 
 /** The design files a variant carries over when adopted (not exports, review or local state). */
 const adoptable = (f: string) =>
-  /^(circuit|parts|notes)\//.test(f) || ["context.md", "bom.lock", "annotation.lock"].includes(f);
+  /^(circuit|parts|notes)\//.test(f) || [PROJECT_FILE, "bom.lock", "annotation.lock"].includes(f);
 
 /**
  * Copies a variant's design files over the main project's, deleting circuit files the variant

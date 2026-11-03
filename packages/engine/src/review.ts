@@ -23,6 +23,10 @@ export interface Focus {
 
 export const COMMENTS_FILE = "comments.yaml";
 export const FOCUS_FILE = ".partstyle/focus.json";
+/** The review mode the person chose in the viewer; local, like the rest of .partstyle/. */
+export const REVIEW_MODE_FILE = ".partstyle/review.json";
+
+export type ReviewMode = "auto" | "accept";
 
 const commentsHeader = `# Review comments from the Partstyle viewer, versioned with the design.
 # The AI sees open ones through \`partstyle focus\` and \`partstyle overview\`.

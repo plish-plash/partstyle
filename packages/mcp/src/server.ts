@@ -2,7 +2,13 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { mcpInstructions, prompts, queryUsage, type TextResult } from "@partstyle/engine";
+import {
+  mcpInstructions,
+  PROJECT_FILE,
+  prompts,
+  queryUsage,
+  type TextResult,
+} from "@partstyle/engine";
 import { type Projects, readGrammarReference, Workspace } from "@partstyle/engine/node";
 import { z } from "zod";
 
@@ -14,7 +20,7 @@ const reply = (r: TextResult) => ({
 const readOnly = { readOnlyHint: true, openWorldHint: false } as const;
 
 const isProject = (dir: string) =>
-  stat(path.join(dir, "project.toml")).then(
+  stat(path.join(dir, PROJECT_FILE)).then(
     (s) => s.isFile(),
     () => false,
   );
@@ -46,7 +52,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
   let triedRoots = false;
 
   const open = async (root: string): Promise<string | undefined> => {
-    ws = new Workspace(root);
+    ws = projects ? projects.workspace(root) : new Workspace(root);
     await projects?.remember(ws.root);
     return opts.onOpen?.(ws);
   };
@@ -164,26 +170,18 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     server.registerTool(
       "init_project",
       {
-        description: `Create a project (project.toml, context.md, circuit/, notes/) and open it. In ${projects.dir} unless path is given.`,
+        description: `Create a project (${PROJECT_FILE}, circuit/, notes/) and open it. In ${projects.dir} unless path is given.`,
         inputSchema: {
           name: z.string().describe("Project and folder name"),
           path: z.string().optional().describe("Folder for it instead"),
-          library_paths: z
-            .array(z.string())
-            .optional()
-            .describe("Part-library folders (default: the shared library/)"),
         },
         annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async ({ name, path: folder, library_paths }) => {
-        const target = new Workspace(projects.resolve(folder ?? name));
+      async ({ name, path: folder }) => {
+        const target = projects.workspace(projects.resolve(folder ?? name));
         const refused = projects.refuseNew(target.root);
         if (refused) return reply({ ok: false, text: refused });
-        if (library_paths === undefined) await projects.ensureLibrary();
-        const created = await target.init({
-          name,
-          libraryPaths: library_paths ?? [projects.libraryDir],
-        });
+        const created = await target.init({ name });
         if (!created.ok) return reply(created);
         return reply(await opened(target.root, [created.text]));
       },
@@ -192,24 +190,13 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     server.registerTool(
       "init_project",
       {
-        description:
-          "Create a project skeleton (project.toml, context.md, circuit/, notes/, CLAUDE.md) in this server's folder. Fails if one exists.",
+        description: `Create a project skeleton (${PROJECT_FILE}, circuit/, notes/, CLAUDE.md) in this server's folder. Fails if one exists.`,
         inputSchema: {
           name: z.string().optional().describe("Defaults to the folder name"),
-          library_paths: z
-            .array(z.string())
-            .optional()
-            .describe("Global part-library folders, absolute or relative to the project"),
         },
         annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
-      async ({ name, library_paths }) =>
-        run((w) =>
-          w.init({
-            ...(name !== undefined && { name }),
-            ...(library_paths !== undefined && { libraryPaths: library_paths }),
-          }),
-        ),
+      async ({ name }) => run((w) => w.init({ ...(name !== undefined && { name }) })),
     );
   }
 
@@ -276,7 +263,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
   server.registerTool(
     "read_doc",
     {
-      description: "Read context.md or a notes/*.md file.",
+      description: `Read ${PROJECT_FILE} or a notes/*.md file.`,
       inputSchema: { file: z.string() },
       annotations: readOnly,
     },
@@ -286,8 +273,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
   server.registerTool(
     "write_doc",
     {
-      description:
-        "Replace context.md or a notes/*.md file with text; for context.md, reports its issues.",
+      description: `Replace ${PROJECT_FILE} or a notes/*.md file with text; for the project file, reports its issues (and refuses one that would not load).`,
       inputSchema: { file: z.string(), text: z.string() },
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
@@ -327,7 +313,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "part_put",
     {
       description:
-        "Create or update a part record (YAML, validated against the schema; run 'partstyle schema part' for it). Leave provenance.verified_by null: only a human verifies.",
+        "Create or update a part record (YAML, validated against the schema; run 'partstyle schema part' for it). Leave provenance.verified_by null: only a human verifies. To remove a record, ask the person to delete its file; never blank it.",
       inputSchema: {
         record: z.string().describe("The full YAML record"),
         scope: z
@@ -354,7 +340,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "kicad_export",
     {
       description:
-        "Write kicad/ (schematic, symbols, netlist; never the PCB) and verify it with kicad-cli (netlist round-trip, ERC). Needs a design without errors.",
+        "Write kicad/ (schematic, symbols, netlist; never the PCB) and verify it with kicad-cli (netlist round-trip, ERC). Needs a design without errors. Only when asked.",
       inputSchema: {
         check: z.boolean().optional().describe("Run kicad-cli checks (default true)"),
       },
@@ -379,15 +365,12 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     },
     async ({ path: source, new_project }) => {
       if (projects && typeof new_project === "string") {
-        const target = new Workspace(projects.resolve(new_project));
+        const target = projects.workspace(projects.resolve(new_project));
         const refused = (await isProject(target.root))
           ? `${target.root} is already a project`
           : projects.refuseNew(target.root);
         if (refused) return reply({ ok: false, text: refused });
-        await projects.ensureLibrary();
-        const imported = await target.kicadImport(path.resolve(projects.dir, source), {
-          libraryPaths: [projects.libraryDir],
-        });
+        const imported = await target.kicadImport(path.resolve(projects.dir, source));
         return reply(imported.ok ? await opened(target.root, [imported.text]) : imported);
       }
       return run((w) => w.kicadImport(path.resolve(w.root, source)));
@@ -398,7 +381,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "bom_export",
     {
       description:
-        "Resolve generic parts to library MPNs (preferring the project's distributors), update bom.lock and write bom.csv.",
+        "Resolve generic parts to library MPNs (preferring the project's distributors), update bom.lock and write bom.csv. Only when asked.",
       annotations: { destructiveHint: false, openWorldHint: false },
     },
     async () => run((w) => w.bomExport()),

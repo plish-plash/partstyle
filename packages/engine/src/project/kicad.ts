@@ -57,20 +57,20 @@ async function windowsInstall(): Promise<string | undefined> {
   return undefined;
 }
 
+/** Absolute paths that override KiCad discovery (the `kicad` section of the user's settings). */
+export interface KicadOverrides {
+  cli?: string;
+  footprints?: string;
+  symbols?: string;
+}
+
 /**
- * Finds kicad-cli and the stock footprint libraries: project.toml [kicad] settings first, then
+ * Finds kicad-cli and the stock footprint libraries: the settings' overrides first, then
  * KICAD_CLI / KICAD*_FOOTPRINT_DIR, then PATH, then the platform's usual install location.
  * kicad-cli is often not on PATH on Windows.
  */
-export async function findKicad(
-  root: string,
-  overrides: {
-    cli?: string | undefined;
-    footprints?: string | undefined;
-    symbols?: string | undefined;
-  },
-): Promise<KicadInstall> {
-  let cli = overrides.cli ? path.resolve(root, overrides.cli) : process.env.KICAD_CLI;
+export async function findKicad(overrides: KicadOverrides = {}): Promise<KicadInstall> {
+  let cli = overrides.cli ?? process.env.KICAD_CLI;
   if (!cli) {
     for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
       if (dir && (await exists(path.join(dir, exe)))) {
@@ -91,7 +91,7 @@ export async function findKicad(
 
   /** A stock library folder (`footprints`, `symbols`) next to kicad-cli or in a system location. */
   const libraryDir = async (kind: string, override: string | undefined, envs: string[]) => {
-    if (override) return path.resolve(root, override);
+    if (override) return override;
     for (const e of envs) if (process.env[e]) return process.env[e];
     const candidates = [
       ...(cli

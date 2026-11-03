@@ -9,7 +9,7 @@ import { Workspace } from "./workspace.js";
 const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
 
 // Round-trip and ERC need kicad-cli; those tests are skipped without it.
-const kicad = await findKicad(process.cwd(), {});
+const kicad = await findKicad();
 
 let tmp: string;
 beforeEach(async () => {
