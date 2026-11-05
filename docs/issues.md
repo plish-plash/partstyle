@@ -32,6 +32,7 @@ part record says so, and a `bidir`, output-type or `nc` pin needs nothing unless
 | `part.draft`                                                     | warning                            | a KiCad import draft record is in use; complete or replace it          |
 | `part.overvoltage`                                               | error                              | a pin's `vmax` is below its net's voltage                              |
 | `part.cap-voltage`                                               | error over rating, else warning    | capacitor rated below the voltage across it, or under derating         |
+| `part.cap-polarity`                                              | error                              | a polarized capacitor's `+` is certainly below its `-`                 |
 | `part.requirement`                                               | warning                            | a datasheet requirement with a check is not met                        |
 | `context.temperature`                                            | warning                            | part outside context's temperature range                               |
 | `context.unknown-connector`, `context.invalid`                   | warning                            | interface names no part; the design context is malformed               |

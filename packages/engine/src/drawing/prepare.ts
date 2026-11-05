@@ -107,7 +107,7 @@ function chooseSymbols(
       const g =
         part.spec.kind === "lib"
           ? part.record && symbolForRecord(part.record)
-          : symbolForGeneric(part.spec.fn);
+          : symbolForGeneric(part.spec.fn, part.spec.args);
       if (!g) continue;
       pick = generatedSymbol(g);
     }

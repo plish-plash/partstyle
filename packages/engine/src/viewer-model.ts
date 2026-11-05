@@ -34,7 +34,7 @@ export interface PartInfo {
     /** Where the record lives, relative to the project. */
     file: string;
   };
-  bom: { status: "library" | "resolved" | "unresolved"; footprint?: string };
+  bom: { status: "library" | "resolved" | "unresolved" | "board"; footprint?: string };
   pins: { number: string; name: string; type: PinType; net?: string }[];
   /** The sign-off on this part, if any; `changed` when it has changed since. */
   approval?: Pick<Approval, "by" | "at"> & { status: "approved" | "changed" };
@@ -70,6 +70,7 @@ function partLinks(
   suppliers: readonly Supplier[],
 ): PartLink[] {
   const spec = part.spec;
+  if (spec.kind === "generic" && spec.fn === "fp") return []; // nothing to buy
   const term = r
     ? partName(r)
     : spec.kind === "lib"

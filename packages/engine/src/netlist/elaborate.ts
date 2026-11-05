@@ -1,6 +1,6 @@
 import type { CktFile, NetDecl, PartSpec, PortKind, UseDecl, WaiverDecl } from "../ckt/ast.js";
 import { globToRegExp, type Issue, type Location } from "../diagnostics.js";
-import { checkGenericArgs, generics } from "../parts/generic.js";
+import { checkGenericArgs, genericPins, generics } from "../parts/generic.js";
 import type { PartLibrary } from "../parts/library.js";
 import type { PartRecord, PinType } from "../parts/schema.js";
 
@@ -405,8 +405,7 @@ class Elaborator {
     }
     const problem = checkGenericArgs(spec.fn, spec.args);
     if (problem) this.error("elab.bad-generic", location, [path], problem);
-    const def = generics[spec.fn];
-    return def ? { pins: def.pins } : undefined;
+    return generics[spec.fn] ? { pins: genericPins(spec.fn, spec.args) } : undefined;
   }
 
   /** A pin token matches a pin number exactly, otherwise every pin with that name (e.g. all GND pins). */

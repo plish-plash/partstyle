@@ -28,6 +28,12 @@ waive SUBJECT CODE "reason"                       # suppress a warning
   voltage `16V`, current `1A`, power `0.1W`, tolerance `1%`, dielectric `X7R`/`C0G`, package
   `0603`/`SOD-123`. Values use SI prefixes: `330n`, `4k7`, `10uF`. A chip package (`0603`)
   gives the part a footprint even before it resolves to an MPN.
+- **Polarized capacitors**: `cap(100u, 25V, polarized)` has pins `+` (1) and `-` (2). It resolves
+  only to a polarized library part, which gives it its footprint.
+- **Footprints with nothing to buy**: `fp(Library:Footprint, [pins])`, for test points and solder
+  jumpers. Pins are numbered, default 1, up to 3:
+  `part TP1 fp(TestPoint:TestPoint_Pad_D1.5mm)`,
+  `part JP1 fp(Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm, 2)`. They stay out of the BOM.
 - **`nc`** says a pin stays open by design: `nc U2.GAIN1 @ open = gain 20`. A `*` in the pin
   (`nc U4.PB* @ spare GPIO`) covers the matching pins that are open. A pin named outright must not
   be on a net, and a power pin cannot be `nc`.
@@ -68,7 +74,7 @@ parent net (`PWR/VIN_RAW`). The top block is always `main`, in `circuit/main.ckt
 ## Conventions
 
 - Refdes prefixes: R, C, L, D (diodes and LEDs), Q, U (ICs), J (connectors), Y (crystals),
-  F (fuses), SW, TP. Unique within a block.
+  F (fuses), SW, TP (test points), JP (jumpers). Unique within a block.
 - Net names: rails as `+3V3`, `+5V`, `+12V`, `GND`; signals in UPPER_SNAKE_CASE.
 - Each block declares a port for everything crossing its boundary: `ground` for GND,
   `power_out` for rails it supplies, `power_in` for rails it consumes, and

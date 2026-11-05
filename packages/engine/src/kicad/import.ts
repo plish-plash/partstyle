@@ -6,6 +6,7 @@ import {
   checkGenericArgs,
   type GenericPin,
   genericFootprint,
+  genericPins,
   generics,
   parseGenericSpec,
   parseGenericText,
@@ -343,8 +344,20 @@ function resolve(c: KicadComp, kpins: KicadPin[], byMpn: Map<string, PartRecord>
         if (edited && "args" in edited) args[0] = edited.args[0] as string;
       }
       if (c.footprint === "" || genericFootprint(parsed) === c.footprint) {
-        return { spec: { kind: "generic", fn, args }, pins: def.pins, how: "spec" };
+        return { spec: { kind: "generic", fn, args }, pins: genericPins(fn, args), how: "spec" };
       }
+    }
+  }
+
+  // Test points and solder jumpers are footprints with nothing to buy.
+  if (/^(TestPoint|SolderJumper)/.test(c.part) && c.footprint !== "" && kpins.length <= 3) {
+    const args = [c.footprint, ...(kpins.length > 1 ? [String(kpins.length)] : [])];
+    if (kpins.every((p) => genericPins("fp", args).some((q) => q.number === p.num))) {
+      return {
+        spec: { kind: "generic", fn: "fp", args },
+        pins: genericPins("fp", args),
+        how: "generic",
+      };
     }
   }
 
@@ -683,8 +696,8 @@ export function buildImport(input: ImportInput): ImportResult {
     }
   }
 
-  // Pin tokens: the pin name when it is a plain word, names one pin (or pins all on one net)
-  // and is not another pin's number; otherwise the number.
+  // Pin tokens: the pin name when it is a plain word or a polarity sign, names one pin (or pins
+  // all on one net) and is not another pin's number; otherwise the number.
   for (const m of models.values()) {
     const netOf = new Map<string, number>();
     m.nets.forEach((n, i) => {
@@ -696,7 +709,7 @@ export function buildImport(input: ImportInput): ImportResult {
         const same = p.res.pins.filter((x) => x.name === pin.name);
         const nets = new Set(same.map((x) => netOf.get(`${p.ref}.${x.number}`) ?? `nc${x.number}`));
         const ok =
-          safeToken.test(pin.name) &&
+          (safeToken.test(pin.name) || pin.name === "+" || pin.name === "-") &&
           (pin.name === pin.number || !numbers.has(pin.name)) &&
           (same.length === 1 || nets.size === 1);
         p.token.set(pin.number, ok ? pin.name : pin.number);
@@ -1017,7 +1030,7 @@ function pinNets(b: CktFile, library: PartLibrary): Map<string, string> {
             const r = library.get(p.spec.id)?.record;
             return r ? recordPins(r) : [];
           })()
-        : (generics[p.spec.fn]?.pins ?? []);
+        : genericPins(p.spec.fn, p.spec.args);
     tables.set(p.ref, pins);
   }
   const out = new Map<string, string>();

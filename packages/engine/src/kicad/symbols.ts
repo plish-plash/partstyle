@@ -1,3 +1,4 @@
+import { genericPins, parseGenericSpec } from "../parts/generic.js";
 import { type PartRecord, type PinType, partName } from "../parts/schema.js";
 import { type SExpr, sym, yesNo } from "./sexpr.js";
 
@@ -260,7 +261,22 @@ function refPrefixFor(record: PartRecord): string {
 }
 
 /** Symbols for generic parts: two-terminal passives drawn vertically, diodes horizontally. */
-export function symbolForGeneric(fn: string): GeneratedSymbol | undefined {
+export function symbolForGeneric(fn: string, args: string[] = []): GeneratedSymbol | undefined {
+  if (fn === "fp") {
+    const pins = genericPins(fn, args);
+    return symbolForRecord({
+      id: `fp${pins.length}`,
+      summary: "Board footprint",
+      manufacturer: "",
+      package: "",
+      footprint: "",
+      pins: Object.fromEntries(pins.map((p) => [p.number, { name: p.name, type: p.type }])),
+      provenance: { extracted_by: "ai", verified_by: null },
+      extras: [],
+    });
+  }
+  const polarized = parseGenericSpec(fn, args)?.polarized === true;
+  const name = polarized ? "cap_polarized" : fn;
   const vertical = (refPrefix: string, description: string, graphics: SExpr[][]) => {
     const pins = new Map<string, PinAnchor>([
       ["1", { x: 0, y: 3.81, outward: 90 }],
@@ -268,10 +284,10 @@ export function symbolForGeneric(fn: string): GeneratedSymbol | undefined {
     ]);
     const box = { minX: -1.27, maxX: 1.27, minY: -3.81, maxY: 3.81 };
     return {
-      name: fn,
+      name,
       def: symbolDef(
-        fn,
-        { refPrefix, value: fn, description, showPinNames: false, showPinNumbers: false, box },
+        name,
+        { refPrefix, value: name, description, showPinNames: false, showPinNumbers: false, box },
         graphics,
         [...pins].map(([n, a]) => pinExpr("passive", "", n, a, 1.27)),
       ),
@@ -341,6 +357,18 @@ export function symbolForGeneric(fn: string): GeneratedSymbol | undefined {
           [0, -2.54],
           [0, -0.762],
         ]),
+        ...(polarized
+          ? [
+              polyline([
+                [-1.778, 1.524],
+                [-0.762, 1.524],
+              ]),
+              polyline([
+                [-1.27, 2.032],
+                [-1.27, 1.016],
+              ]),
+            ]
+          : []),
       ]);
     case "diode":
       return diode("D", "Diode", []);

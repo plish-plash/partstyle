@@ -887,7 +887,8 @@ export class Workspace {
         });
         x.issues.push(...(await checkFootprints(entries, footprints)));
         for (const e of x.bom.entries) {
-          if (e.status !== "unresolved" || e.footprint === undefined) continue;
+          if (e.status === "library" || e.status === "resolved") continue;
+          if (e.footprint === undefined) continue;
           if (!(await footprintPads(footprints, e.footprint))) {
             x.issues.push({
               code: "part.footprint-missing",

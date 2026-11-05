@@ -151,6 +151,8 @@ Besides structural ERC, every validate (and so every `apply`) runs:
 - **Pin limits.** A pin with `vmax` in its part record is checked against its net's voltage:
   the `voltage` attribute (`5V`, `12V ±10%`, `0-3.3V`), else 0 V for ground nets, else what a
   rail's name says (`+3V3` is 3.3 V). A net with none of these is not checked.
+- **Capacitor polarity.** A polarized capacitor whose `+` net is entirely below its `-` net, when
+  both voltages are known, is an error.
 - **Capacitor ratings.** A capacitor with a voltage (a generic's argument, or its record's
   `generic` field) is an error when the voltage across it exceeds the rating, and a warning when
   the rating is under `checks.cap_derating` (default 1.5) times that voltage.

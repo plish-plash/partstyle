@@ -63,6 +63,20 @@ export function partChecks(netlist: Netlist, options: PartCheckOptions): Issue[]
 
     // Capacitor voltage rating against what it sees.
     const spec = passiveSpec(part);
+    if (spec?.polarized && part.pins.length === 2) {
+      const [plus, minus] = part.pins.map(netOf);
+      const high = plus && netVoltage(plus);
+      const low = minus && netVoltage(minus);
+      if (plus && minus && high && low && high.max < low.min) {
+        issues.push({
+          code: "part.cap-polarity",
+          severity: "error",
+          message: `${part.path} is polarized, but + is on ${plus.name} (${volts(high.max)}), below - on ${minus.name} (${volts(low.min)})`,
+          location: part.location,
+          subjects: [part.path],
+        });
+      }
+    }
     if (spec?.fn === "cap" && spec.voltage !== undefined && part.pins.length === 2) {
       const [a, b] = part.pins.map(netOf);
       const va = a && netVoltage(a);

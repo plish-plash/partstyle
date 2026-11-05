@@ -40,6 +40,11 @@ const libparts: Record<string, [num: string, name: string, type: string][]> = {
     ["3", "Pin_3", "passive"],
   ],
   PWR_FLAG: [["1", "pwr", "power_out"]],
+  TestPoint: [["1", "1", "passive"]],
+  SolderJumper_2_Open: [
+    ["1", "A", "passive"],
+    ["2", "B", "passive"],
+  ],
 };
 
 /** A kicadsexpr netlist as `kicad-cli sch export netlist` writes it, cut down to what import reads. */
@@ -314,6 +319,26 @@ describe("buildImport", () => {
     expect(issue?.message).toMatch(
       /^lib:C_100n \(CH_A\/C1 CH_B\/C1\) is a draft from KiCad import/,
     );
+  });
+
+  it("turns test points and solder jumpers into footprints, not drafts", () => {
+    const sheet = netlist(
+      [["/", "/", "top.kicad_sch"]],
+      [
+        { ref: "TP1", part: "TestPoint", uuid: "a1", footprint: "TestPoint:TP_Pad" },
+        { ref: "JP1", part: "SolderJumper_2_Open", uuid: "a2", footprint: "Jumper:SJ_Open" },
+      ],
+      [
+        ["N", ["TP1.1", "JP1.1"]],
+        ["M", ["JP1.2"]],
+      ],
+    );
+    const x = buildImport(
+      input({ sheets: new Map([["top.kicad_sch", parseNetlistForImport(sheet)]]) }),
+    );
+    expect(x.drafts).toEqual([]);
+    expect(text(x, "main")).toContain("part TP1 fp(TestPoint:TP_Pad)");
+    expect(text(x, "main")).toContain("part JP1 fp(Jumper:SJ_Open, 2)");
   });
 
   it("adds footprint pads the symbol lacks to drafts as nc pins", () => {

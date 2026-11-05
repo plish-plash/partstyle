@@ -1,6 +1,7 @@
 import type { LibField } from "../kicad/libsym.js";
 import { powerRotation, powerValueAt } from "../kicad/power.js";
 import type { FlatPart } from "../netlist/elaborate.js";
+import { genericValue } from "../parts/generic.js";
 import { partName } from "../parts/schema.js";
 import type { Attachment, Group } from "./groups.js";
 import {
@@ -81,7 +82,7 @@ export const valueText = (part: FlatPart) =>
     ? part.record
       ? partName(part.record)
       : part.spec.id
-    : (part.spec.args[0] ?? part.spec.fn);
+    : genericValue(part.spec.fn, part.spec.args);
 
 /** Room for a two-terminal part's reference and value, drawn to its right. */
 const textRoom = (n: Node) =>

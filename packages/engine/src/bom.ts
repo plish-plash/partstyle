@@ -3,6 +3,7 @@ import type { Issue } from "./diagnostics.js";
 import type { FlatPart, Netlist } from "./netlist/elaborate.js";
 import {
   genericFootprint,
+  genericValue,
   parseGenericSpec,
   parseGenericText,
   satisfies,
@@ -18,7 +19,8 @@ export interface BomEntry {
   spec: string;
   /** The library record: the part's own, or the one a generic resolved to. */
   record?: PartRecord;
-  status: "library" | "resolved" | "unresolved";
+  /** `board`: a footprint with nothing to buy, such as a test point. */
+  status: "library" | "resolved" | "unresolved" | "board";
   footprint?: string;
   /** KiCad Value field. */
   value: string;
@@ -92,8 +94,13 @@ export function resolveBom(
     }
 
     const need = parseGenericSpec(part.spec.fn, part.spec.args);
-    const value = part.spec.args[0] ?? part.spec.fn;
+    const value = genericValue(part.spec.fn, part.spec.args);
     if (!need) continue; // unknown generic: already an elaboration error
+    if (need.fn === "fp") {
+      const footprint = genericFootprint(need);
+      entries.push({ part, spec, status: "board", value, ...(footprint && { footprint }) });
+      continue;
+    }
     const fits = offers.filter((o) => satisfies(o.spec, need));
     const locked = previous.get(part.path);
     let chosen = locked?.spec === spec ? fits.find((o) => o.record.id === locked.id) : undefined;
@@ -168,6 +175,7 @@ export function formatBomCsv(
 ): string {
   const groups = new Map<string, BomEntry[]>();
   for (const e of entries) {
+    if (e.status === "board") continue;
     const key = e.record ? `lib:${e.record.id}` : `${e.spec}|${e.footprint ?? ""}`;
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }

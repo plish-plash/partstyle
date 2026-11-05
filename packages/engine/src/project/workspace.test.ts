@@ -302,6 +302,77 @@ describe("Workspace.init", () => {
   });
 });
 
+describe("polarized capacitors and board footprints", () => {
+  const fresh = async (name: string, main: string) => {
+    const dir = path.join(tmp, name);
+    const w = new Workspace(dir, { stateDir });
+    await w.init();
+    await writeFile(path.join(dir, "circuit/main.ckt"), `block main "t"\n${main}`);
+    return { w, dir };
+  };
+  const design = `part C1 cap(100u, 25V, polarized)
+part TP1 fp(TestPoint:TestPoint_Pad_D1.5mm)
+part JP1 fp(Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm, 2)
+part R1 res(1k, 1%, 0603)
+net +5V : C1.+ JP1.1 {source: bench}
+net SW : JP1.2 R1.1 TP1.1
+net GND : C1.- R1.2 {source: bench}
+`;
+
+  it("connects them by the pin names and numbers the grammar gives", async () => {
+    const { w } = await fresh("fp-names", design);
+    expect((await w.validate()).text).toBe("fp-names: 0 errors, 0 warnings");
+    expect((await w.query("part C1")).text).toMatch(/1 \+ passive -> \+5V\n {2}2 - passive -> GND/);
+    expect((await w.query("part JP1")).text).toContain("2 2 passive -> SW");
+  });
+
+  it("errors when a polarized capacitor is certainly reversed", async () => {
+    const reversed = design
+      .replace("C1.+ JP1.1", "C1.- JP1.1")
+      .replace("net GND : C1.-", "net GND : C1.+");
+    const { w } = await fresh("fp-reversed", reversed);
+    expect((await w.validate()).text).toContain(
+      "error part.cap-polarity C1 is polarized, but + is on GND (0V), below - on +5V (5V)",
+    );
+  });
+
+  it("rejects a bad footprint argument", async () => {
+    for (const bad of ["fp(nofootprint)", "fp(A:B, 4)", "fp(A:B, x)", "fp(A:B, 2, 3)"]) {
+      const { w } = await fresh(`fp-bad-${bad.length}${bad.at(-2)}`, `part TP1 ${bad}\n`);
+      expect((await w.validate()).text).toContain("elab.bad-generic");
+    }
+  });
+
+  it("keeps footprints out of the BOM and the supplier links", async () => {
+    const { w, dir } = await fresh("fp-bom", design);
+    expect((await w.bomExport()).ok).toBe(true);
+    const csv = await readFile(path.join(dir, "bom.csv"), "utf8");
+    expect(csv).toContain("polarized");
+    expect(csv).not.toContain("TestPoint");
+    expect(csv).not.toContain("SolderJumper");
+    const { parts } = await w.viewerModel();
+    expect(parts.TP1?.links).toEqual([]);
+    expect(parts.TP1?.value).toBe("TestPoint");
+    expect(parts.TP1?.bom.status).toBe("board");
+    expect(parts.C1?.links.length).toBe(3);
+  });
+
+  it.skipIf(!kicad.cli)("exports to KiCad and imports back unchanged", async () => {
+    const { w, dir } = await fresh("fp-kicad", design);
+    const out = await w.kicadExport();
+    expect(out.text).toContain("round-trip: KiCad's netlist from the schematic matches the design");
+    expect(out.text).toContain("Device:C_Polarized");
+    expect(out.text).toContain("Connector:TestPoint");
+    expect(out.text).toContain("Jumper:SolderJumper_2_Open");
+    const sch = await readFile(path.join(dir, "kicad/fp-kicad.kicad_sch"), "utf8");
+    expect(sch).toMatch(/lib_id "Connector:TestPoint"\)[\s\S]*?\(in_bom no\)/);
+    const back = await w.kicadImport(path.join(dir, "kicad/fp-kicad.kicad_pro"), {
+      replace: true,
+    });
+    expect(back.text).toContain("changes: none to the circuit");
+  });
+});
+
 describe("approvals", () => {
   const fresh = async (name: string) => {
     const dir = path.join(tmp, name);

@@ -286,7 +286,7 @@ export function writeSchematics(drawing: Drawing): SchematicOutput {
         ["unit", u.unit],
         ["body_style", 1],
         ["exclude_from_sim", yesNo(false)],
-        ["in_bom", yesNo(true)],
+        ["in_bom", yesNo(entry?.status !== "board")],
         ["on_board", yesNo(true)],
         ["in_pos_files", yesNo(true)],
         ["dnp", yesNo(false)],

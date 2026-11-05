@@ -1,5 +1,5 @@
 import type { FlatPart } from "../netlist/elaborate.js";
-import { parseGenericSpec } from "../parts/generic.js";
+import { genericPins, parseGenericSpec } from "../parts/generic.js";
 import type { PartRecord } from "../parts/schema.js";
 import type { SymbolLib } from "./power.js";
 import { child, children, type SExpr, value } from "./sexpr.js";
@@ -62,8 +62,16 @@ function fieldOf(def: SExpr[], name: string): LibField | undefined {
 /** Key shared by every part that uses the same symbol: `lib:L7805CV`, `generic:diode:schottky`. */
 export function symbolKey(part: FlatPart): string {
   if (part.spec.kind === "lib") return `lib:${part.spec.id}`;
-  const kind = part.spec.fn === "diode" ? (part.spec.args[0] ?? "").toLowerCase() : "";
-  return `generic:${part.spec.fn}${kind ? `:${kind}` : ""}`;
+  const { fn, args } = part.spec;
+  const kind =
+    fn === "diode"
+      ? (args[0] ?? "").toLowerCase()
+      : fn === "fp"
+        ? genericSymbolId(fn, args)
+        : parseGenericSpec(fn, args)?.polarized
+          ? "polarized"
+          : "";
+  return `generic:${fn}${kind ? `:${kind}` : ""}`;
 }
 
 /** KiCad's Device-library symbol for a generic part. */
@@ -72,7 +80,7 @@ export function genericSymbolId(fn: string, args: string[]): string | undefined 
     case "res":
       return "Device:R";
     case "cap":
-      return "Device:C";
+      return parseGenericSpec(fn, args)?.polarized ? "Device:C_Polarized" : "Device:C";
     case "ind":
       return "Device:L";
     case "led":
@@ -83,6 +91,13 @@ export function genericSymbolId(fn: string, args: string[]): string | undefined 
       if (kind === "zener") return "Device:D_Zener";
       if (kind === "tvs") return "Device:D_TVS";
       return "Device:D";
+    }
+    case "fp": {
+      const count = genericPins(fn, args).length;
+      const bridged = /Bridged/.test(args[0] ?? "");
+      if (count === 2) return `Jumper:SolderJumper_2_${bridged ? "Bridged" : "Open"}`;
+      if (count === 3) return `Jumper:SolderJumper_3_${bridged ? "Bridged12" : "Open"}`;
+      return "Connector:TestPoint";
     }
     default:
       return undefined;

@@ -24,6 +24,10 @@ const diodePins: GenericPin[] = [
   { number: "1", name: "K", type: "passive" },
   { number: "2", name: "A", type: "passive" },
 ];
+const polarizedPins: GenericPin[] = [
+  { number: "1", name: "+", type: "passive" },
+  { number: "2", name: "-", type: "passive" },
+];
 
 /** Built-in constraint parts, resolved to an MPN at BOM time. */
 export const generics: Record<string, GenericDef> = {
@@ -36,7 +40,7 @@ export const generics: Record<string, GenericDef> = {
   cap: {
     pins: twoPin,
     valueUnit: "F",
-    usage: "cap(value, [voltage], [dielectric], [tolerance], [package])",
+    usage: "cap(value, [voltage], [dielectric], [tolerance], [package], [polarized])",
     footprint: ["Capacitor_SMD", "C"],
   },
   ind: {
@@ -47,7 +51,30 @@ export const generics: Record<string, GenericDef> = {
   },
   led: { pins: diodePins, usage: "led(color, [package])", footprint: ["LED_SMD", "LED"] },
   diode: { pins: diodePins, usage: "diode(kind, [package])", footprint: ["Diode_SMD", "D"] },
+  fp: { pins: [], usage: "fp(Library:Footprint, [pins: 1 to 3])", footprint: ["", ""] },
 };
+
+const isPolarized = (arg: string) => /^polarized$/i.test(arg);
+
+/** A generic's pins: a polarized capacitor's are + and -, and a footprint's are numbered. */
+export function genericPins(fn: string, args: string[]): GenericPin[] {
+  if (fn === "cap" && args.some(isPolarized)) return polarizedPins;
+  if (fn === "fp") {
+    const count = Number(args[1] ?? 1);
+    return Array.from({ length: count }, (_, i) => {
+      const number = String(i + 1);
+      return { number, name: number, type: "passive" as const };
+    });
+  }
+  return generics[fn]?.pins ?? [];
+}
+
+/** The Value of a generic part: its first argument, or for a footprint what it is. */
+export function genericValue(fn: string, args: string[]): string {
+  const first = args[0] ?? fn;
+  if (fn !== "fp") return first;
+  return first.slice(first.indexOf(":") + 1).split(/[-_]/)[0] as string;
+}
 
 /** Imperial chip size → metric code used in KiCad footprint names. */
 const chipSizes: Record<string, string> = {
@@ -77,6 +104,7 @@ export interface GenericSpec {
   tolerance?: number;
   dielectric?: string;
   package?: string;
+  polarized?: true;
   /** Arguments that fit no category; they must match literally when resolving. */
   other: string[];
 }
@@ -87,6 +115,8 @@ export function parseGenericSpec(fn: string, args: string[]): GenericSpec | unde
   if (!def) return undefined;
   const spec: GenericSpec = { fn, other: [] };
   const [first, ...rest] = args;
+  // A footprint's name is case-sensitive and its only other argument is checked with it.
+  if (fn === "fp") return first === undefined ? spec : { ...spec, value: first };
   if (first !== undefined) {
     if (def.valueUnit === undefined) {
       spec.value = first.toLowerCase();
@@ -106,6 +136,7 @@ export function parseGenericSpec(fn: string, args: string[]): GenericSpec | unde
     else if (q?.unit === "V") spec.voltage = q.value;
     else if (q?.unit === "A") spec.current = q.value;
     else if (q?.unit === "W") spec.power = q.value;
+    else if (fn === "cap" && isPolarized(arg)) spec.polarized = true;
     else spec.other.push(arg);
   }
   return spec;
@@ -127,6 +158,7 @@ const sameNumber = (a: number, b: number) => Math.abs(a - b) <= Math.abs(b) * 1e
 /** Whether a concrete part (`offer`, from its record) meets every constraint in `need`. */
 export function satisfies(offer: GenericSpec, need: GenericSpec): boolean {
   if (offer.fn !== need.fn) return false;
+  if (offer.polarized !== need.polarized) return false;
   if (need.value !== undefined) {
     if (offer.value === undefined) return false;
     if (typeof need.value === "number") {
@@ -150,6 +182,9 @@ export function satisfies(offer: GenericSpec, need: GenericSpec): boolean {
 
 /** KiCad footprint for an unresolved generic chip part (`R_0603_1608Metric`), if its package says. */
 export function genericFootprint(spec: GenericSpec): string | undefined {
+  if (spec.fn === "fp") return typeof spec.value === "string" ? spec.value : undefined;
+  // A chip code doesn't describe a polarized capacitor's footprint: it needs a library record.
+  if (spec.polarized) return undefined;
   const def = generics[spec.fn];
   const metric = spec.package === undefined ? undefined : chipSizes[spec.package];
   if (!def || metric === undefined) return undefined;
@@ -165,6 +200,10 @@ export function checkGenericArgs(fn: string, args: string[]): string | undefined
   }
   const first = args[0];
   if (first === undefined) return `missing value; usage: ${def.usage}`;
+  if (fn === "fp") {
+    const fits = /^[^:\s]+:[^:\s]+$/.test(first) && /^[123]?$/.test(args[1] ?? "");
+    return fits && args.length <= 2 ? undefined : `usage: ${def.usage}`;
+  }
   if (def.valueUnit !== undefined) {
     const q = parseQuantity(first);
     // A bare number with a prefix (330n) is fine; an explicit unit must be the right one.
