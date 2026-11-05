@@ -51,6 +51,10 @@ export const resolveComment = (id: string) =>
 
 export const verifyPart = (id: string) => post<{ ok: boolean; text: string }>("api/verify", { id });
 
+/** Signs off parts by flat path, or with `undo` takes that back. */
+export const approve = (parts: string[], undo: boolean, variant?: string) =>
+  post<Result>("api/approve", { parts, undo, variant });
+
 /** A layout edit to a part or child sheet: see `Workspace.setLayout`. */
 export type LayoutOp = "rotate" | "flip" | "earlier" | "later" | "reset";
 

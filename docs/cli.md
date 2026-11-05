@@ -31,6 +31,7 @@ overwritten.
 | ------------------------ | ------------------------------------------------------------------ |
 | `partstyle-project.yaml` | name, description, design context to fill in, settings (see below) |
 | `circuit/main.ckt`       | an empty top block                                                 |
+| `approvals.yaml`         | parts signed off (see `approve`), once there are any               |
 | `notes/design.md`        | how the design works now, kept up to date                          |
 | `notes/decisions.md`     | decisions made with the person; append-only (see `decision`)       |
 | `notes/pcb.md`           | layout notes, written at hand-off                                  |
@@ -52,16 +53,16 @@ partstyle init boards/thermo --name thermo
 
 `partstyle-project.yaml` marks a folder as a Partstyle project. It is plain YAML:
 
-| Key                     | Meaning                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------ |
-| `partstyle_version`     | the Partstyle version that created the project (written by `init`)             |
-| `name`                  | the project's name (required)                                                  |
-| `description`           | one or two sentences; `overview` leads with it                                 |
-| `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes     |
-| `assembly`, others      | free-form context for people and design review                                 |
-| `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards` |
-| `sourcing.distributors` | preferred distributors for `bom export`: `lcsc`, `digikey`, `mouser`           |
-| `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                |
+| Key                   | Meaning                                                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `partstyle_version`   | the Partstyle version that created the project (written by `init`)                                                    |
+| `name`                | the project's name (required)                                                                                         |
+| `description`         | one or two sentences; `overview` leads with it                                                                        |
+| `environment`         | `temp_c: [min, max]` is checked against part records; other keys are notes                                            |
+| `assembly`, others    | free-form context for people and design review                                                                        |
+| `external_interfaces` | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                        |
+| `sourcing.suppliers`  | suppliers to use, in order: `lcsc`, `digikey`, `mouser`. `bom export` prefers them, and the viewer links only to them |
+| `checks.cap_derating` | capacitor voltage derating factor (default 1.5)                                                                       |
 
 `external_interfaces` lists every connection to the outside world, the power input included:
 what the person says the board will face at each connector. Hazards are for the AI and design
@@ -125,8 +126,9 @@ missing the field never matches. A field no part or net in the design could have
 misspelt one, fails and lists the fields that exist.
 
 - Part fields: `path id preferred_mpn manufacturer package footprint kind fn value verified
-  intent` and every rating in the part record (`vin_max`, or `vout.max` for a nested one).
+  approved intent` and every rating in the part record (`vin_max`, or `vout.max` for a nested one).
   `verified` is `yes` or `no` (`true` and `false` also work) and only library parts have it.
+  `approved` is `yes`, `no` or `changed`.
 - Net fields: `name pins` (pin count) and every net attribute (`voltage`, `source`, ...).
 - REF and NAME may omit the instance path when unambiguous (`U1` for `PWR/U1`).
 
@@ -177,6 +179,15 @@ YAML, or no `name`) is refused and nothing is written; otherwise the issues it n
 `notes/decisions.md` is append-only, so `doc write` refuses it. A description over about 200
 characters or several lines long gets a note that the design overview belongs in
 `notes/design.md`.
+
+### `approve all|REF...|where COND` / `unapprove ...`
+
+Signs off parts, or takes that back. Parts are named by refdes, or by `query` conditions
+(`approve where fn = res`). This is mainly the person's job in the viewer, where each sign-off
+records them; from here it records the AI. An approval is per placed part in `approvals.yaml` and
+covers the part's spec and the net on each pin, not its layout or intent. If either changes the
+part shows as changed since approved, and reverting the change restores the approval. A variant
+uses main's approvals until it makes its own.
 
 ### `decision TEXT...`
 
@@ -254,13 +265,13 @@ requirements:
 Resolves every generic part to a library record whose `generic` field meets each constraint:
 same value, voltage/current/power at least as high, tolerance at least as tight, same
 dielectric and package when given. Among matches it prefers parts stocked by the preferred
-distributors in the project file (`sourcing.distributors`, in order), then the lowest voltage
+suppliers in the project file (`sourcing.suppliers`, in order), then the lowest voltage
 rating, then id. Writes:
 
 - `bom.lock`: how each generic resolved. A choice is kept until the part's spec changes or the
   record stops fitting; delete a line to re-resolve it.
 - `bom.csv`: one row per distinct part with references, quantity, value, spec, manufacturer,
-  MPN, footprint, a part-number column per preferred distributor, and notes (unresolved
+  MPN, footprint, a part-number column per preferred supplier, and notes (unresolved
   generics, unverified records).
 
 Unresolved generics are reported as `bom.unresolved` warnings and keep a footprint derived from
@@ -309,7 +320,7 @@ from the pin table into `partstyle.kicad_sym`. The export lists which KiCad symb
 why any part got a generated one. A `kicad_symbol` that cannot be used is a
 `kicad.symbol-fallback` warning.
 
-Symbols carry MPN, Manufacturer, Spec and distributor fields, so KiCad's own BOM tools work
+Symbols carry MPN, Manufacturer, Spec and supplier fields, so KiCad's own BOM tools work
 too. Before writing, the layout's connectivity is re-derived from its geometry and compared with
 the design; a difference is reported as a `layout.connectivity` error (a layout bug).
 

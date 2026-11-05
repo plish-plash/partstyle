@@ -56,11 +56,30 @@ async function layout(op: api.LayoutOp) {
     layoutMessage = String(e);
   }
 }
+const partPaths = $derived(Object.keys(model?.parts ?? {}));
+const isApproved = (p: string) => model?.parts[p]?.approval?.status === "approved";
+const approvedCount = $derived(partPaths.filter(isApproved).length);
+/** Selects the next part still to sign off, after the one selected. */
+function nextToApprove() {
+  const from = partPaths.indexOf(selection[0] ?? "");
+  const order = [...partPaths.slice(from + 1), ...partPaths.slice(0, from + 1)];
+  const next = order.find((p) => !isApproved(p));
+  if (next) show([next]);
+}
+function approveSelected() {
+  const paths = selection.filter((s) => model?.parts[s] && !isApproved(s));
+  if (paths.length > 0) void api.approve(paths, false, variant);
+}
 const shortcuts: Record<string, api.LayoutOp> = { r: "rotate", f: "flip", "[": "earlier", "]": "later" };
 function key(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.toLowerCase() === "a") {
+    e.preventDefault();
+    approveSelected();
+    return;
+  }
   const op = shortcuts[e.key.toLowerCase()];
   if (op && layoutTarget) {
     e.preventDefault();
@@ -190,6 +209,11 @@ function showChange(c: { block: string; kind: string; key: string }) {
     <span class="chip" class:bad={model.summary.errors > 0}>{model.summary.errors} errors</span>
     <span class="chip" class:meh={model.summary.warnings > 0}>{model.summary.warnings} warnings</span>
     {#if model.summary.waived > 0}<span class="chip muted">{model.summary.waived} waived</span>{/if}
+    {#if partPaths.length > 0}
+      <button class="chip approvals" title="Go to the next part to sign off" onclick={nextToApprove}>
+        {approvedCount}/{partPaths.length} approved
+      </button>
+    {/if}
   {/if}
   <nav>
     {#each pages as p (p.prefix)}

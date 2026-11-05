@@ -55,6 +55,17 @@ async function comment() {
     busy = false;
   }
 }
+const selectedParts = $derived(selection.filter((s) => model.parts[s]));
+async function approve(paths: string[], undo = false) {
+  busy = true;
+  try {
+    message = (await api.approve(paths, undo, model.variant)).text;
+  } catch (e) {
+    message = String(e);
+  } finally {
+    busy = false;
+  }
+}
 async function verify(id: string) {
   busy = true;
   try {
@@ -74,6 +85,23 @@ async function verify(id: string) {
     <h2>{part.ref} <small>{part.path}</small></h2>
     <p class="spec"><code>{part.spec}</code> — {part.value}</p>
     {#if part.intent}<p class="intent">@ {part.intent}</p>{/if}
+    <div class="approval">
+      {#if part.approval?.status === "approved"}
+        <span class="ok">✓ Approved</span>
+        <small>{part.approval.by === "person" ? "by you" : "by the AI"} {part.approval.at}</small>
+        <button disabled={busy} onclick={() => approve([part.path], true)}>Undo</button>
+      {:else}
+        {#if part.approval}<span class="warn">Changed since approved</span>{/if}
+        <button class="primary" disabled={busy} title="Shortcut A" onclick={() => approve([part.path])}>
+          {part.approval ? "Approve again" : "Approve"}
+        </button>
+      {/if}
+    </div>
+    <p class="links">
+      {#each part.links as l (l.label)}
+        <a href={l.url} target="_blank" rel="noreferrer">{l.label}</a>
+      {/each}
+    </p>
     {#if part.record}
       {@const r = part.record}
       <dl>
@@ -93,10 +121,6 @@ async function verify(id: string) {
           {/if}
           <small>{r.file}</small>
         </dd>
-        {#if r.datasheet}
-          <dt>Datasheet</dt>
-          <dd><a href={r.datasheet} target="_blank" rel="noreferrer">open</a></dd>
-        {/if}
       </dl>
       {#if Object.keys(r.ratings).length > 0}
         <h3>Ratings</h3>
@@ -199,7 +223,12 @@ async function verify(id: string) {
       <textarea bind:value={draft} placeholder={`Comment on ${subject} for the AI…`} rows="3"></textarea>
       <button type="submit" disabled={busy || !draft.trim()}>Add comment</button>
     </form>
-    {#if selection.length > 1}<p class="muted">{selection.length} items selected: {selection.join(", ")}</p>{/if}
+    {#if selection.length > 1}
+      <p class="muted">{selection.length} items selected: {selection.join(", ")}</p>
+      {#if selectedParts.length > 1}
+        <button disabled={busy} onclick={() => approve(selectedParts)}>Approve {selectedParts.length} parts</button>
+      {/if}
+    {/if}
   {/if}
   {#if message}<p class="message">{message}</p>{/if}
 </section>

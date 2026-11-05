@@ -302,6 +302,138 @@ describe("Workspace.init", () => {
   });
 });
 
+describe("approvals", () => {
+  const fresh = async (name: string) => {
+    const dir = path.join(tmp, name);
+    const w = new Workspace(dir, { stateDir });
+    await w.init();
+    const main =
+      'block main "t"\npart R1 res(1k)\npart R2 res(2k)\npart C1 cap(1u)\nnet A : R1.1 R2.1 C1.1\nnet B : R1.2 R2.2 C1.2\n';
+    await writeFile(path.join(dir, "circuit/main.ckt"), main);
+    return { w, dir };
+  };
+  const q = async (w: Workspace, expr: string) => (await w.query(expr)).text;
+
+  it("approves by refdes or condition, and shows it in query and overview", async () => {
+    const { w, dir } = await fresh("sign-off");
+    expect((await w.approve("where fn = res", { by: "ai" })).text).toBe("approved 2 parts: R1 R2");
+    expect(await q(w, "parts where approved = yes")).toMatch(/^2 parts\n/);
+    expect(await q(w, "parts where approved = no")).toMatch(/^1 part\nC1 /);
+    expect((await w.overview()).text).toContain("approved: 2 of 3 parts\n");
+    const file = await readFile(path.join(dir, "approvals.yaml"), "utf8");
+    expect(file).toContain("snapshot: ");
+    expect(file).toContain("by: ai");
+    await w.approve("C1", { by: "person" });
+    expect(await readFile(path.join(dir, "approvals.yaml"), "utf8")).toContain("by: person");
+    expect((await w.approve("R1 C1", { by: "ai", undo: true })).text).toBe(
+      "unapproved 2 parts: R1 C1",
+    );
+    expect(await q(w, "parts where approved = yes")).toMatch(/^1 part\nR2 /);
+  });
+
+  it("marks a part changed when its spec or nets change, and restores it on revert", async () => {
+    const { w, dir } = await fresh("sign-off-changed");
+    await w.approve("all", { by: "person" });
+    const main = path.join(dir, "circuit/main.ckt");
+    const text = await readFile(main, "utf8");
+    await writeFile(main, text.replace("res(1k)", "res(1.1k)"));
+    expect(await q(w, "parts where approved = changed")).toMatch(/^1 part\nR1 /);
+    expect((await w.overview()).text).toContain("approved: 2 of 3 parts, 1 changed since");
+    await writeFile(main, text);
+    expect(await q(w, "parts where approved != yes")).toBe("no matching parts");
+    await writeFile(
+      main,
+      text.replace("part C1 cap(1u) ", "part C1 cap(1u)").replace("R2.2 C1.2", "R2.2"),
+    );
+    expect(await q(w, "parts where approved = changed")).toMatch(/^1 part\nC1 /);
+  });
+
+  it("ignores layout and intent, and doesn't touch a part already approved", async () => {
+    const { w, dir } = await fresh("sign-off-layout");
+    await w.approve("R1", { by: "person" });
+    const main = path.join(dir, "circuit/main.ckt");
+    await writeFile(
+      main,
+      (await readFile(main, "utf8")).replace("res(1k)", "res(1k) [2 r90] @ pull-up"),
+    );
+    expect(await q(w, "parts where approved = yes")).toMatch(/^1 part\nR1 /);
+    await w.approve("all", { by: "ai" });
+    expect(await readFile(path.join(dir, "approvals.yaml"), "utf8")).toMatch(
+      /R1:\n[\s\S]*?by: person/,
+    );
+  });
+
+  it("gives the viewer each part's approval and lookup links", async () => {
+    const { w } = await fresh("sign-off-viewer");
+    await w.approve("R1", { by: "person" });
+    const { parts } = await w.viewerModel();
+    expect(parts.R1?.approval).toMatchObject({ status: "approved", by: "person" });
+    expect(parts.R2?.approval).toBeUndefined();
+    expect(parts.R2?.links.map((l) => l.label)).toEqual(["LCSC", "DigiKey", "Mouser"]);
+    expect(parts.R2?.links[0]?.url).toBe("https://www.lcsc.com/search?q=resistor%202k");
+  });
+
+  it("links a library part's datasheet and supplier part numbers, by MPN otherwise", async () => {
+    const { w, dir } = await fresh("sign-off-links");
+    const record = [
+      "id: X9",
+      "summary: test",
+      "preferred_mpn: X9-A/B",
+      "pins:",
+      "  1: {name: A}",
+      "  2: {name: B}",
+      "ratings: {vout: {max: 5V}}",
+      "sourcing: {lcsc: C123}",
+      "provenance: {datasheet: 'https://example.com/x9.pdf'}",
+    ].join("\n");
+    await w.partPut(record, "project");
+    const main = path.join(dir, "circuit/main.ckt");
+    await writeFile(main, 'block main "t"\npart U1 lib:X9\nnet A : U1.A U1.B\n');
+    const u1 = (await w.viewerModel()).parts.U1;
+    expect(u1?.links).toEqual([
+      { label: "Datasheet", url: "https://example.com/x9.pdf" },
+      { label: "LCSC", url: "https://www.lcsc.com/search?q=C123" },
+      { label: "DigiKey", url: "https://www.digikey.com/en/products/result?keywords=X9-A%2FB" },
+      { label: "Mouser", url: "https://www.mouser.com/c/?q=X9-A%2FB" },
+    ]);
+    expect(u1?.record?.ratings.vout).toBe('{"max":"5V"}');
+    await w.partPut(record.replace("https://example.com/x9.pdf", "javascript:alert(1)"), "project");
+    const links = (await w.viewerModel()).parts.U1?.links;
+    expect(links?.[0]?.label).toBe("Find datasheet");
+    expect(JSON.stringify(links)).not.toContain("javascript:");
+  });
+
+  it("gives a variant main's approvals until it makes its own", async () => {
+    const { w, dir } = await fresh("sign-off-variant");
+    await w.approve("R1", { by: "person" });
+    await w.variant("create", "alt");
+    const alt = await w.variantWorkspace("alt");
+    expect(await q(alt as Workspace, "parts where approved = yes")).toMatch(/^1 part\nR1 /);
+    await alt?.approve("R2", { by: "person" });
+    expect(await q(alt as Workspace, "parts where approved = yes")).toMatch(/^2 parts\n/);
+    expect(await q(w, "parts where approved = yes")).toMatch(/^1 part\nR1 /);
+    expect(await readFile(path.join(dir, "variants/alt/approvals.yaml"), "utf8")).toContain("R2:");
+  });
+
+  it("links only the project's suppliers, in its order", async () => {
+    const { w, dir } = await fresh("sign-off-suppliers");
+    const file = path.join(dir, "partstyle-project.yaml");
+    const text = await readFile(file, "utf8");
+    await writeFile(file, text.replace("[lcsc, digikey, mouser]", "[mouser, lcsc]"));
+    const labels = async () => (await w.viewerModel()).parts.R2?.links.map((l) => l.label);
+    expect(await labels()).toEqual(["Mouser", "LCSC"]);
+    await writeFile(file, text.replace("[lcsc, digikey, mouser]", "[]"));
+    expect(await labels()).toEqual([]);
+  });
+
+  it("reports what it can't select", async () => {
+    const { w } = await fresh("sign-off-bad");
+    expect((await w.approve("R9", { by: "ai" })).text).toBe("no part 'R9'");
+    expect((await w.approve("where fn = xtal", { by: "ai" })).text).toBe("no matching parts");
+    expect((await w.approve("where colour = red", { by: "ai" })).ok).toBe(false);
+  });
+});
+
 describe("notes", () => {
   const fresh = async (name: string) => {
     const dir = path.join(tmp, name);

@@ -11,6 +11,14 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isMap, parseDocument, parse as parseYaml } from "yaml";
+import {
+  APPROVALS_FILE,
+  type Approvals,
+  approvalStatus,
+  formatApprovals,
+  parseApprovals,
+  partSnapshot,
+} from "../approvals.js";
 import { formatBomCsv, resolveBom } from "../bom.js";
 import type { LayoutHint } from "../ckt/ast.js";
 import { printStatement } from "../ckt/print.js";
@@ -26,7 +34,7 @@ import { isDraft } from "../parts/schema.js";
 import { describePart, type PartTier, searchParts } from "../parts/search.js";
 import { applyPatch } from "../patch.js";
 import { findPrompt, prompts } from "../prompts.js";
-import { runQuery, type TextResult } from "../query.js";
+import { runQuery, selectParts, type TextResult } from "../query.js";
 import {
   COMMENTS_FILE,
   type Comment,
@@ -323,7 +331,7 @@ export class Workspace {
     return this.variantName === undefined ? name : `${VARIANTS_DIR}/${this.variantName}/${name}`;
   }
 
-  /** A variant's own lock, else main's: parts both share keep their refdes and part choices. */
+  /** A variant's own file, else main's: parts both share keep their refdes, choices and approvals. */
   private async lock(name: string): Promise<string> {
     return (await this.readOptional(this.ownFile(name))) || (await this.readOptional(name));
   }
@@ -449,6 +457,57 @@ export class Workspace {
     });
   }
 
+  /** Sign-offs on parts: a variant's own once it has any, else main's. */
+  private async approvals(): Promise<Approvals> {
+    return parseApprovals(await this.lock(APPROVALS_FILE));
+  }
+
+  /** The overview's line on sign-offs, once there are any. */
+  private async approvalLines(result: ValidationResult): Promise<string[]> {
+    const approvals = await this.approvals();
+    const parts = result.netlist?.parts ?? [];
+    if (approvals.size === 0 || parts.length === 0) return [];
+    const count = (s: string) => parts.filter((p) => approvalStatus(p, approvals) === s).length;
+    const changed = count("changed");
+    return [
+      `approved: ${count("approved")} of ${parts.length} parts${
+        changed > 0 ? `, ${changed} changed since (query parts where approved = changed)` : ""
+      }`,
+    ];
+  }
+
+  /**
+   * Signs off parts as they now stand, or with `undo` takes that back. `select` is `all`,
+   * refdes, or `where` conditions. `by` says who: the person in the viewer, or the AI at their
+   * request.
+   */
+  approve(select: string, opts: { by: "person" | "ai"; undo?: boolean }): Promise<TextResult> {
+    return this.guard(async () => {
+      const { result } = await this.load();
+      if (!result.netlist) return fail(`cannot approve: ${issueSummary(result)}`);
+      const approvals = await this.approvals();
+      const parts = selectParts(result.netlist, select, approvals);
+      if (!Array.isArray(parts)) return parts;
+      if (parts.length === 0) return fail("no matching parts");
+      const at = new Date().toLocaleString("sv").slice(0, 16);
+      for (const p of parts) {
+        if (opts.undo) approvals.delete(p.path);
+        else if (approvalStatus(p, approvals) !== "approved") {
+          approvals.set(p.path, { snapshot: partSnapshot(p), by: opts.by, at });
+        }
+      }
+      const file = path.join(this.root, this.ownFile(APPROVALS_FILE));
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, formatApprovals(approvals), "utf8");
+      const names = parts.map((p) => p.path).join(" ");
+      const n = parts.length;
+      return {
+        ok: true,
+        text: `${opts.undo ? "unapproved" : "approved"} ${n} part${n === 1 ? "" : "s"}: ${names}`,
+      };
+    });
+  }
+
   /** The overview's line on notes: what exists, and whether the design overview is written. */
   private async noteLines(): Promise<string[]> {
     const found = (await this.docs()).filter((f) => f.startsWith("notes/"));
@@ -551,7 +610,11 @@ export class Workspace {
   overview(): Promise<TextResult> {
     return this.guard(async () => {
       const { source, result } = await this.load();
-      const lines = [...(await this.noteLines()), ...(await this.versionLines())];
+      const lines = [
+        ...(await this.noteLines()),
+        ...(await this.approvalLines(result)),
+        ...(await this.versionLines()),
+      ];
       return { ok: true, text: overview(source, result, lines) };
     });
   }
@@ -567,7 +630,7 @@ export class Workspace {
     return this.guard(async () => {
       const { result } = await this.load();
       if (!result.netlist) return fail(`cannot query: ${issueSummary(result)}`);
-      return runQuery(result.netlist, expr);
+      return runQuery(result.netlist, expr, await this.approvals());
     });
   }
 
@@ -1279,7 +1342,7 @@ export class Workspace {
         await this.locks(),
         await this.libraries(result),
       );
-      return buildViewerModel(drawing, result, review);
+      return buildViewerModel(drawing, result, review, await this.approvals());
     } catch (e) {
       return {
         ...empty,
@@ -1722,7 +1785,7 @@ export class Workspace {
         result.netlist.parts.map((p) => p.path),
         parseAnnotationLock(await this.lock("annotation.lock")),
       );
-      const preferred = result.config.sourcing.distributors;
+      const preferred = result.config.sourcing.suppliers;
       const bom = resolveBom(
         result.netlist,
         result.library,
@@ -1744,9 +1807,7 @@ export class Workspace {
         ...bom.issues.map((i) => formatIssue(i)),
       ];
       if (preferred.length === 0) {
-        lines.push(
-          `note: no sourcing.distributors in ${PROJECT_FILE}; none were used to rank parts`,
-        );
+        lines.push(`note: no sourcing.suppliers in ${PROJECT_FILE}; none were used to rank parts`);
       }
       return { ok: true, text: lines.join("\n") };
     });

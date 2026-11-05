@@ -8,7 +8,8 @@ export const PROJECT_FILE = "partstyle-project.yaml";
 /** The block that roots the hierarchy, in circuit/main.ckt. */
 export const TOP_BLOCK = "main";
 
-export const distributors = ["lcsc", "digikey", "mouser"] as const;
+export const suppliers = ["lcsc", "digikey", "mouser"] as const;
+export type Supplier = (typeof suppliers)[number];
 
 /**
  * The settings in the project file. The design context (use case, environment, interfaces) sits
@@ -20,9 +21,9 @@ export const ProjectConfigSchema = z.looseObject({
   name: z.string().min(1),
   sourcing: z
     .object({
-      distributors: z.array(z.enum(distributors)).default([]),
+      suppliers: z.array(z.enum(suppliers)).default([]),
     })
-    .default({ distributors: [] }),
+    .default({ suppliers: [] }),
   checks: z
     .object({
       /** A capacitor's rated voltage should be at least this many times what it sees. */

@@ -1,3 +1,4 @@
+import { type Approvals, approvalStatus } from "./approvals.js";
 import { printSpec } from "./ckt/print.js";
 import type { FlatNet, FlatPart, FlatPin, Netlist } from "./netlist/elaborate.js";
 import { parseQuantity } from "./units.js";
@@ -17,8 +18,8 @@ export const queryUsage = `queries:
   nets [where COND [and ...]]   e.g. nets where pins = 1, nets where voltage ~ 5V
   unconnected                   every pin on no net, marking those left open by nc
 COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path id preferred_mpn
-manufacturer package footprint kind fn value verified (yes/no, library parts) intent, or any
-rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
+manufacturer package footprint kind fn value intent, approved (yes, no or changed: changed since
+approval), verified (yes/no, library parts), or any rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
 and NAME may omit the instance path when unambiguous (U1 for PWR/U1).`;
 
 /** Fields any design may use; ratings and attributes exist only if something in it has them. */
@@ -34,6 +35,7 @@ const partBaseFields = [
   "package",
   "footprint",
   "verified",
+  "approved",
 ];
 const netBaseFields = ["name", "pins", "voltage", "source"];
 
@@ -91,12 +93,15 @@ function describePartLine(part: FlatPart): string {
   return `${part.path} ${printSpec(part.spec)}${identity}${part.intent ? ` @ ${part.intent}` : ""}`;
 }
 
-function partFields(part: FlatPart): Record<string, string> {
+const approvedWord = { approved: "yes", changed: "changed", none: "no" };
+
+function partFields(part: FlatPart, approvals: Approvals): Record<string, string> {
   const r = part.record;
   const fields: Record<string, string> = {
     path: part.path,
     kind: part.spec.kind,
     intent: part.intent ?? "",
+    approved: approvedWord[approvalStatus(part, approvals)],
   };
   if (part.spec.kind === "generic") {
     fields.fn = part.spec.fn;
@@ -179,7 +184,8 @@ function compare(actual: string, op: Op, expected: string): boolean {
 function matches(fields: Record<string, string>, conditions: Condition[]): boolean {
   return conditions.every((c) => {
     const actual = fields[c.field];
-    const expected = c.field === "verified" ? (yesNo[c.value.toLowerCase()] ?? c.value) : c.value;
+    const flag = c.field === "verified" || c.field === "approved";
+    const expected = flag ? (yesNo[c.value.toLowerCase()] ?? c.value) : c.value;
     return actual !== undefined && compare(actual, c.op, expected);
   });
 }
@@ -194,8 +200,44 @@ function filterClause(rest: string): Condition[] | TextResult {
 const isResult = (x: unknown): x is TextResult =>
   typeof x === "object" && x !== null && "ok" in x && "text" in x;
 
+/** Parts by `all`, by refdes (`R1 PWR/C3`), or by query conditions (`where fn = res`). */
+export function selectParts(
+  netlist: Netlist,
+  select: string,
+  approvals: Approvals = new Map(),
+): FlatPart[] | TextResult {
+  const text = select.trim();
+  if (text === "") return fail("name parts: REF ..., where COND, or all");
+  if (text === "all") return netlist.parts;
+  if (/^where\s/i.test(text)) {
+    const conditions = filterClause(text);
+    if (isResult(conditions)) return conditions;
+    const rows = netlist.parts.map((p) => [p, partFields(p, approvals)] as const);
+    const unknown = unknownField(
+      "part",
+      conditions,
+      rows.map(([, f]) => f),
+      partBaseFields,
+    );
+    if (unknown) return unknown;
+    return rows.filter(([, f]) => matches(f, conditions)).map(([p]) => p);
+  }
+  const paths = netlist.parts.map((p) => p.path);
+  const parts: FlatPart[] = [];
+  for (const name of text.split(/\s+/)) {
+    const path = resolve(paths, name, "part");
+    if (isResult(path)) return path;
+    parts.push(netlist.parts.find((p) => p.path === path) as FlatPart);
+  }
+  return parts;
+}
+
 /** Answers a targeted lookup over the flattened netlist. */
-export function runQuery(netlist: Netlist, expr: string): TextResult {
+export function runQuery(
+  netlist: Netlist,
+  expr: string,
+  approvals: Approvals = new Map(),
+): TextResult {
   const [command = "", ...args] = expr.trim().split(/\s+/);
   const rest = expr.trim().slice(command.length).trim();
   const pinWithType = pinLabels(netlist);
@@ -237,13 +279,13 @@ export function runQuery(netlist: Netlist, expr: string): TextResult {
       const unknown = unknownField(
         "part",
         conditions,
-        netlist.parts.map(partFields),
+        netlist.parts.map((p) => partFields(p, approvals)),
         partBaseFields,
       );
       if (unknown) return unknown;
       const shown = new Set(conditions.map((c) => c.field));
       const lines = netlist.parts
-        .map((p) => [p, partFields(p)] as const)
+        .map((p) => [p, partFields(p, approvals)] as const)
         .filter(([, f]) => matches(f, conditions))
         .map(([p, f]) => {
           const extra = [...shown]

@@ -100,8 +100,9 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     matching, draft records, re-import carry-over) and `project/kicad-import.ts` (node: runs
     kicad-cli on a temporary copy, with PWR_FLAGs exposed and ERC for no-connect flags).
     Workspace `kicadImport` writes the files and checks the result against KiCad's netlist.
-  - Review: `review.ts` (comments.yaml, .partstyle/focus.json, `focus` text) and
-    `viewer-model.ts` (the JSON the viewer renders).
+  - Review: `review.ts` (comments.yaml, .partstyle/focus.json, `focus` text), `approvals.ts`
+    (approvals.yaml: sign-offs per part, each a snapshot of its spec and nets, so a change shows)
+    and `viewer-model.ts` (the JSON the viewer renders, with each part's lookup links).
   - Versions: `versions/diff.ts` (semantic statement diff, pure) and `versions/revert.ts`
     (revert plans as patches). Node side: `project/git.ts` (isomorphic-git; no git CLI
     needed; comparisons hash working files against commit trees), `project/history.ts`

@@ -34,6 +34,7 @@ describe("MCP server", () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       "add_decision",
       "apply",
+      "approve",
       "bom_export",
       "diff",
       "focus",
@@ -55,7 +56,7 @@ describe("MCP server", () => {
     // Tool definitions are paid on every turn; keep them short. (guide, read_doc and
     // write_doc serve clients without file tools, such as Claude Desktop; the `variant`
     // parameters let one call work on any version of the design.)
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(2225);
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(2325);
   });
 
   it("sends the workflow as instructions", () => {
@@ -268,7 +269,7 @@ describe("MCP server for many projects", () => {
     expect(tools.map((t) => t.name)).toEqual(
       expect.arrayContaining(["list_projects", "open_project"]),
     );
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(2450);
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(2560);
     expect(await text("overview")).toEqual({
       text: "no project open: list_projects shows them; open_project NAME opens one, init_project NAME creates one",
       isError: true,

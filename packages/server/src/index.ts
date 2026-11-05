@@ -101,7 +101,7 @@ const str = (v: unknown, name: string, max = 2000): string => {
 /**
  * Serves the viewer for one project at a time on 127.0.0.1: the built web app, the drawing
  * model, live change events, and the few writes the viewer makes (focus, comments, part
- * verification, layout edits, review actions). Tries successive ports when the default is taken (several projects can be
+ * verification, approvals, layout edits, review actions). Tries successive ports when the default is taken (several projects can be
  * viewed at once).
  */
 export async function startViewer(
@@ -217,6 +217,13 @@ export async function startViewer(
             op as LayoutOp,
           ),
         );
+        return;
+      }
+      if (url.pathname === "/api/approve") {
+        const parts = Array.isArray(body.parts)
+          ? body.parts.filter((p): p is string => typeof p === "string").slice(0, 2000)
+          : [];
+        send(200, await w.approve(parts.join(" "), { by: "person", undo: body.undo === true }));
         return;
       }
       if (url.pathname === "/api/checkpoint") {

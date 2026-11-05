@@ -57,7 +57,8 @@ Then, in a chat:
   `partstyle-project.yaml` with you (`write_doc`), then designs block by block with `apply`.
 - "Open bench-sensor" or "what Partstyle projects do I have?": `open_project`, `list_projects`.
 - Open the viewer URL Claude gives you. Select parts or nets there and say "this"; Claude calls
-  `focus`. Revert changes, accept pending patches and make checkpoints in the viewer's Changes tab.
+  `focus`. Sign off parts as you check them, with datasheet and supplier links beside each one.
+  Revert changes, accept pending patches and make checkpoints in the viewer's Changes tab.
 - The procedures are in the prompt menu: design review, ingest part, prepare hand-off.
 - A Claude Desktop project per design, with an instruction like "use the Partstyle project
   bench-sensor", keeps its chats together.
@@ -120,6 +121,7 @@ identical.
 | `validate`                                                                | `partstyle validate [--json]`                                                                  |
 | `read_doc(file)`, `write_doc(file, text)`                                 | `partstyle doc read FILE`, `partstyle doc write FILE [SRC\|-]`                                 |
 | `add_decision(text)`                                                      | `partstyle decision TEXT...`                                                                   |
+| `approve(parts, undo)`                                                    | `partstyle approve\|unapprove ...`                                                             |
 | `part_search(q)`                                                          | `partstyle part search Q`                                                                      |
 | `part_get(id, tier)`                                                      | `partstyle part get ID --tier ...`                                                             |
 | `part_put(record, scope)`                                                 | `partstyle part put [FILE\|-] --scope ...`                                                     |

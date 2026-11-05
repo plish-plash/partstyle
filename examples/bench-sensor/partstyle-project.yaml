@@ -30,4 +30,4 @@ external_interfaces:
         accepted: bench debug header for a grounded USB-UART adapter; no clamp needed
 
 sourcing:
-  distributors: [lcsc, digikey]
+  suppliers: [lcsc, digikey]

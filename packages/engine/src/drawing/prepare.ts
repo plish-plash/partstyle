@@ -141,7 +141,7 @@ export async function prepareDrawing(
     netlist.parts.map((p) => p.path),
     parseAnnotationLock(locks.annotation),
   );
-  const bom = resolveBom(netlist, result.library, locks.bom, config.sourcing.distributors);
+  const bom = resolveBom(netlist, result.library, locks.bom, config.sourcing.suppliers);
   const bomByPath = new Map<string, BomEntry>(bom.entries.map((e) => [e.part.path, e]));
 
   const issues: Issue[] = [...bom.issues];

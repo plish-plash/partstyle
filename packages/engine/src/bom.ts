@@ -9,9 +9,7 @@ import {
 } from "./parts/generic.js";
 import type { PartLibrary } from "./parts/library.js";
 import { type PartRecord, partName } from "./parts/schema.js";
-import type { distributors } from "./project/config.js";
-
-type Distributor = (typeof distributors)[number];
+import type { Supplier } from "./project/config.js";
 
 /** One placed part with what it resolved to. */
 export interface BomEntry {
@@ -50,22 +48,22 @@ function parseBomLock(text: string): Map<string, { spec: string; id: string }> {
   return lock;
 }
 
-/** Lower is better: index of the first preferred distributor that stocks the part. */
-function sourcingRank(record: PartRecord, preferred: readonly Distributor[]): number {
+/** Lower is better: index of the first preferred supplier that stocks the part. */
+function sourcingRank(record: PartRecord, preferred: readonly Supplier[]): number {
   const i = preferred.findIndex((d) => record.sourcing?.[d]);
   return i === -1 ? preferred.length : i;
 }
 
 /**
  * Resolves every generic part to a library record whose `generic` spec satisfies it, preferring
- * records stocked by the preferred distributors (in order), then the lowest voltage rating that
+ * records stocked by the preferred suppliers (in order), then the lowest voltage rating that
  * fits, then id. Earlier resolutions in bom.lock are kept while they still fit.
  */
 export function resolveBom(
   netlist: Netlist,
   library: PartLibrary,
   lockText: string,
-  preferred: readonly Distributor[],
+  preferred: readonly Supplier[],
 ): BomResult {
   const previous = parseBomLock(lockText);
   const offers = [...library.values()].flatMap((e) => {
@@ -166,7 +164,7 @@ function csvField(s: string): string {
 export function formatBomCsv(
   entries: BomEntry[],
   refOf: (path: string) => string,
-  preferred: readonly Distributor[],
+  preferred: readonly Supplier[],
 ): string {
   const groups = new Map<string, BomEntry[]>();
   for (const e of entries) {

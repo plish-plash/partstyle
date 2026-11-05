@@ -397,7 +397,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "bom_export",
     {
       description:
-        "Resolve generic parts to library MPNs (preferring the project's distributors), update bom.lock and write bom.csv. Only when asked.",
+        "Resolve generic parts to library MPNs (preferring the project's suppliers), update bom.lock and write bom.csv. Only when asked.",
       inputSchema: { variant },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
@@ -423,6 +423,22 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       annotations: readOnly,
     },
     async ({ since, variant }) => run((w) => on(w, variant).diff(since ?? "last")),
+  );
+
+  server.registerTool(
+    "approve",
+    {
+      description:
+        "Mark parts as signed off, only when the person asks. parts: refdes, 'where fn = res' (query conditions) or 'all'. undo takes it back.",
+      inputSchema: {
+        parts: z.string(),
+        undo: z.boolean().optional(),
+        variant,
+      },
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    async ({ parts, undo, variant }) =>
+      run((w) => on(w, variant).approve(parts, { by: "ai", undo: undo ?? false })),
   );
 
   server.registerTool(

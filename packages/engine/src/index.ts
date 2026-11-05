@@ -1,3 +1,4 @@
+export * from "./approvals.js";
 export { type BomEntry, type BomResult, formatBomCsv, resolveBom } from "./bom.js";
 export * from "./ckt/ast.js";
 export { type LexError, lexLine, type Token, type TokenKind } from "./ckt/lexer.js";
@@ -51,7 +52,7 @@ export {
 } from "./project/skeleton.js";
 export type { ProjectSource, TextFile } from "./project/source.js";
 export { findPrompt, type PromptDef, prompts, slashCommands } from "./prompts.js";
-export { queryUsage, runQuery, type TextResult } from "./query.js";
+export { queryUsage, runQuery, selectParts, type TextResult } from "./query.js";
 export {
   COMMENTS_FILE,
   type Comment,

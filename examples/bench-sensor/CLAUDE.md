@@ -14,7 +14,7 @@ Commands below are the `partstyle` CLI; the Partstyle MCP server has a tool for 
 2. Fill in `partstyle-project.yaml` with the user: a description of one or two sentences, environment,
    assembly, and every external interface (each connection to the outside world, the power input
    included) with the hazards the user names for it. It also holds the project's name and
-   settings (distributors, capacitor derating).
+   settings (suppliers, capacitor derating).
 3. Plan one block per functional area (power, mcu, sensor input, ...), each in its own
    `circuit/<block>.ckt`, instantiated and joined in `circuit/main.ckt` with `use`.
 
@@ -40,10 +40,13 @@ and comment there rather than typing refdes:
 ## Review and versions
 
 The person reviews your edits in the viewer as changesets (each `apply`, or each burst of
-direct edits) and can revert any of them, whole or statement by statement.
+direct edits) and can revert any of them, whole or statement by statement. They sign off
+parts one at a time as they check them, and a part changed since shows as such.
 
 - Start each turn with `partstyle diff --since last`: what changed since you last looked,
   including the person's reverts and edits. Don't redo a change they reverted; ask instead.
+- Approve parts for the person only when they ask: `partstyle approve where fn = res`, or `all`
+  or refdes. `partstyle query "parts where approved = changed"` lists what needs another look.
 - If `overview` says `review mode: accept` (the person's switch in the viewer), edit only
   through `partstyle apply`: each patch waits as a pending change (P1, P2, ...) until the person
   accepts it in the viewer.

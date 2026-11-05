@@ -71,7 +71,7 @@ thermal: { theta_ja: 107C/W }
 | `requirements`  | What the datasheet asks of the circuit: text, or a check (below)                   |
 | `notes`         | Gotchas a designer would otherwise miss                                            |
 | `generic`       | For a concrete passive: the generic it satisfies, `cap(100n, 50V, X7R, 10%, 0603)` |
-| `sourcing`      | `lcsc`, `digikey`, `mouser`: distributor part numbers; `lifecycle`                 |
+| `sourcing`      | `lcsc`, `digikey`, `mouser`: supplier part numbers; `lifecycle`                    |
 | `provenance`    | `datasheet` (a URL), `extracted_by` (`ai`), `verified_by: null`                    |
 
 Leave `verified_by: null`: only a person verifies a record.

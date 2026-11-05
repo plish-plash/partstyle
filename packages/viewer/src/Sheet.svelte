@@ -217,6 +217,11 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
           >{k === 0 ? `${info?.ref ?? u.ref}${unitSuffix(u.unit, symbols[u.libId])}` : (info?.value ?? "")}</text
         >
       {/each}
+      {#if info?.approval}
+        <text x={u.box.x - 0.4} y={u.box.y + 0.4} text-anchor="end" class={`approval-mark ${info.approval.status}`}
+          >{info.approval.status === "approved" ? "✓" : "!"}</text
+        >
+      {/if}
     </g>
     {#each u.pins as p (p.number)}
       <circle

@@ -82,6 +82,23 @@ describe("viewer server", () => {
     expect((await post("api/comments/c1/resolve", {})).status).toBe(200);
   });
 
+  it("signs off parts for the person, and only from its own page", async () => {
+    const parts = ["PWR/U1", "MCU/R5"];
+    const refused = await fetch(new URL("api/approve", viewer.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parts }),
+    });
+    expect(refused.status).toBe(403);
+    const r = (await (await post("api/approve", { parts })).json()) as { text: string };
+    expect(r.text).toBe("approved 2 parts: PWR/U1 MCU/R5");
+    expect(await readFile(path.join(project, "approvals.yaml"), "utf8")).toContain("by: person");
+    await post("api/approve", { parts: ["MCU/R5"], undo: true });
+    const file = await readFile(path.join(project, "approvals.yaml"), "utf8");
+    expect(file).toContain("PWR/U1:");
+    expect(file).not.toContain("MCU/R5:");
+  });
+
   it("announces file changes to connected viewers", async () => {
     const res = await fetch(new URL("api/events", viewer.url));
     const reader = res.body?.getReader();

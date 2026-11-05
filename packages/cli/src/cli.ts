@@ -39,6 +39,7 @@ commands:
   apply [FILE|-] [--dry-run]               apply a .ckt patch from FILE or stdin
   doc read FILE | doc write FILE [SRC|-]   read or replace the project file or a notes/*.md file
   decision TEXT...                         add a decision to notes/decisions.md
+  approve | unapprove all|REF...|where COND  sign off parts, or take that back
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
@@ -288,6 +289,13 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
     case "revert":
       if (args.length !== 1) return usageError("usage: revert C3|C3.2");
       return fromText(await ws.revert(args[0] as string));
+
+    case "approve":
+    case "unapprove":
+      if (args.length === 0) return usageError(`usage: ${command} all | REF... | where COND`);
+      return fromText(
+        await ws.approve(args.join(" "), { by: "ai", undo: command === "unapprove" }),
+      );
 
     case "decision":
       if (args.length === 0) return usageError("usage: decision TEXT...");
