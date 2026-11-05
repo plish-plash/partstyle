@@ -5,7 +5,8 @@ argument-hint: [block]
 
 Review this Partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
 
-1. Gather: `partstyle overview`, `partstyle validate`, partstyle-project.yaml, notes/decisions.md, then each block with `partstyle read-block`. For every library part, `partstyle part get ID --tier pins`.
+1. Gather: overview, validate, partstyle-project.yaml, notes/design.md, notes/decisions.md, then each block with read_block. For every library part, part_get with tier pins. A choice recorded in notes/decisions.md is
+   not a finding unless something has changed since.
 2. Check, citing refdes and nets:
    - Each validate issue: its cause and a fix. Errors must be fixed; a warning may instead get a
      waiver with a real reason, if the person agrees.

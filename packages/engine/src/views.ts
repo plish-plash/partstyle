@@ -40,15 +40,15 @@ function hazardText(h: unknown): string {
   return `${String(hazard)}${accepted === undefined ? "" : ` (accepted: ${String(accepted)})`}`;
 }
 
-/** The design context and settings, without the name and the description (prose for people). */
+/** The project's summary, design context and settings. */
 function contextLines(source: ProjectSource): string[] {
   const main = projectData(source.project.text);
   if (!main) return [];
   const over = source.projectOverride && projectData(source.projectOverride.text);
   const fm = over ? mergeProjectData(main, over) : main;
-  const lines = [`context: ${String(fm.use_case ?? "(no use_case)")}`];
+  const lines = [`context: ${String(fm.description ?? "(no description)").trim()}`];
   for (const [key, value] of Object.entries(fm)) {
-    const skip = ["partstyle_version", "name", "description", "use_case", "external_interfaces"];
+    const skip = ["partstyle_version", "name", "description", "external_interfaces"];
     if (skip.includes(key)) continue;
     lines.push(`  ${key}: ${JSON.stringify(value)}`);
   }
@@ -69,7 +69,7 @@ function contextLines(source: ProjectSource): string[] {
 export function overview(
   source: ProjectSource,
   result: ValidationResult,
-  /** Checkpoint, changes, pending and variant lines from the project's history. */
+  /** Notes, changes, pending and variant lines from the project's folder and history. */
   versions: string[] = [],
 ): string {
   const name = result.config?.name ?? `(invalid ${PROJECT_FILE})`;

@@ -8,7 +8,7 @@ part U4  lib:ATMEGA328P-AU
 part C9  cap(100n, 16V, X7R, 0603)  @ VCC pin 4 bypass
 part C10 cap(100n, 16V, X7R, 0603)  @ VCC pin 6 bypass
 part C11 cap(100n, 16V, X7R, 0603)  @ AVCC bypass
-part C12 cap(100n, 16V, X7R, 0603)  @ AREF bypass, internal 1.1 V reference
+part C12 cap(100n, 16V, X7R, 0603)  @ AREF bypass, ADC referenced to AVCC
 part R5  res(10k, 1%, 0603)         @ RESET pull-up
 part J3  lib:TSW-103-07-G-D         @ AVR ISP: 1 MISO, 2 VCC, 3 SCK, 4 MOSI, 5 RESET, 6 GND
 part J5  lib:TSW-103-07-G-S         @ UART: 1 = TXD, 2 = RXD, 3 = GND

@@ -60,9 +60,15 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
     const run = (args: string[]) =>
       promisify(execFile)(command, [...prefix, ...args], { windowsHide: true });
     expect((await run(["--version"])).stdout).toBe(`partstyle ${stamped}\n`);
-    expect((await run(["grammar"])).stdout).toBe(
-      `${await readFile(repo("docs/ckt-grammar.md"), "utf8")}\n`,
-    );
+    for (const [topic, file] of [
+      ["ckt", "ckt-grammar"],
+      ["parts", "part-records"],
+      ["issues", "issues"],
+    ]) {
+      expect((await run(["guide", topic as string])).stdout).toBe(
+        `${await readFile(repo(`docs/${file}.md`), "utf8")}\n`,
+      );
+    }
     expect((await run(["-p", project, "overview"])).stdout).toBe(
       `${(await new Workspace(project).overview()).text}\n`,
     );
@@ -91,8 +97,8 @@ describe.each(builds)("standalone build $file", ({ command, prefix }) => {
       expect(tools.map((t) => t.name)).toContain("overview");
       const r = await client.callTool({ name: "validate" });
       expect(r.isError).toBeFalsy();
-      const grammar = await client.readResource({ uri: "partstyle://grammar" });
-      expect(JSON.stringify(grammar.contents)).toContain("patch");
+      const guide = await client.callTool({ name: "guide", arguments: { topic: "ckt" } });
+      expect(JSON.stringify(guide.content)).toContain("patch");
 
       // The viewer starts before the MCP connection, so its URL is already logged.
       const url = /partstyle viewer: (\S+)/.exec(log)?.[1];

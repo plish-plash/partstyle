@@ -1,4 +1,13 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isMap, parseDocument, parse as parseYaml } from "yaml";
@@ -16,6 +25,7 @@ import { parsePartRecord } from "../parts/library.js";
 import { isDraft } from "../parts/schema.js";
 import { describePart, type PartTier, searchParts } from "../parts/search.js";
 import { applyPatch } from "../patch.js";
+import { findPrompt, prompts } from "../prompts.js";
 import { runQuery, type TextResult } from "../query.js";
 import {
   COMMENTS_FILE,
@@ -46,7 +56,7 @@ import {
   type ViewerModel,
 } from "../viewer-model.js";
 import { countIssues, formatValidation, issueSummary, overview, readBlock } from "../views.js";
-import { PROJECT_FILE, parseProjectConfig, TOP_BLOCK } from "./config.js";
+import { PROJECT_FILE, parseProjectConfig, projectData, TOP_BLOCK } from "./config.js";
 import {
   changedFiles,
   commitProject,
@@ -71,7 +81,7 @@ import { loadProject, ProjectLoadError } from "./load.js";
 import { writePartRecord } from "./part-put.js";
 import { addPending, readPending, removePending } from "./pending.js";
 import { defaultStateDir, readSettings, type Settings } from "./settings.js";
-import { projectSkeleton } from "./skeleton.js";
+import { DECISIONS_FILE, DESIGN_FILE, noteTemplates, projectSkeleton } from "./skeleton.js";
 import type { ProjectSource } from "./source.js";
 import {
   checkVariantName,
@@ -101,6 +111,9 @@ const CLAUDE_SIDECAR = "CLAUDE.partstyle.md";
 const VARIANT_OVERRIDES_NOTE = (name: string) =>
   `# Variant ${name}: overrides of the main ${PROJECT_FILE}. Mappings merge key by key; lists and\n# values replace main's; null removes a key. Write back only the keys that differ.`;
 
+/** More than a short summary: the design overview belongs in notes/design.md. */
+const isLongDescription = (text: string) => text.trim().length > 200 || text.trim().includes("\n");
+
 /** The project file and Markdown files under notes/ (no hidden or parent segments). */
 const isDoc = (f: string) =>
   f === PROJECT_FILE || /^notes\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/.test(f);
@@ -117,21 +130,42 @@ async function exists(file: string): Promise<boolean> {
 
 const docsUrl = (name: string) => new URL(`../../../../docs/${name}`, import.meta.url);
 
-let embeddedReferences: { grammar: string; partFormat: string } | undefined;
+const references = {
+  ckt: { file: "ckt-grammar.md", about: "The .ckt language and patches: read before writing them" },
+  parts: { file: "part-records.md", about: "The part record format: read before part_put" },
+  issues: { file: "issues.md", about: "What every issue code means" },
+};
+type ReferenceTopic = keyof typeof references;
+
+let embeddedReferences: Record<ReferenceTopic, string> | undefined;
 
 /** Uses these texts as the references instead of docs/: for a standalone executable. */
-export function embedReferences(texts: { grammar: string; partFormat: string }): void {
+export function embedReferences(texts: Record<ReferenceTopic, string>): void {
   embeddedReferences = texts;
 }
 
-/** The .ckt grammar and patch reference, served to the AI as an MCP resource and by the CLI. */
-export async function readGrammarReference(): Promise<string> {
-  return embeddedReferences?.grammar ?? readFile(docsUrl("ckt-grammar.md"), "utf8");
-}
+/** The topics of `readGuide`: reference documents, then procedures. */
+const guideTopics: { topic: string; about: string }[] = [
+  ...Object.entries(references).map(([topic, r]) => ({ topic, about: r.about })),
+  ...prompts.map((p) => ({ topic: p.name.replace(/_/g, "-"), about: p.description })),
+];
 
-/** The part record format, served to the AI as an MCP resource and by the CLI. */
-export async function readPartFormat(): Promise<string> {
-  return embeddedReferences?.partFormat ?? readFile(docsUrl("part-records.md"), "utf8");
+/**
+ * What the AI reads when it needs it, rather than on every turn: a reference document or a
+ * procedure. Without a topic, the list of topics.
+ */
+export async function readGuide(topic?: string): Promise<TextResult> {
+  const list = guideTopics.map((t) => `${t.topic}: ${t.about}`).join("\n");
+  if (topic === undefined) return { ok: true, text: list };
+  if (Object.hasOwn(references, topic)) {
+    const key = topic as ReferenceTopic;
+    const text =
+      embeddedReferences?.[key] ?? (await readFile(docsUrl(references[key].file), "utf8"));
+    return { ok: true, text };
+  }
+  const procedure = findPrompt(topic);
+  if (procedure) return { ok: true, text: procedure.render({}) };
+  return { ok: false, text: `no guide topic '${topic}'; topics:\n${list}` };
 }
 
 /**
@@ -353,6 +387,9 @@ export class Workspace {
     return this.guard(async () => {
       const f = toPosix(file).replace(/^\.\//, "");
       if (!isDoc(f)) return fail(`docs are ${PROJECT_FILE} and notes/*.md (got ${file})`);
+      if (f === DECISIONS_FILE) {
+        return fail(`${f} is append-only: add entries with add_decision (partstyle decision)`);
+      }
       if (!(await exists(path.join(this.root, PROJECT_FILE)))) {
         return fail(`${this.root} is not a project (no ${PROJECT_FILE})`);
       }
@@ -381,9 +418,56 @@ export class Workspace {
           (i) => i.location?.file === PROJECT_FILE || i.location?.file === target,
         );
         lines.push(...(issues.length > 0 ? issues.map(formatIssue) : [`${target}: no issues`]));
+        const description = projectData(text)?.description;
+        if (typeof description === "string" && isLongDescription(description)) {
+          lines.push("note: keep description short; the design overview goes in notes/design.md");
+        }
       }
       return { ok: true, text: lines.join("\n") };
     });
+  }
+
+  /** Adds an entry to notes/decisions.md, which is only ever added to. */
+  addDecision(text: string): Promise<TextResult> {
+    return this.guard(async () => {
+      const entry = text.trim().replace(/\s*\n\s*/g, " ");
+      if (entry === "") return fail("a decision needs text");
+      if (!(await exists(path.join(this.root, PROJECT_FILE)))) {
+        return fail(`${this.root} is not a project (no ${PROJECT_FILE})`);
+      }
+      const file = path.join(this.root, DECISIONS_FILE);
+      const existing = await this.readOptional(DECISIONS_FILE);
+      if (existing === "") {
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, noteTemplates[DECISIONS_FILE], "utf8");
+      }
+      // Swedish dates read YYYY-MM-DD HH:MM:SS, in local time.
+      const line = `- ${new Date().toLocaleString("sv").slice(0, 16)}: ${entry}`;
+      const gap = existing === "" || existing.endsWith("\n") ? "" : "\n";
+      await appendFile(file, `${gap}${line}\n`, "utf8");
+      return { ok: true, text: `added to ${DECISIONS_FILE}: ${line}` };
+    });
+  }
+
+  /** The overview's line on notes: what exists, and whether the design overview is written. */
+  private async noteLines(): Promise<string[]> {
+    const found = (await this.docs()).filter((f) => f.startsWith("notes/"));
+    const planned = Object.keys(noteTemplates);
+    const notes = [...new Set([...planned.filter((f) => found.includes(f)), ...found])];
+    const missing = !found.includes(DESIGN_FILE);
+    const shown = await Promise.all(
+      notes.map(async (f) => {
+        const name = f.slice("notes/".length);
+        const text = await this.readOptional(f);
+        if (f === DESIGN_FILE && text === noteTemplates[DESIGN_FILE]) {
+          return `${name} (not written yet)`;
+        }
+        if (f === DECISIONS_FILE) return `${name} (${text.match(/^- /gm)?.length ?? 0})`;
+        return name;
+      }),
+    );
+    if (missing) shown.unshift("design.md (not written yet)");
+    return [`notes: ${shown.join(", ")}`];
   }
 
   /** Fails (as a load error) when this workspace's variant does not exist. */
@@ -454,13 +538,12 @@ export class Workspace {
     if (!(await repoInfo(this.root))) {
       try {
         await initRepo(this.root);
-        lines.push("initialized a git repository for checkpoints");
       } catch (e) {
         lines.push(`note: no git repository, so no checkpoints (${(e as Error).message})`);
       }
     }
     lines.push(
-      `next: fill in ${PROJECT_FILE} with the user, then add blocks (partstyle grammar shows how)`,
+      `next: fill in ${PROJECT_FILE} with the user, then add blocks (guide ckt shows how)`,
     );
     return { ok: true, text: lines.join("\n") };
   }
@@ -468,7 +551,8 @@ export class Workspace {
   overview(): Promise<TextResult> {
     return this.guard(async () => {
       const { source, result } = await this.load();
-      return { ok: true, text: overview(source, result, await this.versionLines()) };
+      const lines = [...(await this.noteLines()), ...(await this.versionLines())];
+      return { ok: true, text: overview(source, result, lines) };
     });
   }
 
@@ -1299,7 +1383,7 @@ export class Workspace {
     };
   }
 
-  /** The overview's lines about checkpoints, changes, pending patches and variants. */
+  /** The overview's lines about changes, pending patches and variants. */
   private async versionLines(): Promise<string[]> {
     const st = await this.versionState();
     const n = st.changed.length;
@@ -1309,13 +1393,7 @@ export class Workspace {
         : this.variantName === undefined
           ? `${n} statements in ${st.changesets.length} changesets (see diff)`
           : `${n} statements, main's included; ${st.changesets.length} changesets of its own (see diff)`;
-    const lines = [
-      !st.git
-        ? `changes: ${summary}; no checkpoints (not a git repository)`
-        : st.checkpoint
-          ? `changes since checkpoint ${st.checkpoint.id} "${st.checkpoint.message}": ${summary}`
-          : `changes: ${summary}; no checkpoint yet`,
-    ];
+    const lines = [`changes: ${summary}`];
     if (st.mode === "accept") {
       lines.push("review mode: accept (edit only through apply; each patch waits for approval)");
     }

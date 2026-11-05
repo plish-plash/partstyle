@@ -48,9 +48,7 @@ describe("versioning", () => {
     expect(r.text).toMatch(/^checkpoint [0-9a-f]{7} "initial design"/);
     // The library beside the project is not part of it.
     expect(await changedFiles(path.join(tmp, "library"))).toContain("L7805CV.yaml");
-    expect((await ws.overview()).text).toMatch(
-      /changes since checkpoint [0-9a-f]{7} "initial design": none/,
-    );
+    expect((await ws.overview()).text).toMatch(/\nchanges: none(\n|$)/);
     expect((await ws.checkpoint("again")).text).toMatch(/^nothing to checkpoint/);
   });
 
@@ -240,14 +238,14 @@ describe("versioning", () => {
       expect((await tmpV.validate()).text).toBe((await ws.validate()).text);
 
       await ws.applyTo("in mcu\n+ part R96 res(2k)\n", ["tmp"]);
-      await tmpV.writeDoc("partstyle-project.yaml", "use_case: adopted\n");
+      await tmpV.writeDoc("partstyle-project.yaml", "description: adopted\n");
       const adopted = await ws.variant("adopt", "tmp");
       expect(adopted.text).toMatch(
         /^adopted variant tmp as C\d+: circuit\/mcu\.ckt, partstyle-project\.yaml/,
       );
       expect(await readFile(path.join(project, "circuit/mcu.ckt"), "utf8")).toContain("R96");
       const projectFile = await readFile(path.join(project, "partstyle-project.yaml"), "utf8");
-      expect(projectFile).toContain("use_case: adopted");
+      expect(projectFile).toContain("description: adopted");
       // Main's comments survive the merge.
       expect(projectFile).toMatch(/^# A Partstyle project/);
       expect((await ws.variant("list")).text).toContain("tmp: same as main");

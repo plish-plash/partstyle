@@ -8,7 +8,7 @@ import { findKicad } from "./kicad.js";
 import { rememberSharedLibrary } from "./settings.js";
 import { projectClaudeMd } from "./skeleton.js";
 import { partstyleVersion } from "./version.js";
-import { readGrammarReference, Workspace } from "./workspace.js";
+import { readGuide, Workspace } from "./workspace.js";
 
 // Tests that need KiCad installed are skipped without it.
 const kicad = await findKicad();
@@ -253,15 +253,16 @@ describe("Workspace.init", () => {
       `created project new-board in ${dir}`,
       "  partstyle-project.yaml",
       "  circuit/main.ckt",
+      "  notes/design.md",
       "  notes/decisions.md",
       "  notes/pcb.md",
+      "  notes/firmware.md",
       "  CLAUDE.md",
       "  .claude/commands/design-review.md",
       "  .claude/commands/ingest-part.md",
-      "  .claude/commands/prepare-handoff.md",
+      "  .claude/commands/handoff.md",
       "  .gitignore",
-      "initialized a git repository for checkpoints",
-      "next: fill in partstyle-project.yaml with the user, then add blocks (partstyle grammar shows how)",
+      "next: fill in partstyle-project.yaml with the user, then add blocks (guide ckt shows how)",
     ]);
     expect(await readFile(path.join(dir, "partstyle-project.yaml"), "utf8")).toContain(
       `\npartstyle_version: "${partstyleVersion()}"\nname: "new-board"\n`,
@@ -271,7 +272,7 @@ describe("Workspace.init", () => {
       text: "new-board: 0 errors, 0 warnings",
     });
     const overview = (await fresh.overview()).text;
-    expect(overview).toContain("context: TODO one line");
+    expect(overview).toContain("context: TODO one or two sentences");
     expect(overview).toContain("parts: 0 (0 library, 0 generic; 0 of 0 records unverified)");
     // The seed library is reachable from the new project.
     expect((await fresh.partSearch("L7805CV")).text).toMatch(/^L7805CV: /);
@@ -301,8 +302,76 @@ describe("Workspace.init", () => {
   });
 });
 
+describe("notes", () => {
+  const fresh = async (name: string) => {
+    const dir = path.join(tmp, name);
+    const w = new Workspace(dir, { stateDir });
+    await w.init();
+    return { w, dir };
+  };
+
+  it("appends decisions, dated, and refuses to rewrite them", async () => {
+    const { w, dir } = await fresh("decisions");
+    expect((await w.addDecision("Use an LDO:\n  quieter than a buck")).text).toMatch(
+      /^added to notes\/decisions\.md: - \d{4}-\d\d-\d\d \d\d:\d\d: Use an LDO: quieter than a buck$/,
+    );
+    await w.addDecision("Second");
+    const text = (await w.readDoc("notes/decisions.md")).text;
+    expect(text).toMatch(
+      /Append-only[^\n]*\n\n- \S+ \S+: Use an LDO: quieter than a buck\n- \S+ \S+: Second\n$/,
+    );
+    const refused = await w.writeDoc("notes/decisions.md", "gone");
+    expect(refused.ok).toBe(false);
+    expect(refused.text).toContain("add_decision");
+    expect(await readFile(path.join(dir, "notes/decisions.md"), "utf8")).toBe(text);
+    expect((await w.addDecision("  ")).ok).toBe(false);
+  });
+
+  it("creates the decisions file if it is missing", async () => {
+    const { w, dir } = await fresh("decisions-gone");
+    await rm(path.join(dir, "notes"), { recursive: true });
+    expect((await w.addDecision("First")).ok).toBe(true);
+    expect((await w.readDoc("notes/decisions.md")).text).toMatch(/^# Decisions\n[\s\S]*: First\n$/);
+  });
+
+  it("points a long description at the design notes", async () => {
+    const { w } = await fresh("description");
+    const note = "note: keep description short; the design overview goes in notes/design.md";
+    const short = await w.writeDoc(
+      "partstyle-project.yaml",
+      "name: x\ndescription: A sensor board",
+    );
+    expect(short.text).not.toContain(note);
+    const two = "name: x\ndescription: |\n  First paragraph.\n\n  Second paragraph.\n";
+    expect((await w.writeDoc("partstyle-project.yaml", two)).text).toContain(note);
+    const long = `name: x\ndescription: ${"word ".repeat(50)}\n`;
+    expect((await w.writeDoc("partstyle-project.yaml", long)).text).toContain(note);
+  });
+
+  it("shows notes in the overview, flagging an unwritten design overview", async () => {
+    const { w } = await fresh("overview-notes");
+    expect((await w.overview()).text).toContain(
+      "notes: design.md (not written yet), decisions.md (0), pcb.md, firmware.md\n",
+    );
+    await w.writeDoc("notes/design.md", "# Design\n\nA board.\n");
+    await w.addDecision("One");
+    await w.writeDoc("notes/review.md", "- [note] x");
+    expect((await w.overview()).text).toContain(
+      "notes: design.md, decisions.md (1), pcb.md, firmware.md, review.md\n",
+    );
+  });
+
+  it("keeps checkpoints out of the overview", async () => {
+    const { w } = await fresh("quiet");
+    const text = (await w.overview()).text;
+    expect(text).toContain("changes: none");
+    expect(text.toLowerCase()).not.toContain("checkpoint");
+  });
+});
+
 it("the grammar's example block validates clean against the seed library", async () => {
-  const block = /```\n(block power[\s\S]*?)```/.exec(await readGrammarReference())?.[1] as string;
+  const grammar = (await readGuide("ckt")).text;
+  const block = /```\n(block power[\s\S]*?)```/.exec(grammar)?.[1] as string;
   const dir = path.join(tmp, "template-check");
   const fresh = new Workspace(dir, { stateDir });
   await fresh.init();

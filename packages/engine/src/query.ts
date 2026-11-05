@@ -16,10 +16,41 @@ export const queryUsage = `queries:
   parts [where COND [and ...]]  e.g. parts where vin_max < 15V, parts where kind = generic
   nets [where COND [and ...]]   e.g. nets where pins = 1, nets where voltage ~ 5V
   unconnected                   every pin on no net, marking those left open by nc
-COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path id mpn
-manufacturer package footprint kind fn value verified intent, or any rating. Net fields: name
-pins, or any attribute. Quantities compare numerically (35V > 5V). REF and NAME may omit the
-instance path when unambiguous (U1 for PWR/U1).`;
+COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path id preferred_mpn
+manufacturer package footprint kind fn value verified (yes/no, library parts) intent, or any
+rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
+and NAME may omit the instance path when unambiguous (U1 for PWR/U1).`;
+
+/** Fields any design may use; ratings and attributes exist only if something in it has them. */
+const partBaseFields = [
+  "path",
+  "id",
+  "kind",
+  "fn",
+  "value",
+  "intent",
+  "preferred_mpn",
+  "manufacturer",
+  "package",
+  "footprint",
+  "verified",
+];
+const netBaseFields = ["name", "pins", "voltage", "source"];
+
+/** A failure for a condition on a field nothing has: otherwise it reads as "nothing matches". */
+function unknownField(
+  what: string,
+  conditions: Condition[],
+  rows: Record<string, string>[],
+  base: string[],
+): TextResult | undefined {
+  if (rows.length === 0) return undefined;
+  const fields = new Set([...base, ...rows.flatMap((f) => Object.keys(f))]);
+  const bad = conditions.find((c) => !fields.has(c.field));
+  return bad && fail(`no ${what} has field '${bad.field}'; fields: ${[...fields].join(" ")}`);
+}
+
+const yesNo: Record<string, string> = { true: "yes", false: "no" };
 
 /** Resolves a name to a flat path: exact match, else a unique `*\/name` match. */
 function resolve(paths: string[], name: string, what: string): string | TextResult {
@@ -148,7 +179,8 @@ function compare(actual: string, op: Op, expected: string): boolean {
 function matches(fields: Record<string, string>, conditions: Condition[]): boolean {
   return conditions.every((c) => {
     const actual = fields[c.field];
-    return actual !== undefined && compare(actual, c.op, c.value);
+    const expected = c.field === "verified" ? (yesNo[c.value.toLowerCase()] ?? c.value) : c.value;
+    return actual !== undefined && compare(actual, c.op, expected);
   });
 }
 
@@ -202,6 +234,13 @@ export function runQuery(netlist: Netlist, expr: string): TextResult {
     case "parts": {
       const conditions = filterClause(rest);
       if (isResult(conditions)) return conditions;
+      const unknown = unknownField(
+        "part",
+        conditions,
+        netlist.parts.map(partFields),
+        partBaseFields,
+      );
+      if (unknown) return unknown;
       const shown = new Set(conditions.map((c) => c.field));
       const lines = netlist.parts
         .map((p) => [p, partFields(p)] as const)
@@ -221,6 +260,8 @@ export function runQuery(netlist: Netlist, expr: string): TextResult {
     case "nets": {
       const conditions = filterClause(rest);
       if (isResult(conditions)) return conditions;
+      const unknown = unknownField("net", conditions, netlist.nets.map(netFields), netBaseFields);
+      if (unknown) return unknown;
       const lines = netlist.nets
         .filter((n) => matches(netFields(n), conditions))
         .map((n) => `${n.name}${formatAttrs(n.attrs)}: ${n.pins.map(pinWithType).join(" ")}`);

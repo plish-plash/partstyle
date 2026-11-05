@@ -64,6 +64,37 @@ describe("runQuery", () => {
     expect(q("nets where pins > 20").text).toMatch(/^1 net\nGND: /);
   });
 
+  it("reports a field nothing has, listing the ones that exist", () => {
+    const part = q("parts where validated = yes");
+    expect(part.ok).toBe(false);
+    expect(part.text).toMatch(/^no part has field 'validated'; fields: path .*vin_max/);
+    const net = q("nets where colour = red");
+    expect(net.ok).toBe(false);
+    expect(net.text).toMatch(/^no net has field 'colour'; fields: name pins /);
+  });
+
+  it("leaves a real field that fits nothing as an empty answer", () => {
+    expect(q("parts where fn = crystal")).toEqual({ ok: true, text: "no matching parts" });
+    expect(q("parts where vin_max > 1000V")).toEqual({ ok: true, text: "no matching parts" });
+    const generics = validateProject({
+      project: { file: "partstyle-project.yaml", text: "name: t" },
+      circuits: [
+        { file: "circuit/main.ckt", text: "block main\npart R1 res(1k)\nnet N : R1.1 R1.2\n" },
+      ],
+      parts: [],
+    }).netlist as Netlist;
+    expect(runQuery(generics, "parts where verified = no").text).toBe("no matching parts");
+    expect(runQuery(generics, "nets where voltage ~ 5V").text).toBe("no matching nets");
+  });
+
+  it("takes true and false for verified", () => {
+    const yes = q("parts where verified = no").text;
+    expect(yes).toMatch(/^\d+ parts?\n/);
+    expect(q("parts where verified = FALSE").text).toBe(yes);
+    expect(q("parts where verified = true").text).toBe(q("parts where verified = yes").text);
+    expect(q("parts where verified != true").text).toBe(yes);
+  });
+
   it("lists unconnected pins, including ones that may stay open", () => {
     const lines = q("unconnected").text.split("\n");
     expect(lines[0]).toBe("17 unconnected pins");
@@ -110,7 +141,7 @@ describe("overview and readBlock", () => {
     const text = overview(source, result);
     expect(text.split("\n").slice(0, 2)).toEqual([
       "project bench-sensor",
-      "context: Benchtop sensor interface",
+      "context: Bench interface that reads a remote analog sensor and reports over UART",
     ]);
     expect(text).toContain(
       "  interface AFE/J2: remote sensor on 2 m cable (0-3.3 V analog, sensor powered from +5V); hazards: ESD, miswiring to 12 V (accepted: on a bench tool; it may destroy D3, but R2 keeps it out of U3)",

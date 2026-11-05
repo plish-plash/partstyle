@@ -57,7 +57,7 @@ Then, in a chat:
   `partstyle-project.yaml` with you (`write_doc`), then designs block by block with `apply`.
 - "Open bench-sensor" or "what Partstyle projects do I have?": `open_project`, `list_projects`.
 - Open the viewer URL Claude gives you. Select parts or nets there and say "this"; Claude calls
-  `focus`. Revert changes, accept pending patches and checkpoint in the viewer's Changes tab.
+  `focus`. Revert changes, accept pending patches and make checkpoints in the viewer's Changes tab.
 - The procedures are in the prompt menu: design review, ingest part, prepare hand-off.
 - A Claude Desktop project per design, with an instruction like "use the Partstyle project
   bench-sensor", keeps its chats together.
@@ -81,7 +81,8 @@ moves all three).
 exist yet: `init_project` creates the project there.
 
 The server sends the workflow (the project `CLAUDE.md`'s, in tool terms) as MCP instructions,
-so clients that never read a `CLAUDE.md` follow it too.
+so clients that never read a `CLAUDE.md` follow it too. These stay short and say which `guide`
+topic to read when, so references and procedures cost nothing until they are needed.
 
 ### The viewer
 
@@ -107,32 +108,32 @@ executable, `node <repo>/packages/mcp/dist/main.js` takes the same arguments.
 Each tool calls the same `Workspace` method as the matching CLI command, so output is
 identical.
 
-| MCP tool                                                                          | CLI                                                                              |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `list_projects` (global mode)                                                     | `partstyle projects [--dir DIR]`                                                 |
-| `open_project(project)` (global mode)                                             | `partstyle -p DIR ...`                                                           |
-| `init_project(name, path)`                                                        | `partstyle init [DIR] --name NAME`                                               |
-| `overview`                                                                        | `partstyle overview`                                                             |
-| `read_block(block, detail)`                                                       | `partstyle read-block BLOCK --detail ...`                                        |
-| `query(expr)`                                                                     | `partstyle query EXPR`                                                           |
-| `apply(patch, dry_run)`                                                           | `partstyle apply [FILE\|-] [--dry-run]`                                          |
-| `validate`                                                                        | `partstyle validate [--json]`                                                    |
-| `read_doc(file)`, `write_doc(file, text)`                                         | `partstyle doc read FILE`, `partstyle doc write FILE [SRC\|-]`                   |
-| `part_search(q)`                                                                  | `partstyle part search Q`                                                        |
-| `part_get(id, tier)`                                                              | `partstyle part get ID --tier ...`                                               |
-| `part_put(record, scope)`                                                         | `partstyle part put [FILE\|-] --scope ...`                                       |
-| `kicad_export(check)`                                                             | `partstyle kicad export [--no-check]`                                            |
-| `kicad_import(path, new_project)`                                                 | `partstyle kicad import PATH` (`--replace` is CLI only)                          |
-| `bom_export`                                                                      | `partstyle bom export`                                                           |
-| `focus`                                                                           | `partstyle focus`                                                                |
-| `diff(since)`                                                                     | `partstyle diff [--since ...]`                                                   |
-| `checkpoint(message)`                                                             | `partstyle checkpoint MESSAGE`                                                   |
-| `variant(op, name, description)`                                                  | `partstyle variant list\|create\|diff NAME [DESCRIPTION]`                        |
-| `variant` on the read, doc, diff and export tools; `variants` on `apply`          | `--variant NAME` (repeatable for `apply`)                                        |
-| `grammar`, and resource `partstyle://grammar`                                     | `partstyle grammar`                                                              |
-| (person only: viewer and CLI)                                                     | `partstyle changes`, `revert`, `pending`, `variant adopt\|remove`, `checkpoints` |
-| (viewer, started with the server)                                                 | `partstyle view [--port N]`                                                      |
-| prompts `design_review(block)`, `ingest_part(part, datasheet)`, `prepare_handoff` | `partstyle prompt NAME [ARGS...]`, and `/design-review` etc. in Claude Code      |
+| MCP tool                                                                  | CLI                                                                                            |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `list_projects` (global mode)                                             | `partstyle projects [--dir DIR]`                                                               |
+| `open_project(project)` (global mode)                                     | `partstyle -p DIR ...`                                                                         |
+| `init_project(name, path)`                                                | `partstyle init [DIR] --name NAME`                                                             |
+| `overview`                                                                | `partstyle overview`                                                                           |
+| `read_block(block, detail)`                                               | `partstyle read-block BLOCK --detail ...`                                                      |
+| `query(expr)`                                                             | `partstyle query EXPR`                                                                         |
+| `apply(patch, dry_run)`                                                   | `partstyle apply [FILE\|-] [--dry-run]`                                                        |
+| `validate`                                                                | `partstyle validate [--json]`                                                                  |
+| `read_doc(file)`, `write_doc(file, text)`                                 | `partstyle doc read FILE`, `partstyle doc write FILE [SRC\|-]`                                 |
+| `add_decision(text)`                                                      | `partstyle decision TEXT...`                                                                   |
+| `part_search(q)`                                                          | `partstyle part search Q`                                                                      |
+| `part_get(id, tier)`                                                      | `partstyle part get ID --tier ...`                                                             |
+| `part_put(record, scope)`                                                 | `partstyle part put [FILE\|-] --scope ...`                                                     |
+| `kicad_export(check)`                                                     | `partstyle kicad export [--no-check]`                                                          |
+| `kicad_import(path, new_project)`                                         | `partstyle kicad import PATH` (`--replace` is CLI only)                                        |
+| `bom_export`                                                              | `partstyle bom export`                                                                         |
+| `focus`                                                                   | `partstyle focus`                                                                              |
+| `diff(since)`                                                             | `partstyle diff [--since ...]`                                                                 |
+| `variant(op, name, description)`                                          | `partstyle variant list\|create\|diff NAME [DESCRIPTION]`                                      |
+| `variant` on the read, doc, diff and export tools; `variants` on `apply`  | `--variant NAME` (repeatable for `apply`)                                                      |
+| `guide(topic)`                                                            | `partstyle guide [TOPIC]`                                                                      |
+| (person only: viewer and CLI)                                             | `partstyle changes`, `revert`, `pending`, `variant adopt\|remove`, `checkpoint`, `checkpoints` |
+| (viewer, started with the server)                                         | `partstyle view [--port N]`                                                                    |
+| prompts `design_review(block)`, `ingest_part(part, datasheet)`, `handoff` | `/design-review` etc. in Claude Code; the AI reads them with `guide`                           |
 
 Until a project is open in global mode, the project tools answer with how to open one, except
 `part_search`, `part_get` and `part_put`, which work on the libraries in the settings (the first
@@ -157,6 +158,7 @@ says which variant the person is viewing. See
 
 `read_doc` and `write_doc` cover `partstyle-project.yaml` and Markdown files under `notes/`;
 writing the project file reports its issues, and a project file that would not load is refused.
-Grammar and documents are tools as well as files because clients like Claude Desktop cannot read
-files or resources by themselves. Settings (`~/.partstyle/settings.yaml`) and the review mode
+`notes/decisions.md` is append-only, so `write_doc` refuses it and `add_decision` adds to it.
+`guide` and documents are tools because clients like Claude Desktop cannot read files, and prompts
+sit in a menu only the person can open, so `guide` is how Claude reaches a procedure by itself. Settings (`~/.partstyle/settings.yaml`) and the review mode
 (the viewer's switch) are the person's, so no tool writes them.

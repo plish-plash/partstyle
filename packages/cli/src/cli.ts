@@ -3,21 +3,12 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   countIssues,
-  findPrompt,
   formatValidation,
-  type PromptDef,
-  prompts,
   queryUsage,
   type TextResult,
   type ValidationResult,
 } from "@partstyle/engine";
-import {
-  ProjectLoadError,
-  Projects,
-  readGrammarReference,
-  readPartFormat,
-  Workspace,
-} from "@partstyle/engine/node";
+import { ProjectLoadError, Projects, readGuide, Workspace } from "@partstyle/engine/node";
 import { partstyleVersion } from "@partstyle/mcp";
 import { startViewer } from "@partstyle/server";
 
@@ -47,7 +38,7 @@ commands:
   validate [DIR] [--json]                  parse, connect and ERC-check (exit 1 on errors)
   apply [FILE|-] [--dry-run]               apply a .ckt patch from FILE or stdin
   doc read FILE | doc write FILE [SRC|-]   read or replace the project file or a notes/*.md file
-  part format                              print the part record format
+  decision TEXT...                         add a decision to notes/decisions.md
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
@@ -61,14 +52,12 @@ commands:
   diff [--since checkpoint|last|ID]        circuit changes, statement by statement
   changes                                  changesets since the checkpoint, and pending patches
   revert C3|C3.2                           undo a changeset or one of its statements
-  checkpoint MESSAGE...                    commit the project folder (the person's approval)
+  checkpoint MESSAGE...                    commit the project folder
   checkpoints                              recent checkpoints
   pending accept|reject ID                 decide a patch held in accept mode
   variant list | create NAME [DESCRIPTION...] | diff|adopt|remove NAME
                                            alternative versions sharing the blocks they keep
-  prompt [NAME [ARGS...]]                  list or print a procedure (design-review, ingest-part,
-                                           prepare-handoff)
-  grammar                                  print the .ckt and patch reference
+  guide [TOPIC]                            print a reference or procedure (no topic: list them)
 
 options:
   -p, --project DIR   project folder (default: current directory)
@@ -232,9 +221,6 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
 
     case "part": {
       const [sub, ...rest] = args;
-      if (sub === "format" && rest.length === 0) {
-        return { stdout: await readPartFormat(), exitCode: 0 };
-      }
       if (sub === "search" && rest.length > 0) return fromText(await ws.partSearch(rest.join(" ")));
       if (sub === "get" && rest.length === 1) {
         const tier = oneOf(values.tier ?? "summary", ["summary", "pins", "full"] as const);
@@ -247,7 +233,7 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
           return usageError("--scope must be global or project");
         return withInput(rest[0], io, async (yaml) => fromText(await ws.partPut(yaml, scope)));
       }
-      return usageError("usage: part format | part search QUERY | part get ID | part put [FILE|-]");
+      return usageError("usage: part search QUERY | part get ID | part put [FILE|-]");
     }
 
     case "kicad":
@@ -303,6 +289,10 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
       if (args.length !== 1) return usageError("usage: revert C3|C3.2");
       return fromText(await ws.revert(args[0] as string));
 
+    case "decision":
+      if (args.length === 0) return usageError("usage: decision TEXT...");
+      return fromText(await ws.addDecision(args.join(" ")));
+
     case "checkpoint":
       if (args.length === 0) return usageError("usage: checkpoint MESSAGE...");
       return fromText(await ws.checkpoint(args.join(" ")));
@@ -337,33 +327,11 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
       );
     }
 
-    case "prompt": {
-      const [name, ...rest] = args;
-      const synopsis = (p: PromptDef) =>
-        [
-          p.name.replace(/_/g, "-"),
-          ...p.args.map((a) => (a.required ? a.name.toUpperCase() : `[${a.name.toUpperCase()}]`)),
-        ].join(" ");
-      if (name === undefined) {
-        return {
-          stdout: prompts.map((p) => `${synopsis(p)}: ${p.description}`).join("\n"),
-          exitCode: 0,
-        };
-      }
-      const p = findPrompt(name);
-      if (!p) return usageError(`unknown prompt '${name}' (partstyle prompt lists them)`);
-      const required = p.args.filter((a) => a.required).length;
-      if (rest.length < required || rest.length > p.args.length) {
-        return usageError(`usage: prompt ${synopsis(p)}`);
-      }
-      return {
-        stdout: p.render(Object.fromEntries(p.args.map((a, i) => [a.name, rest[i]]))),
-        exitCode: 0,
-      };
+    case "guide": {
+      if (args.length > 1) return usageError("usage: guide [TOPIC]");
+      const r = await readGuide(args[0]);
+      return { stdout: r.text, exitCode: r.ok ? 0 : 1 };
     }
-
-    case "grammar":
-      return { stdout: await readGrammarReference(), exitCode: 0 };
 
     default:
       return usageError(`unknown command '${command}'`);

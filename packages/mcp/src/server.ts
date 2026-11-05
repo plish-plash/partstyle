@@ -9,12 +9,7 @@ import {
   queryUsage,
   type TextResult,
 } from "@partstyle/engine";
-import {
-  type Projects,
-  readGrammarReference,
-  readPartFormat,
-  Workspace,
-} from "@partstyle/engine/node";
+import { type Projects, readGuide, Workspace } from "@partstyle/engine/node";
 import { z } from "zod";
 
 const reply = (r: TextResult) => ({
@@ -124,49 +119,15 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     };
   };
 
-  server.registerResource(
-    "grammar",
-    "partstyle://grammar",
-    {
-      title: ".ckt grammar and patch reference",
-      description: "Read before writing .ckt text or apply patches",
-      mimeType: "text/markdown",
-    },
-    async (uri) => ({
-      contents: [{ uri: uri.href, mimeType: "text/markdown", text: await readGrammarReference() }],
-    }),
-  );
-
   server.registerTool(
-    "grammar",
+    "guide",
     {
       description:
-        "The .ckt grammar and patch reference. Read it before writing .ckt text or patches.",
+        "Read when needed: topic ckt (the .ckt language and patches), parts (part record format), issues, or the procedures design-review, ingest-part, handoff. No topic lists them.",
+      inputSchema: { topic: z.string().optional() },
       annotations: readOnly,
     },
-    async () => reply({ ok: true, text: await readGrammarReference() }),
-  );
-
-  server.registerResource(
-    "part_format",
-    "partstyle://part-format",
-    {
-      title: "Part record format",
-      description: "Read before writing a part record",
-      mimeType: "text/markdown",
-    },
-    async (uri) => ({
-      contents: [{ uri: uri.href, mimeType: "text/markdown", text: await readPartFormat() }],
-    }),
-  );
-
-  server.registerTool(
-    "part_format",
-    {
-      description: "The part record format. Read it before part_put.",
-      annotations: readOnly,
-    },
-    async () => reply({ ok: true, text: await readPartFormat() }),
+    async ({ topic }) => reply(await readGuide(topic)),
   );
 
   if (projects) {
@@ -277,7 +238,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "apply",
     {
       description:
-        "Apply a batched edit in the .ckt patch language (see grammar): 'in BLOCK', '+ STATEMENT', '= STATEMENT', '- part REF', 'net NAME += REF.PIN', 'rename part OLD NEW'. Atomic. Returns the edits plus only the issues they added or resolved.",
+        "Apply a batched edit in the .ckt patch language (see guide ckt): 'in BLOCK', '+ STATEMENT', '= STATEMENT', '- part REF', 'net NAME += REF.PIN', 'rename part OLD NEW'. Atomic. Returns the edits plus only the issues they added or resolved.",
       inputSchema: {
         patch: z.string(),
         dry_run: z.boolean().optional().describe("Report the effect without writing files"),
@@ -301,6 +262,17 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       annotations: readOnly,
     },
     async ({ variant }) => run((w) => on(w, variant).validate()),
+  );
+
+  server.registerTool(
+    "add_decision",
+    {
+      description:
+        "Record a decision made with the person, and why, at the end of notes/decisions.md (append-only).",
+      inputSchema: { text: z.string() },
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ text }) => run((w) => w.addDecision(text)),
   );
 
   server.registerTool(
@@ -356,7 +328,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "part_put",
     {
       description:
-        "Create or update a part record (YAML; see part_format). Capture the whole datasheet, in free-form sections where no field fits. Leave provenance.verified_by null. To remove a record, ask the person to delete its file.",
+        "Create or update a part record (YAML; see guide parts). Capture the whole datasheet, in free-form sections where no field fits. Leave provenance.verified_by null. To remove a record, ask the person to delete its file.",
       inputSchema: {
         record: z.string().describe("The full YAML record"),
         scope: z
@@ -446,21 +418,11 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "diff",
     {
       description:
-        "Circuit changes by statement since: checkpoint (default; not yet approved), last (your previous diff; use at the start of a turn), or a checkpoint id.",
+        "Circuit changes by statement since your previous diff, including the person's edits and reverts. Use at the start of a turn. since=checkpoint or an id compares with a checkpoint.",
       inputSchema: { since: z.string().optional(), variant },
       annotations: readOnly,
     },
-    async ({ since, variant }) => run((w) => on(w, variant).diff(since ?? "checkpoint")),
-  );
-
-  server.registerTool(
-    "checkpoint",
-    {
-      description: "Commit the project as a checkpoint (the person's approval). Only when asked.",
-      inputSchema: { message: z.string() },
-      annotations: { destructiveHint: false, openWorldHint: false },
-    },
-    async ({ message }) => run((w) => w.checkpoint(message)),
+    async ({ since, variant }) => run((w) => on(w, variant).diff(since ?? "last")),
   );
 
   server.registerTool(
@@ -478,7 +440,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     async ({ op, name, description }) => run((w) => w.variant(op, name, description)),
   );
 
-  // Procedures, fetched only when needed (the CLI prints the same text: partstyle prompt NAME).
+  // Procedures, in clients' prompt menus (the AI reads the same text with guide).
   for (const p of prompts) {
     const argsSchema = Object.fromEntries(
       p.args.map((a) => [

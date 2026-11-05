@@ -2,6 +2,31 @@ import { slashCommands } from "../prompts.js";
 import { PROJECT_FILE } from "./config.js";
 import type { TextFile } from "./source.js";
 
+export const DESIGN_FILE = "notes/design.md";
+export const DECISIONS_FILE = "notes/decisions.md";
+
+/** The notes a new project starts with: what each holds, and when it is written. */
+export const noteTemplates = {
+  [DESIGN_FILE]: `# Design
+
+How the design works now, by block, kept up to date as it changes.
+`,
+  [DECISIONS_FILE]: `# Decisions
+
+Decisions made with the person, and why. Append-only: new entries go at the end.
+
+`,
+  "notes/pcb.md": `# PCB notes
+
+Layout guidance, written at hand-off: layer count, keep-outs, placement constraints.
+`,
+  "notes/firmware.md": `# Firmware notes
+
+What firmware needs to know, written at hand-off: pin assignments, peripherals, clocks,
+programming and debug access, reset and boot requirements.
+`,
+} as const;
+
 /**
  * A project's CLAUDE.md. It teaches the conventions an AI would otherwise copy from an example
  * project, so a fresh project needs nothing else to get started.
@@ -18,12 +43,12 @@ Commands below are the \`partstyle\` CLI; the Partstyle MCP server has a tool fo
 
 ## Before the first edit
 
-1. Run \`partstyle grammar\` and follow it exactly; it includes the naming conventions and an
+1. Run \`partstyle guide ckt\` and follow it exactly; it includes the naming conventions and an
    example block.
-2. Fill in \`${PROJECT_FILE}\` with the user: use case, environment, assembly, and every external
-   interface (each connection to the outside world, the power input included) with the hazards
-   the user names for it. It also holds the project's name and settings (distributors, capacitor
-   derating).
+2. Fill in \`${PROJECT_FILE}\` with the user: a description of one or two sentences, environment,
+   assembly, and every external interface (each connection to the outside world, the power input
+   included) with the hazards the user names for it. It also holds the project's name and
+   settings (distributors, capacitor derating).
 3. Plan one block per functional area (power, mcu, sensor input, ...), each in its own
    \`circuit/<block>.ckt\`, instantiated and joined in \`circuit/main.ckt\` with \`use\`.
 
@@ -49,13 +74,10 @@ and comment there rather than typing refdes:
 ## Review and versions
 
 The person reviews your edits in the viewer as changesets (each \`apply\`, or each burst of
-direct edits) and can revert any of them, whole or statement by statement. A checkpoint (a git
-commit of the project) is their approval.
+direct edits) and can revert any of them, whole or statement by statement.
 
 - Start each turn with \`partstyle diff --since last\`: what changed since you last looked,
   including the person's reverts and edits. Don't redo a change they reverted; ask instead.
-- \`partstyle diff\` lists everything since the last checkpoint. Make a checkpoint
-  (\`partstyle checkpoint "message"\`) only when the person asks for one.
 - If \`overview\` says \`review mode: accept\` (the person's switch in the viewer), edit only
   through \`partstyle apply\`: each patch waits as a pending change (P1, P2, ...) until the person
   accepts it in the viewer.
@@ -82,20 +104,31 @@ suggested fix.
   accepts one, record it in the project file as \`{hazard: ESD, accepted: why}\`.
 - Use generics for passives: \`res(10k, 1%, 0603)\`, \`cap(100n, 16V, X7R, 0603)\`, \`led(red, 0603)\`.
   Use \`lib:ID\` for everything else. Find records with \`partstyle part search\`; add missing ones
-  with \`partstyle part put\` (\`partstyle part format\` has the format), only for parts you know
+  with \`partstyle part put\` (\`partstyle guide parts\` has the format), only for parts you know
   exist (from memory or a datasheet), never an MPN extrapolated from a series. A record caches
   the datasheet: put everything in it, in sections of your own where no field fits. Leave
   \`verified_by: null\`: only a human verifies a record.
 - A design imported from KiCad (\`partstyle kicad import\`) has draft records for symbols the
   library lacked, each a \`part.draft\` warning: identify the part with the person, then complete
   the record from its datasheet (or switch the parts to an existing record or a generic).
-- Record design rationale in \`notes/decisions.md\` and layout constraints in \`notes/pcb.md\`.
+
+## Project knowledge
+
+Keep each thing in its place; the project file's description stays a short summary.
+
+- \`notes/design.md\`: how the design works now, by block. Write it once the design takes shape,
+  and rewrite it when its structure or approach changes.
+- \`notes/decisions.md\`: append-only. Whenever the person chooses between options, accepts a risk
+  or overrules a suggestion, add it with \`partstyle decision "what, and why"\`. Don't edit the
+  file.
+- \`notes/pcb.md\` and \`notes/firmware.md\`: written at hand-off, not as you go.
 
 ## Procedures
 
 For these, follow the procedure exactly: \`/design-review [block]\`, \`/ingest-part <mpn>
-[datasheet]\` and \`/prepare-handoff\` in Claude Code, or print it with \`partstyle prompt NAME\`.
-Use ingest-part whenever you add a part record.
+[datasheet]\` and \`/handoff\` in Claude Code, or print it with \`partstyle guide NAME\`. They name
+MCP tools; each has a command here (\`part_get\` is \`partstyle part get\`). Use ingest-part whenever
+you add a part record.
 
 ## Hand-off to KiCad
 
@@ -129,38 +162,39 @@ person, who watches the drawing update and points at things there.
     : "";
   return `Partstyle is a schematic editor for AI. A design is connectivity (parts, pins, nets and
 intent) in .ckt text; the drawing is generated, so never think in coordinates or wires.
-Bracketed layout hints on part lines ([2 r90 flip]) are the person's arrangement: keep them.
-A project's CLAUDE.md is these instructions in CLI terms for Claude Code: don't read it.
+Don't read a project's CLAUDE.md: it is these instructions for Claude Code.
 
 ${start}## Workflow
 
-1. Call grammar before writing .ckt text or patches, and follow it exactly; it includes the
-   naming conventions and an example block.
-2. New project: fill in ${PROJECT_FILE} with the person (read_doc, write_doc): use case,
-   environment, assembly, and every external interface (power input included) with the hazards
-   the person names for it. It also holds the name and settings. Then plan one block per
-   functional area, joined in main with 'use'.
-3. Read cheap first: overview, read_block (detail=summary, then full), query, part_get.
+1. Read guide TOPIC when needed, and follow it: ckt before writing .ckt or patches; parts and
+   ingest-part before a part record; design-review for a review; handoff for an export.
+2. New project: fill in ${PROJECT_FILE} with the person (read_doc, write_doc): a one or two
+   sentence description, environment, assembly, and every external interface (power input
+   included) with the hazards they name. Then plan one block per functional area, joined in main
+   with 'use'.
+3. Read cheap first: overview, read_block (summary, then full), query, part_get. Part records
+   cache datasheets: read one instead.
 4. Do what the person asked. Fix errors your own edit caused; anything else that changes the
-   design (protection, extra parts, waivers, fixes for warnings) is the person's call: raise
-   it with a suggested fix.
+   design (protection, extra parts, waivers, warning fixes) is their call: suggest it.
 5. Errors must be fixed, never waived; one that looks wrong is a Partstyle bug to raise. Mark a
    pin left open on purpose with 'nc U2.GAIN* @ why', not a waiver.
 6. The engine does not check interface hazards: handle them in the design. One the person
    accepts goes in the project file as {hazard: ESD, accepted: why}.
-7. "this", "here", "the selected part": call focus. Answer open comments; the person resolves
+7. Keep knowledge out of the description:
+   - notes/design.md: how the design works now, by block. Write it once the design takes
+     shape, and rewrite it when its structure changes.
+   - add_decision: when the person chooses between options, accepts a risk or overrules a
+     suggestion, record it and why.
+   - notes/pcb.md, notes/firmware.md: only at hand-off.
+8. "this", "here", "the selected part": call focus. Answer open comments; the person resolves
    them in the viewer.
-8. Start each turn with diff since=last: it shows the person's reverts and edits. Don't redo a
-   change they reverted; ask.
-9. A variant (variant create NAME) shares every block it doesn't change. Read one with
-   variant=NAME; apply to several with variants=[...] ("main" is the main circuit).
-10. Generics for passives: res(10k, 1%, 0603), cap(100n, 16V, X7R, 0603), led(red, 0603);
-    lib:ID for everything else, part_search first. Add records (part_format first) only for
-    parts you know exist, never an MPN extrapolated from a series. Records cache datasheets:
-    read one instead.
-11. Record rationale in notes/decisions.md and layout constraints in notes/pcb.md.
-12. checkpoint, bom_export and kicad_export only when the person asks. Never edit the kicad/
-    output: change the design and export again.
+9. Start each turn with diff: it shows the person's reverts and edits. Don't redo a reverted
+   change; ask.
+10. A variant shares every block it doesn't change. Read one with variant=NAME; apply to several
+    with variants=[...] ("main" is the main circuit).
+11. Generics for passives, lib:ID for the rest, part_search first. Add records only for parts you
+    know exist, never an MPN extrapolated from a series.
+12. bom_export and kicad_export only when asked. Never edit kicad/ output: change the design.
 `;
 }
 
@@ -169,14 +203,11 @@ export function projectSkeleton(name: string, version: string): TextFile[] {
   return [
     {
       file: PROJECT_FILE,
-      text: `# A Partstyle project: its name, design context and settings. Checks and design review
-# read the context; the description is plain paragraphs for people.
+      text: `# A Partstyle project: its name, design context and settings. Keep the description to
+# a short summary: the design overview is notes/design.md.
 partstyle_version: ${JSON.stringify(version)}
 name: ${JSON.stringify(name)}
-description: |
-  TODO: what the board does, who uses it and where, and anything a reviewer should know.
-
-use_case: TODO one line, e.g. benchtop sensor interface
+description: TODO one or two sentences, what the board does and who it's for
 environment:
   temp_c: [0, 50]
   indoor: true
@@ -212,20 +243,7 @@ checks:
 #   net GND  : PWR.GND MCU.GND
 `,
     },
-    {
-      file: "notes/decisions.md",
-      text: `# Design decisions
-
-Why choices were made, keyed to refdes and nets (e.g. "R5/R6 set the gain to 11").
-`,
-    },
-    {
-      file: "notes/pcb.md",
-      text: `# PCB notes
-
-Layout guidance for the KiCad hand-off: layer count, keep-outs, placement constraints.
-`,
-    },
+    ...Object.entries(noteTemplates).map(([file, text]) => ({ file, text })),
     { file: "CLAUDE.md", text: projectClaudeMd(name) },
     ...slashCommands(),
     {

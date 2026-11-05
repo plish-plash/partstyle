@@ -60,8 +60,10 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     context, `sourcing`, `checks`; the top block is always `main`), `project/settings.ts` (node:
     the user's `settings.yaml` with libraries and KiCad overrides, read fresh per call). The
     review mode is `.partstyle/review.json`, set only from the viewer.
-  - Procedures: `prompts.ts` (design_review, ingest_part, prepare_handoff) feeds the MCP
-    prompts, `partstyle prompt` and the `.claude/commands/` files `init` writes.
+  - Procedures: `prompts.ts` (design_review, ingest_part, handoff) feeds `guide`, the MCP
+    prompts and the `.claude/commands/` files `init` writes. `readGuide` in `workspace.ts` serves
+    them with the references in `docs/` (ckt-grammar, part-records, issues). What every chat must
+    know goes in `mcpInstructions`; everything else goes in a guide.
   - AI operations: `views.ts` (overview, read_block), `query.ts`, `patch.ts` (apply),
     `parts/search.ts`. `project/workspace.ts` wraps them over a folder, reloading per call.
 - `packages/cli` and `packages/mcp`: thin shells over `Workspace` (`partstyle mcp` runs
@@ -126,7 +128,7 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   folder names, `partstyle://` URIs, the MCP server key, KiCad's generator and library names).
 
 - Issues carry a stable `code`, a `file:line:col` location and flat-path `subjects`; waivers
-  match subjects. Add new codes to the table in `docs/ckt-grammar.md`.
+  match subjects. Add new codes to the table in `docs/issues.md`.
 - An issue is a hint for the AI to retry, a design fault, or something for the person to decide,
   never a normal step of designing. Errors must be fixed and cannot be waived, so only report one
   the engine can be sure of. Engine checks stay to ERC-style connectivity and numeric datasheet

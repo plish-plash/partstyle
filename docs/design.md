@@ -30,7 +30,7 @@ Five principles drive every later decision; when a design choice is unclear, the
 2. **Plain-text files are the canonical store.** A project is a folder of small, line-oriented text files. This makes git the versioning engine, makes diffs readable by both human and AI, and lets an AI with file tools (e.g. Claude Code) work without any server at all.
 3. **Progressive disclosure.** Every read has a cheap summary tier and a detailed tier. The AI starts from a project overview of a few hundred tokens and drills down only where it needs to.
 4. **Parts carry knowledge.** Facts the AI would otherwise re-derive from a datasheet (pinout, ratings, required external components, gotchas) are captured once in the part record, with provenance and a human-verified flag.
-5. **The human approves, the AI proposes.** AI edits apply immediately as changesets highlighted in the viewer; the human reverts what they disagree with and checkpoints what they approve. The human steers by pointing (selection, comments) and accepting, not by drawing.
+5. **The human approves, the AI proposes.** AI edits apply immediately as changesets highlighted in the viewer; the human reverts what they disagree with, and can checkpoint a state they want to keep. The human steers by pointing (selection, comments) and accepting, not by drawing.
 
 ## System components
 
@@ -54,8 +54,10 @@ my-board/
   parts.lock              # exact part-record versions/hashes used
   bom.lock                # how generic parts were resolved to MPNs
   notes/
-    decisions.md          # design rationale, keyed to refdes/nets
-    pcb.md                # layout notes for the KiCad stage
+    design.md             # how the design works now
+    decisions.md          # decisions made with the person; append-only
+    pcb.md                # layout notes, written at hand-off
+    firmware.md           # what firmware needs to know, written at hand-off
 ```
 
 ### Circuit files (.ckt)
@@ -123,15 +125,13 @@ provenance:
 
 ### The project file (partstyle-project.yaml)
 
-One YAML file marks the folder as a project and holds what the AI and the checks read about it: the name, a plain-prose description, the design context and the few per-project settings. It is plain YAML so other tools can read it; the description is a block of paragraphs, not Markdown. The AI edits it like any other file (or with `write_doc`).
+One YAML file marks the folder as a project and holds what the AI and the checks read about it: the name, a short description, the design context and the few per-project settings. It is plain YAML so other tools can read it; the description is a block of paragraphs, not Markdown. The AI edits it like any other file (or with `write_doc`).
 
 Where a setting belongs follows from who should change it. Per-project design facts live in the project file. Machine-specific settings (part-library folders, KiCad's location) live in the user's `~/.partstyle/settings.yaml`, shared by every project, so a new project needs no setup. The review mode (whether each AI patch waits for approval) is the person's switch in the viewer, kept in `.partstyle/`, which the AI never writes. The top block is always `main`.
 
 ```yaml
 name: bench-sensor
-description: |
-  A bench interface that reads a remote analog sensor and reports over UART.
-use_case: Benchtop sensor interface
+description: Bench interface that reads a remote analog sensor and reports over UART
 environment:
   temp_c: [0, 50]
   indoor: true
@@ -159,7 +159,7 @@ External interfaces are the person's statement of what the outside world does at
 
 ### Notes
 
-`notes/decisions.md` records why choices were made ("R5/R6 set gain of 11"), referencing refdes and nets so the AI need not re-derive them. `notes/pcb.md` collects layout guidance (layer count, keep-outs, placement constraints) for the hand-off to KiCad.
+Knowledge about a design has one home each, so none of it piles up in the project description, which stays a sentence or two. `notes/design.md` says how the design works now and is rewritten as it changes. `notes/decisions.md` is the record of what was decided with the person and why: append-only, through `add_decision`, so history can't be tidied away. `notes/pcb.md` (layout guidance) and `notes/firmware.md` (pin map, peripherals, clocks, programming) are written at hand-off, not kept up as the design moves.
 
 ## AI integration
 
@@ -167,20 +167,20 @@ Claude Code and chat clients such as Claude Desktop are equally supported AI sur
 
 ### MCP tool surface
 
-| Tool                                              | Purpose                                                                                                | Typical response size |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------- |
-| `overview`                                        | Blocks, part counts, open issues, context summary, changes since the last checkpoint                   | \~300–800 tokens      |
-| `read_block(block, detail)`                       | A block's .ckt text; `detail=summary` gives ports + part list only                                     | scales with block     |
-| `query(expr)`                                     | Targeted lookups: "nets on U3", "where is +5V used", "parts with vin\_max < 15V"                       | small                 |
-| `apply(patch)`                                    | Batched edits in the .ckt language (add/remove/modify statements); returns only new or resolved issues | small                 |
-| `validate(scope)`                                 | ERC + part + context checks; terse, issues only                                                        | small                 |
-| `part_search(q)` / `part_get(id, tier)`           | Local library; tier = summary, pins, full                                                              | small–medium          |
-| `part_put(record)`                                | Create or update a part record (reports what the engine cannot use)                                    | small                 |
-| `context_get` / `context_update`                  | Environment and interfaces                                                                             | small                 |
-| `focus()`                                         | What the human has selected or commented on in the viewer                                              | small                 |
-| `checkpoint(msg)` / `diff(since)` / `variant(op)` | Versioning, with semantic diffs                                                                        | small                 |
-| `render(block)`                                   | PNG of a block, only when visual judgement is needed                                                   | image                 |
-| `kicad_import` / `kicad_export` / `bom_export`    | Interop and outputs                                                                                    | small                 |
+| Tool                                           | Purpose                                                                                                | Typical response size |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------- |
+| `overview`                                     | Blocks, part counts, open issues, context summary, changes since the last checkpoint                   | \~300–800 tokens      |
+| `read_block(block, detail)`                    | A block's .ckt text; `detail=summary` gives ports + part list only                                     | scales with block     |
+| `query(expr)`                                  | Targeted lookups: "nets on U3", "where is +5V used", "parts with vin\_max < 15V"                       | small                 |
+| `apply(patch)`                                 | Batched edits in the .ckt language (add/remove/modify statements); returns only new or resolved issues | small                 |
+| `validate(scope)`                              | ERC + part + context checks; terse, issues only                                                        | small                 |
+| `part_search(q)` / `part_get(id, tier)`        | Local library; tier = summary, pins, full                                                              | small–medium          |
+| `part_put(record)`                             | Create or update a part record (reports what the engine cannot use)                                    | small                 |
+| `context_get` / `context_update`               | Environment and interfaces                                                                             | small                 |
+| `focus()`                                      | What the human has selected or commented on in the viewer                                              | small                 |
+| `diff(since)` / `variant(op)`                  | Versioning, with semantic diffs                                                                        | small                 |
+| `render(block)`                                | PNG of a block, only when visual judgement is needed                                                   | image                 |
+| `kicad_import` / `kicad_export` / `bom_export` | Interop and outputs                                                                                    | small                 |
 
 Deliberately absent: anything with coordinates, wires, or label placement.
 
@@ -195,9 +195,9 @@ Deliberately absent: anything with coordinates, wires, or label placement.
 - **Small tool list.** \~16 tools keep the per-turn tool-definition cost low.
 - **Images on demand only.** Renders are expensive; the AI asks for one when it genuinely needs a visual check.
 
-### Workflow prompts
+### Instructions and guides
 
-The MCP server also exposes a few prompts that encode repeatable procedures: `ingest_part` (datasheet to record), `design_review` (structured review against context and part requirements), and `prepare_handoff` (BOM resolution + PCB notes). These keep procedure out of every conversation's context until needed.
+What the AI is told comes in two layers. The MCP instructions are always loaded, so they hold only the rules and where things go. `guide(topic)` holds everything read on demand: the references (`ckt`, `parts`, `issues`) and the repeatable procedures, `ingest-part` (datasheet to record), `design-review` (structured review against context and part requirements) and `handoff` (BOM resolution, PCB and firmware notes, export). The procedures are also MCP prompts for the person's menu, but a prompt can't be started by the AI, so `guide` is what lets it follow one when asked.
 
 ## Human in the loop: the viewer
 
@@ -225,7 +225,7 @@ The viewer is where the human sees, points and decides; it is a read-mostly wind
 1. The AI calls `apply`; the engine applies it to the working copy, validates it and logs it as a changeset.
 2. The viewer highlights everything changed since the last checkpoint, with any new issues.
 3. The human reverts any changeset or statement they disagree with, edits it, or comments back.
-4. When a step looks right, the human checkpoints it; the checkpoint is the approval.
+4. When the human wants a state to keep, they make a checkpoint. Checkpoints are theirs to use or not; the AI doesn't raise them.
 
 Auto-apply is the default. A per-project setting switches to accept-before-apply for high-stakes work, where AI changes wait as pending changesets.
 
@@ -319,4 +319,4 @@ Each milestone ends with something usable on a real design; the order front-load
 - **Auto-layout readability.** Generated schematics can be hard to read for analog circuits where convention matters (feedback loops, signal flow left to right). Mitigation: conventional defaults (signal left to right, rails up, ground down, passives grouped with what they serve) plus layout hints in .ckt (stage, rotation, flip) that the human sets in the viewer.
 - **AI-extracted part records can be wrong.** A wrong pinout is a board respin. Mitigation: verified flag, footprint pad check, and treating unverified records as a validation warning.
 - **KiCad format drift.** `.kicad_sch` changes between major versions. Mitigation: target one KiCad version, keep the netlist path as the robust fallback, and verify every export with `kicad-cli`.
-- **DSL adoption cost.** A new language needs a spec the AI can learn cheaply. Mitigation: a one-page grammar reference exposed as an MCP resource, kept under \~1k tokens.
+- **DSL adoption cost.** A new language needs a spec the AI can learn cheaply. Mitigation: a short grammar reference the AI reads through `guide`.

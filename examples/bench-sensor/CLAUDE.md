@@ -9,12 +9,12 @@ Commands below are the `partstyle` CLI; the Partstyle MCP server has a tool for 
 
 ## Before the first edit
 
-1. Run `partstyle grammar` and follow it exactly; it includes the naming conventions and an
+1. Run `partstyle guide ckt` and follow it exactly; it includes the naming conventions and an
    example block.
-2. Fill in `partstyle-project.yaml` with the user: use case, environment, assembly, and every external
-   interface (each connection to the outside world, the power input included) with the hazards
-   the user names for it. It also holds the project's name and settings (distributors, capacitor
-   derating).
+2. Fill in `partstyle-project.yaml` with the user: a description of one or two sentences, environment,
+   assembly, and every external interface (each connection to the outside world, the power input
+   included) with the hazards the user names for it. It also holds the project's name and
+   settings (distributors, capacitor derating).
 3. Plan one block per functional area (power, mcu, sensor input, ...), each in its own
    `circuit/<block>.ckt`, instantiated and joined in `circuit/main.ckt` with `use`.
 
@@ -40,13 +40,10 @@ and comment there rather than typing refdes:
 ## Review and versions
 
 The person reviews your edits in the viewer as changesets (each `apply`, or each burst of
-direct edits) and can revert any of them, whole or statement by statement. A checkpoint (a git
-commit of the project) is their approval.
+direct edits) and can revert any of them, whole or statement by statement.
 
 - Start each turn with `partstyle diff --since last`: what changed since you last looked,
   including the person's reverts and edits. Don't redo a change they reverted; ask instead.
-- `partstyle diff` lists everything since the last checkpoint. Make a checkpoint
-  (`partstyle checkpoint "message"`) only when the person asks for one.
 - If `overview` says `review mode: accept` (the person's switch in the viewer), edit only
   through `partstyle apply`: each patch waits as a pending change (P1, P2, ...) until the person
   accepts it in the viewer.
@@ -73,20 +70,31 @@ suggested fix.
   accepts one, record it in the project file as `{hazard: ESD, accepted: why}`.
 - Use generics for passives: `res(10k, 1%, 0603)`, `cap(100n, 16V, X7R, 0603)`, `led(red, 0603)`.
   Use `lib:ID` for everything else. Find records with `partstyle part search`; add missing ones
-  with `partstyle part put` (`partstyle part format` has the format), only for parts you know
+  with `partstyle part put` (`partstyle guide parts` has the format), only for parts you know
   exist (from memory or a datasheet), never an MPN extrapolated from a series. A record caches
   the datasheet: put everything in it, in sections of your own where no field fits. Leave
   `verified_by: null`: only a human verifies a record.
 - A design imported from KiCad (`partstyle kicad import`) has draft records for symbols the
   library lacked, each a `part.draft` warning: identify the part with the person, then complete
   the record from its datasheet (or switch the parts to an existing record or a generic).
-- Record design rationale in `notes/decisions.md` and layout constraints in `notes/pcb.md`.
+
+## Project knowledge
+
+Keep each thing in its place; the project file's description stays a short summary.
+
+- `notes/design.md`: how the design works now, by block. Write it once the design takes shape,
+  and rewrite it when its structure or approach changes.
+- `notes/decisions.md`: append-only. Whenever the person chooses between options, accepts a risk
+  or overrules a suggestion, add it with `partstyle decision "what, and why"`. Don't edit the
+  file.
+- `notes/pcb.md` and `notes/firmware.md`: written at hand-off, not as you go.
 
 ## Procedures
 
 For these, follow the procedure exactly: `/design-review [block]`, `/ingest-part <mpn>
-[datasheet]` and `/prepare-handoff` in Claude Code, or print it with `partstyle prompt NAME`.
-Use ingest-part whenever you add a part record.
+[datasheet]` and `/handoff` in Claude Code, or print it with `partstyle guide NAME`. They name
+MCP tools; each has a command here (`part_get` is `partstyle part get`). Use ingest-part whenever
+you add a part record.
 
 ## Hand-off to KiCad
 

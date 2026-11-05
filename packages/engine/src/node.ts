@@ -14,7 +14,6 @@ export {
   embedReferences,
   type LayoutOp,
   layoutOps,
-  readGrammarReference,
-  readPartFormat,
+  readGuide,
   Workspace,
 } from "./project/workspace.js";

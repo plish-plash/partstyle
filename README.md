@@ -21,7 +21,7 @@ and the intent behind them — and draws the schematic itself. The result:
   ratings (pin voltages, capacitor derating, required external parts, temperature range), and
   Claude designs and reviews against the hazards you name at each connector.
 - **You stay in charge.** Claude's edits land as changesets you can revert, whole or statement
-  by statement; a checkpoint (a git commit) is your approval. You point at things in the viewer
+  by statement, and make a checkpoint (a git commit) whenever you want one. You point at things in the viewer
   instead of typing reference designators.
 
 ## What a design looks like
@@ -82,8 +82,8 @@ How each client is set up, and the full list of MCP tools, is in
 4. **Review as you go.** In the viewer, click a part, pin or net and say "this"; Claude sees
    your selection. Leave comments on things. The Changes tab shows each changeset: revert what
    you disagree with, or switch to accept mode so every patch waits for your approval.
-5. **Checkpoint.** When you're happy, make a checkpoint. Try alternatives (say, an LDO against a
-   buck converter) as variants and adopt the one you prefer.
+5. **Explore.** Try alternatives (say, an LDO against a buck converter) as variants and adopt the
+   one you prefer. Make a checkpoint in the viewer whenever you want to keep a state.
 6. **Hand off.** Export a BOM, which resolves generic parts to real MPNs from your preferred
    distributors, and the KiCad project: schematic using KiCad's own symbols, netlist, and
    footprint assignments, checked with KiCad's ERC. PCB layout happens in KiCad; re-exporting
@@ -99,7 +99,8 @@ lacks become draft part records to complete.
 | [INSTALL.md](INSTALL.md)                     | Installing the extension, the executable or a source build; releases |
 | [docs/claude-code.md](docs/claude-code.md)   | Using Partstyle from Claude Code, Claude Desktop and MCP clients     |
 | [docs/cli.md](docs/cli.md)                   | Reference for every `partstyle` command                              |
-| [docs/ckt-grammar.md](docs/ckt-grammar.md)   | The `.ckt` language, patches, and every issue code                   |
+| [docs/ckt-grammar.md](docs/ckt-grammar.md)   | The `.ckt` language and patches                                      |
+| [docs/issues.md](docs/issues.md)             | Every issue code                                                     |
 | [docs/part-records.md](docs/part-records.md) | The part record format                                               |
 | [docs/layout.md](docs/layout.md)             | How sheets are laid out, and how to steer the layout                 |
 | [docs/design.md](docs/design.md)             | Design rationale and architecture                                    |

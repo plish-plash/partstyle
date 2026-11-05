@@ -55,7 +55,7 @@ describe("partstyle read commands", () => {
 
   it("overview", async () => {
     const r = await inExample(["overview"]);
-    expect(r.stdout).toMatch(/^project bench-sensor\ncontext: Benchtop sensor interface\n/);
+    expect(r.stdout).toMatch(/^project bench-sensor\ncontext: Bench interface that reads/);
   });
 
   it("read-block", async () => {
@@ -178,28 +178,22 @@ describe("partstyle", () => {
     expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("prints the grammar and the part record format", async () => {
-    expect((await cli(["grammar"])).stdout).toMatch(/^# \.ckt grammar reference/);
-    expect((await cli(["part", "format"])).stdout).toMatch(/^# Part record format/);
-  });
-
-  it("lists and prints procedures, checking their arguments", async () => {
-    expect((await cli(["prompt"])).stdout.split("\n")).toEqual([
-      "design-review [BLOCK]: Structured review of the design against its context and part requirements",
-      "ingest-part PART [DATASHEET]: Read a datasheet once and write its part record",
-      "prepare-handoff: Resolve the BOM, write PCB notes and export to KiCad",
+  it("prints references and procedures from guide", async () => {
+    expect((await cli(["guide"])).stdout.split("\n").map((l) => l.split(":")[0])).toEqual([
+      "ckt",
+      "parts",
+      "issues",
+      "design-review",
+      "ingest-part",
+      "handoff",
     ]);
-    const r = await cli(["prompt", "ingest-part", "TPS7A02", "https://ti.com/x.pdf"]);
-    expect(r.stdout).toMatch(
-      /^Create the part record for TPS7A02 from https:\/\/ti\.com\/x\.pdf\./,
-    );
-    expect((await cli(["prompt", "design_review", "power"])).stdout).toMatch(
-      /^Review block power of this Partstyle design/,
-    );
-    expect((await cli(["prompt", "ingest-part"])).stderr).toMatch(
-      /^usage: prompt ingest-part PART \[DATASHEET\]/,
-    );
-    expect((await cli(["prompt", "nope"])).exitCode).toBe(2);
+    expect((await cli(["guide", "ckt"])).stdout).toMatch(/^# \.ckt grammar reference/);
+    expect((await cli(["guide", "parts"])).stdout).toMatch(/^# Part record format/);
+    expect((await cli(["guide", "issues"])).stdout).toMatch(/^# Issue codes/);
+    expect((await cli(["guide", "handoff"])).stdout).toContain("notes/firmware.md");
+    const unknown = await cli(["guide", "nope"]);
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.stdout).toMatch(/^no guide topic 'nope'; topics:\nckt: /);
   });
 
   it("rejects unknown commands and options with usage", async () => {

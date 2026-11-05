@@ -7,7 +7,7 @@ partstyle [-p DIR] <command> [args] [options]
 Every command works on one project folder: `-p/--project DIR`, or the current directory.
 `--variant NAME` makes it work on one of the project's [variants](#variant-list--create-name-description--diffadoptremove-name)
 instead of the main circuit (`apply` takes it several times). Each command except `init`,
-`grammar` and `part format` reads the project fresh, so edits made by hand or by another tool are
+`guide` reads the project fresh, so edits made by hand or by another tool are
 always picked up.
 
 Every MCP tool has a matching command with identical output (see
@@ -31,10 +31,12 @@ overwritten.
 | ------------------------ | ------------------------------------------------------------------ |
 | `partstyle-project.yaml` | name, description, design context to fill in, settings (see below) |
 | `circuit/main.ckt`       | an empty top block                                                 |
-| `notes/decisions.md`     | design rationale, keyed to refdes and nets                         |
-| `notes/pcb.md`           | layout notes for the KiCad hand-off                                |
+| `notes/design.md`        | how the design works now, kept up to date                          |
+| `notes/decisions.md`     | decisions made with the person; append-only (see `decision`)       |
+| `notes/pcb.md`           | layout notes, written at hand-off                                  |
+| `notes/firmware.md`      | what firmware needs to know, written at hand-off                   |
 | `CLAUDE.md`              | instructions for Claude Code: workflow and procedures              |
-| `.claude/commands/`      | Claude Code slash commands for the procedures (see `prompt`)       |
+| `.claude/commands/`      | Claude Code slash commands for the procedures (see `guide`)        |
 
 Later commands add `annotation.lock` and `bom.lock` (commit both), `bom.csv`, and the
 generated KiCad project in `kicad/`.
@@ -54,8 +56,7 @@ partstyle init boards/thermo --name thermo
 | ----------------------- | ------------------------------------------------------------------------------ |
 | `partstyle_version`     | the Partstyle version that created the project (written by `init`)             |
 | `name`                  | the project's name (required)                                                  |
-| `description`           | plain paragraphs for people, usually a `\|` block                              |
-| `use_case`              | one line; `overview` leads with it                                             |
+| `description`           | one or two sentences; `overview` leads with it                                 |
 | `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes     |
 | `assembly`, others      | free-form context for people and design review                                 |
 | `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards` |
@@ -120,10 +121,12 @@ shell characters like `<` and `>`.
 
 COND is `FIELD OP VALUE`, joined with `and`. OP is `= != < <= > >=` or `~` (contains,
 case-insensitive). Quantities compare numerically (`35V > 5V`, `4k7 < 10k`). A part or net
-missing the field never matches.
+missing the field never matches. A field no part or net in the design could have, such as a
+misspelt one, fails and lists the fields that exist.
 
 - Part fields: `path id preferred_mpn manufacturer package footprint kind fn value verified
   intent` and every rating in the part record (`vin_max`, or `vout.max` for a nested one).
+  `verified` is `yes` or `no` (`true` and `false` also work) and only library parts have it.
 - Net fields: `name pins` (pin count) and every net attribute (`voltage`, `source`, ...).
 - REF and NAME may omit the instance path when unambiguous (`U1` for `PWR/U1`).
 
@@ -139,7 +142,7 @@ partstyle query "nets where pins = 1"
 Parses, connects and checks the project. Prints one line per unwaived issue,
 `file:line:col severity code message`, then a summary. Exits 1 if there are errors, which cannot
 be waived. `--json` prints `{errors, warnings, waived, issues}`. Issue codes are listed in
-[ckt-grammar.md](ckt-grammar.md#issue-codes).
+[issues.md](issues.md).
 
 Besides structural ERC, every validate (and so every `apply`) runs:
 
@@ -171,6 +174,17 @@ YAML, or no `name`) is refused and nothing is written; otherwise the issues it n
 (or `partstyle-project.yaml: no issues`). These exist for MCP clients without file tools
 (`read_doc`, `write_doc`); from a shell, editing the files directly is the same.
 
+`notes/decisions.md` is append-only, so `doc write` refuses it. A description over about 200
+characters or several lines long gets a note that the design overview belongs in
+`notes/design.md`.
+
+### `decision TEXT...`
+
+Adds a line with the date and time to the end of `notes/decisions.md`: a decision made with the
+person, and why.
+Line breaks in the text become spaces. Earlier entries are never touched. It is `add_decision` in
+MCP.
+
 ### `apply [FILE|-] [--dry-run]`
 
 Applies a patch from FILE, or from stdin when FILE is `-` or omitted. Patches are all-or-nothing:
@@ -190,10 +204,6 @@ EOF
 You can also edit `.ckt` files directly with any editor, then run `validate`.
 
 ## Parts
-
-### `part format`
-
-Prints the part record format, with a worked example ([part-records.md](part-records.md)).
 
 ### `part search QUERY...`
 
@@ -316,7 +326,7 @@ Unless `--no-check` is given and when kicad-cli is found, the export is then ver
 2. **ERC:** `kicad-cli sch erc` runs on the schematic; violations are listed.
 
 The command fails (exit 1) on a round-trip mismatch or KiCad ERC errors. Only pins open by design
-get a no-connect flag (see `erc.unconnected-pin` in [ckt-grammar.md](ckt-grammar.md#issue-codes)),
+get a no-connect flag (see [issues.md](issues.md)),
 so KiCad's ERC also reports a pin left open by mistake; the files are still written.
 Next step: open `kicad/<name>.kicad_pro`, then in the PCB editor run Tools > Update PCB from
 Schematic.
@@ -492,7 +502,8 @@ or removed. The header's switcher picks which version of the design is shown.
 Circuit changes statement by statement, grouped by block. `checkpoint` (default) compares with
 the last checkpoint and also lists other changed files (context, part records, notes); `last`
 compares with the previous `diff` call, which is how the AI catches up on the person's reverts
-and edits at the start of a turn; an ID compares with that checkpoint.
+and edits at the start of a turn; an ID compares with that checkpoint. The MCP tool defaults to
+`last`.
 
 ```
 since checkpoint 9aeabc8 "initial bench-sensor design" (2026-10-31 11:31):
@@ -571,19 +582,24 @@ person's decisions.
 
 ## Reference
 
-| Command                 | Prints                                                            |
-| ----------------------- | ----------------------------------------------------------------- |
-| `prompt`                | the procedures, with their arguments                              |
-| `prompt NAME [ARGS...]` | a procedure for the AI to follow (below)                          |
-| `grammar`               | the `.ckt` and patch reference ([ckt-grammar.md](ckt-grammar.md)) |
-| `--help`                | the command summary                                               |
-| `--version`             | `partstyle VERSION`: a release's version, or the source's         |
+| Command       | Prints                                                    |
+| ------------- | --------------------------------------------------------- |
+| `guide`       | the topics below                                          |
+| `guide TOPIC` | a reference or procedure (below)                          |
+| `--help`      | the command summary                                       |
+| `--version`   | `partstyle VERSION`: a release's version, or the source's |
 
-The procedures are the MCP server's prompts, printed for clients without prompt support. `init`
-also writes them as Claude Code slash commands in `.claude/commands/`:
+| Reference topic | Contents                                                           |
+| --------------- | ------------------------------------------------------------------ |
+| `ckt`           | the `.ckt` language and patches ([ckt-grammar.md](ckt-grammar.md)) |
+| `parts`         | the part record format ([part-records.md](part-records.md))        |
+| `issues`        | every issue code ([issues.md](issues.md))                          |
 
-| Procedure                      | Slash command      | What the AI does                                                      |
-| ------------------------------ | ------------------ | --------------------------------------------------------------------- |
-| `design-review [BLOCK]`        | `/design-review`   | reviews against context and datasheets; findings to notes/review.md   |
-| `ingest-part PART [DATASHEET]` | `/ingest-part`     | reads the datasheet once and writes the record (or completes a draft) |
-| `prepare-handoff`              | `/prepare-handoff` | BOM, notes/pcb.md, KiCad export                                       |
+The procedures are for the AI to follow. They are also the MCP server's prompts, and `init` writes
+them as Claude Code slash commands in `.claude/commands/`:
+
+| Procedure       | Slash command    | What the AI does                                                      |
+| --------------- | ---------------- | --------------------------------------------------------------------- |
+| `design-review` | `/design-review` | reviews against context and datasheets; findings to notes/review.md   |
+| `ingest-part`   | `/ingest-part`   | reads the datasheet once and writes the record (or completes a draft) |
+| `handoff`       | `/handoff`       | BOM, notes/pcb.md, notes/firmware.md, KiCad export                    |

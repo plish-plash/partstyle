@@ -5,9 +5,9 @@ argument-hint: <part> [datasheet]
 
 Create the part record for the part.
 
-1. `partstyle part search MPN`: if a record exists (or a KiCad import draft,
+1. part_search MPN: if a record exists (or a KiCad import draft,
    extracted_by: kicad), complete it rather than adding another.
-2. `partstyle part format` has the format and a worked example. Read the datasheet once, then
+2. guide parts has the format and a worked example. Read the datasheet once, then
    write the record so that nobody needs the datasheet again: everything a designer could want,
    in sections of your own where no field fits.
    - Identity: the part's name without ordering codes as the id, a one-line summary with key
@@ -18,7 +18,7 @@ Create the part record for the part.
    - ratings, temp_c, requirements (with a check where one fits), notes, and characteristics,
      tables, timing, thermal data and application circuits as sections of your own.
    - provenance: datasheet url, extracted_by: ai, verified_by: null.
-3. `partstyle part put` it. It reports what the engine couldn't use and any pad mismatch with the
+3. part_put it. It reports what the engine couldn't use and any pad mismatch with the
    footprint: fix what is your mistake, and tell the person about the rest.
 4. Tell the person it awaits their verification in the viewer, and list anything the
    datasheet left ambiguous.

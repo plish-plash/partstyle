@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { findPrompt } from "@partstyle/engine";
-import { Projects, readGrammarReference, readPartFormat, Workspace } from "@partstyle/engine/node";
+import { Projects, readGuide, Workspace } from "@partstyle/engine/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
 
@@ -32,17 +32,16 @@ describe("MCP server", () => {
   it("exposes a small tool surface", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "add_decision",
       "apply",
       "bom_export",
-      "checkpoint",
       "diff",
       "focus",
-      "grammar",
+      "guide",
       "init_project",
       "kicad_export",
       "kicad_import",
       "overview",
-      "part_format",
       "part_get",
       "part_put",
       "part_search",
@@ -53,7 +52,7 @@ describe("MCP server", () => {
       "variant",
       "write_doc",
     ]);
-    // Tool definitions are paid on every turn; keep them short. (grammar, read_doc and
+    // Tool definitions are paid on every turn; keep them short. (guide, read_doc and
     // write_doc serve clients without file tools, such as Claude Desktop; the `variant`
     // parameters let one call work on any version of the design.)
     expect(JSON.stringify(tools).length / 4).toBeLessThan(2225);
@@ -61,8 +60,10 @@ describe("MCP server", () => {
 
   it("sends the workflow as instructions", () => {
     const text = client.getInstructions() ?? "";
-    expect(text).toContain("diff since=last");
+    expect(text).toContain("Start each turn with diff");
+    expect(text).toContain("add_decision");
     expect(text).not.toContain("open_project");
+    expect(text.toLowerCase()).not.toContain("checkpoint");
     expect(text.length / 4).toBeLessThan(600);
   });
 
@@ -78,13 +79,13 @@ describe("MCP server", () => {
       const text = async (name: string, args: Record<string, unknown>) =>
         ((await c.callTool({ name, arguments: args })).content as { text: string }[])[0]?.text;
       expect(await text("read_doc", { file: "partstyle-project.yaml" })).toMatch(
-        /^(#.*\n)+partstyle_version: "[^"]+"\nname: "docs"\ndescription: \|\n/,
+        /^(#.*\n)+partstyle_version: "[^"]+"\nname: "docs"\ndescription: TODO/,
       );
       expect(await text("write_doc", { file: "notes/power.md", text: "# Power\n" })).toBe(
         "wrote notes/power.md (1 line)",
       );
       expect(await text("read_doc", { file: "notes/nope.md" })).toBe(
-        "no notes/nope.md; docs: partstyle-project.yaml, notes/decisions.md, notes/pcb.md, notes/power.md",
+        "no notes/nope.md; docs: partstyle-project.yaml, notes/decisions.md, notes/design.md, notes/firmware.md, notes/pcb.md, notes/power.md",
       );
       expect(await text("write_doc", { file: "../escape.md", text: "x" })).toMatch(
         /^docs are partstyle-project.yaml and notes\/\*.md/,
@@ -116,7 +117,7 @@ describe("MCP server", () => {
 
   it("serves the procedures as prompts, with the CLI's text", async () => {
     const { prompts } = await client.listPrompts();
-    expect(prompts.map((p) => p.name)).toEqual(["design_review", "ingest_part", "prepare_handoff"]);
+    expect(prompts.map((p) => p.name)).toEqual(["design_review", "ingest_part", "handoff"]);
     const r = await client.getPrompt({ name: "ingest_part", arguments: { part: "TPS7A02" } });
     const text = (r.messages[0]?.content as { text: string } | undefined)?.text;
     expect(text).toBe(findPrompt("ingest-part")?.render({ part: "TPS7A02" }));
@@ -150,18 +151,37 @@ describe("MCP server", () => {
     }
   });
 
-  it("serves the grammar reference as a resource and a tool", async () => {
-    const { resources } = await client.listResources();
-    expect(resources.map((r) => r.uri)).toEqual(["partstyle://grammar", "partstyle://part-format"]);
-    const r = await client.readResource({ uri: "partstyle://grammar" });
-    expect((r.contents[0] as { text: string }).text).toMatch(/^# \.ckt grammar reference/);
-    expect((await call("grammar")).text).toBe(await readGrammarReference());
+  it("serves references and procedures from guide, with the CLI's text", async () => {
+    expect((await call("guide", {})).text).toBe((await readGuide()).text);
+    for (const topic of ["ckt", "parts", "issues", "design-review", "ingest-part", "handoff"]) {
+      expect((await call("guide", { topic })).text).toBe((await readGuide(topic)).text);
+    }
+    expect((await call("guide", { topic: "ckt" })).text).toMatch(/^# \.ckt grammar reference/);
+    expect((await call("guide", { topic: "nope" })).isError).toBe(true);
   });
 
-  it("serves the part record format as a resource and a tool", async () => {
-    const r = await client.readResource({ uri: "partstyle://part-format" });
-    expect((r.contents[0] as { text: string }).text).toMatch(/^# Part record format/);
-    expect((await call("part_format")).text).toBe(await readPartFormat());
+  it("records decisions, and catches up from the previous diff by default", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-mcp-"));
+    try {
+      await cp(example, tmp, { recursive: true });
+      const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+      await createServer(new Workspace(tmp)).connect(serverSide);
+      const local = new Client({ name: "test", version: "0" });
+      await local.connect(clientSide);
+      const text = async (name: string, args: Record<string, unknown>) => {
+        const r = await local.callTool({ name, arguments: args });
+        return ((r.content as { text: string }[])[0] as { text: string }).text;
+      };
+      expect(await text("add_decision", { text: "Keep the LDO" })).toMatch(/: Keep the LDO$/);
+      expect(await text("write_doc", { file: "notes/decisions.md", text: "x" })).toContain(
+        "append-only",
+      );
+      await text("diff", {});
+      expect(await text("diff", {})).toMatch(/^no circuit changes since/);
+      await local.close();
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 });
 

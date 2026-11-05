@@ -72,7 +72,7 @@ Targets are Bun's: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-
 `bun-windows-x64`. Set `BUN` to the bun binary if it is not on PATH.
 
 `scripts/standalone.mjs` writes a generated entry (`packages/cli/standalone/entry.js`) that
-embeds `docs/ckt-grammar.md`, `docs/part-records.md` and the viewer's `dist/`, then runs
+embeds `docs/ckt-grammar.md`, `docs/part-records.md`, `docs/issues.md` and the viewer's `dist/`, then runs
 `bun build --compile`.
 `packages/cli/src/standalone.test.ts` smoke-tests the native executable when it exists (CLI
 output, MCP over stdio, the embedded grammar and viewer); set `PARTSTYLE_BINARY` to test a
@@ -89,7 +89,7 @@ node scripts/standalone.mjs --check-mcpb   # check the built server under anothe
 
 `pnpm mcpb` bundles the same generated entry for Node (`bun build --target=node`) into
 `packages/cli/standalone/out/mcpb/server/index.mjs` (about 2.6 MB), then runs it under the
-current Node the way Claude Desktop would: MCP handshake, the grammar, and the viewer drawing a
+current Node the way Claude Desktop would: MCP handshake, `guide`, and the viewer drawing a
 copy of `examples/bench-sensor`. It then writes the manifest from the template
 `packages/cli/mcpb/manifest.json`, with the server's tool list and the `package.json`
 version, adds `LICENSE` and `THIRD_PARTY_NOTICES.txt`

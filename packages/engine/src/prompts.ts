@@ -1,9 +1,9 @@
 import { PROJECT_FILE } from "./project/config.js";
 
 /**
- * Repeatable procedures for the AI, kept out of every conversation until needed. Served as MCP
- * prompts, printed by `partstyle prompt NAME`, and written into projects as Claude Code slash
- * commands, all from these definitions.
+ * Repeatable procedures for the AI, kept out of every conversation until needed. Read with guide,
+ * offered in clients' menus as MCP prompts, and written into projects as Claude Code slash
+ * commands, all from these definitions. They name MCP tools, which have CLI equivalents.
  */
 export interface PromptArg {
   name: string;
@@ -27,9 +27,10 @@ const designReview: PromptDef = {
     block,
   }) => `Review ${block ? `block ${block} of ` : ""}this Partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
 
-1. Gather: \`partstyle overview\`, \`partstyle validate\`, ${PROJECT_FILE}, notes/decisions.md, then ${
-    block ? `\`partstyle read-block ${block}\`` : "each block with `partstyle read-block`"
-  }. For every library part, \`partstyle part get ID --tier pins\`.
+1. Gather: overview, validate, ${PROJECT_FILE}, notes/design.md, notes/decisions.md, then ${
+    block ? `read_block ${block}` : "each block with read_block"
+  }. For every library part, part_get with tier pins. A choice recorded in notes/decisions.md is
+   not a finding unless something has changed since.
 2. Check, citing refdes and nets:
    - Each validate issue: its cause and a fix. Errors must be fixed; a warning may instead get a
      waiver with a real reason, if the person agrees.
@@ -62,9 +63,9 @@ const ingestPart: PromptDef = {
     datasheet,
   }) => `Create the part record for ${part ?? "the part"}${datasheet ? ` from ${datasheet}` : ""}.
 
-1. \`partstyle part search ${part ?? "MPN"}\`: if a record exists (or a KiCad import draft,
+1. part_search ${part ?? "MPN"}: if a record exists (or a KiCad import draft,
    extracted_by: kicad), complete it rather than adding another.
-2. \`partstyle part format\` has the format and a worked example. Read the datasheet once, then
+2. guide parts has the format and a worked example. Read the datasheet once, then
    write the record so that nobody needs the datasheet again: everything a designer could want,
    in sections of your own where no field fits.
    - Identity: the part's name without ordering codes as the id, a one-line summary with key
@@ -75,32 +76,36 @@ const ingestPart: PromptDef = {
    - ratings, temp_c, requirements (with a check where one fits), notes, and characteristics,
      tables, timing, thermal data and application circuits as sections of your own.
    - provenance: datasheet url, extracted_by: ai, verified_by: null.
-3. \`partstyle part put\` it. It reports what the engine couldn't use and any pad mismatch with the
+3. part_put it. It reports what the engine couldn't use and any pad mismatch with the
    footprint: fix what is your mistake, and tell the person about the rest.
 4. Tell the person it awaits their verification in the viewer, and list anything the
    datasheet left ambiguous.`,
 };
 
-const prepareHandoff: PromptDef = {
-  name: "prepare_handoff",
-  description: "Resolve the BOM, write PCB notes and export to KiCad",
+const handoff: PromptDef = {
+  name: "handoff",
+  description: "Resolve the BOM, write PCB and firmware notes, and export to KiCad",
   args: [],
   render: () => `Prepare this design for PCB layout in KiCad.
 
-1. \`partstyle validate\`: no errors. Explain each remaining warning to the person.
-2. \`partstyle bom export\`: for each unresolved generic, propose a library record
+1. validate: no errors. Explain each remaining warning to the person.
+2. bom_export: for each unresolved generic, propose a library record
    (ingest_part) or confirm it can stay generic for the assembler to choose. List any part with
    no preferred MPN for the person.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
    (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,
    suggested layer count and keep-outs.
-4. \`partstyle kicad export\`: the netlist round trip and KiCad ERC must be clean.
-5. Summarise for the person: open \`kicad/<name>.kicad_pro\`, run Tools > Update PCB from
+4. For a design with an MCU, update notes/firmware.md from the circuit and part records, keyed to
+   nets: pin assignments, peripherals, clock source, programming and debug access, reset and boot
+   requirements, power-up constraints.
+5. Check notes/design.md still describes the design.
+6. kicad_export: the netlist round trip and KiCad ERC must be clean.
+7. Summarise for the person: open \`kicad/<name>.kicad_pro\`, run Tools > Update PCB from
    Schematic, then follow notes/pcb.md; list any open risks.`,
 };
 
-export const prompts: PromptDef[] = [designReview, ingestPart, prepareHandoff];
+export const prompts: PromptDef[] = [designReview, ingestPart, handoff];
 
 /** A prompt by MCP name or the CLI's kebab-case name. */
 export const findPrompt = (name: string) => prompts.find((p) => p.name === name.replace(/-/g, "_"));
