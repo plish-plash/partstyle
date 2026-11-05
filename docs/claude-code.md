@@ -57,7 +57,7 @@ Then, in a chat:
   `partstyle-project.yaml` with you (`write_doc`), then designs block by block with `apply`.
 - "Open bench-sensor" or "what Partstyle projects do I have?": `open_project`, `list_projects`.
 - Open the viewer URL Claude gives you. Select parts or nets there and say "this"; Claude calls
-  `focus`. Sign off parts as you check them, with datasheet and supplier links beside each one.
+  `focus`. Sign off parts as you check them, with datasheet and distributor links beside each one.
   Revert changes, accept pending patches and make checkpoints in the viewer's Changes tab.
 - The procedures are in the prompt menu: design review, ingest part, prepare hand-off.
 - A Claude Desktop project per design, with an instruction like "use the Partstyle project

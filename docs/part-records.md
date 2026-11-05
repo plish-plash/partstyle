@@ -47,9 +47,9 @@ provenance:
 
 # Anything else is a section of your own, in whatever shape suits it.
 output_power:
-  - { vs: 6V, load: 8R, thd: 10%, power_typ: 325mW }
+  - { vs: 6V, load: 8, thd: 10%, power_typ: 325mW }
 application_circuits:
-  gain_20: Pins 1 and 8 open; 250 uF to the speaker; 10 R + 50 nF Zobel on the output.
+  gain_20: Pins 1 and 8 open; 250 uF to the speaker; 10 ohm + 50 nF Zobel on the output.
   gain_200: As gain 20, plus 10 uF between pins 1 and 8.
 thermal: { theta_ja: 107C/W }
 ```
@@ -71,7 +71,7 @@ thermal: { theta_ja: 107C/W }
 | `requirements`  | What the datasheet asks of the circuit: text, or a check (below)                   |
 | `notes`         | Gotchas a designer would otherwise miss                                            |
 | `generic`       | For a concrete passive: the generic it satisfies, `cap(100n, 50V, X7R, 10%, 0603)` |
-| `sourcing`      | `lcsc`, `digikey`, `mouser`: supplier part numbers; `lifecycle`                    |
+| `sourcing`      | `lcsc`, `digikey`, `mouser`: distributor part numbers; `lifecycle`                 |
 | `provenance`    | `datasheet` (a URL), `extracted_by` (`ai`), `verified_by: null`                    |
 
 Leave `verified_by: null`: only a person verifies a record.

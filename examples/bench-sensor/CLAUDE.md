@@ -14,7 +14,7 @@ Commands below are the `partstyle` CLI; the Partstyle MCP server has a tool for 
 2. Fill in `partstyle-project.yaml` with the user: a description of one or two sentences, environment,
    assembly, and every external interface (each connection to the outside world, the power input
    included) with the hazards the user names for it. It also holds the project's name and
-   settings (suppliers, capacitor derating).
+   settings (distributors, capacitor derating).
 3. Plan one block per functional area (power, mcu, sensor input, ...), each in its own
    `circuit/<block>.ckt`, instantiated and joined in `circuit/main.ckt` with `use`.
 
@@ -71,7 +71,7 @@ suggested fix.
 - Mark a pin left open on purpose with `nc U2.GAIN* @ open = gain 20`, not a waiver.
 - The engine does not check an interface's hazards: handle them in the design. If the person
   accepts one, record it in the project file as `{hazard: ESD, accepted: why}`.
-- Use generics for passives: `res(10k, 1%, 0603)`, `cap(100n, 16V, X7R, 0603)`, `led(red, 0603)`.
+- Use generics for passives: `res(4.7k, 1%, 0603)`, `cap(100n, 16V, X7R, 0603)`, `led(red, 0603)`.
   Use `lib:ID` for everything else. Find records with `partstyle part search`; add missing ones
   with `partstyle part put` (`partstyle guide parts` has the format), only for parts you know
   exist (from memory or a datasheet), never an MPN extrapolated from a series. A record caches

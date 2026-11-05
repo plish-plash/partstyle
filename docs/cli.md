@@ -53,16 +53,16 @@ partstyle init boards/thermo --name thermo
 
 `partstyle-project.yaml` marks a folder as a Partstyle project. It is plain YAML:
 
-| Key                   | Meaning                                                                                                               |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `partstyle_version`   | the Partstyle version that created the project (written by `init`)                                                    |
-| `name`                | the project's name (required)                                                                                         |
-| `description`         | one or two sentences; `overview` leads with it                                                                        |
-| `environment`         | `temp_c: [min, max]` is checked against part records; other keys are notes                                            |
-| `assembly`, others    | free-form context for people and design review                                                                        |
-| `external_interfaces` | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                        |
-| `sourcing.suppliers`  | suppliers to use, in order: `lcsc`, `digikey`, `mouser`. `bom export` prefers them, and the viewer links only to them |
-| `checks.cap_derating` | capacitor voltage derating factor (default 1.5)                                                                       |
+| Key                     | Meaning                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `partstyle_version`     | the Partstyle version that created the project (written by `init`)                                                       |
+| `name`                  | the project's name (required)                                                                                            |
+| `description`           | one or two sentences; `overview` leads with it                                                                           |
+| `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes                                               |
+| `assembly`, others      | free-form context for people and design review                                                                           |
+| `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                           |
+| `sourcing.distributors` | distributors to use, in order: `lcsc`, `digikey`, `mouser`. `bom export` prefers them, and the viewer links only to them |
+| `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                                                          |
 
 `external_interfaces` lists every connection to the outside world, the power input included:
 what the person says the board will face at each connector. Hazards are for the AI and design
@@ -121,7 +121,7 @@ shell characters like `<` and `>`.
 | `help`                   | the syntax summary                          |
 
 COND is `FIELD OP VALUE`, joined with `and`. OP is `= != < <= > >=` or `~` (contains,
-case-insensitive). Quantities compare numerically (`35V > 5V`, `4k7 < 10k`). A part or net
+case-insensitive). Quantities compare numerically (`35V > 5V`, `4.7k < 10k`). A part or net
 missing the field never matches. A field no part or net in the design could have, such as a
 misspelt one, fails and lists the fields that exist.
 
@@ -267,13 +267,13 @@ requirements:
 Resolves every generic part to a library record whose `generic` field meets each constraint:
 same value, voltage/current/power at least as high, tolerance at least as tight, same
 dielectric and package when given. Among matches it prefers parts stocked by the preferred
-suppliers in the project file (`sourcing.suppliers`, in order), then the lowest voltage
+distributors in the project file (`sourcing.distributors`, in order), then the lowest voltage
 rating, then id. Writes:
 
 - `bom.lock`: how each generic resolved. A choice is kept until the part's spec changes or the
   record stops fitting; delete a line to re-resolve it.
 - `bom.csv`: one row per distinct part with references, quantity, value, spec, manufacturer,
-  MPN, footprint, a part-number column per preferred supplier, and notes (unresolved
+  MPN, footprint, a part-number column per preferred distributor, and notes (unresolved
   generics, unverified records).
 
 Unresolved generics are reported as `bom.unresolved` warnings and keep a footprint derived from
@@ -322,7 +322,7 @@ from the pin table into `partstyle.kicad_sym`. The export lists which KiCad symb
 why any part got a generated one. A `kicad_symbol` that cannot be used is a
 `kicad.symbol-fallback` warning.
 
-Symbols carry MPN, Manufacturer, Spec and supplier fields, so KiCad's own BOM tools work
+Symbols carry MPN, Manufacturer, Spec and distributor fields, so KiCad's own BOM tools work
 too. Before writing, the layout's connectivity is re-derived from its geometry and compared with
 the design; a difference is reported as a `layout.connectivity` error (a layout bug).
 

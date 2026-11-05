@@ -343,7 +343,7 @@ net GND : C1.- R1.2 {source: bench}
     }
   });
 
-  it("keeps footprints out of the BOM and the supplier links", async () => {
+  it("keeps footprints out of the BOM and the distributor links", async () => {
     const { w, dir } = await fresh("fp-bom", design);
     expect((await w.bomExport()).ok).toBe(true);
     const csv = await readFile(path.join(dir, "bom.csv"), "utf8");
@@ -444,7 +444,7 @@ describe("approvals", () => {
     expect(parts.R2?.links[0]?.url).toBe("https://www.lcsc.com/search?q=resistor%202k");
   });
 
-  it("links a library part's datasheet and supplier part numbers, by MPN otherwise", async () => {
+  it("links a library part's datasheet and distributor part numbers, by MPN otherwise", async () => {
     const { w, dir } = await fresh("sign-off-links");
     const record = [
       "id: X9",
@@ -486,8 +486,8 @@ describe("approvals", () => {
     expect(await readFile(path.join(dir, "variants/alt/approvals.yaml"), "utf8")).toContain("R2:");
   });
 
-  it("links only the project's suppliers, in its order", async () => {
-    const { w, dir } = await fresh("sign-off-suppliers");
+  it("links only the project's distributors, in its order", async () => {
+    const { w, dir } = await fresh("sign-off-distributors");
     const file = path.join(dir, "partstyle-project.yaml");
     const text = await readFile(file, "utf8");
     await writeFile(file, text.replace("[lcsc, digikey, mouser]", "[mouser, lcsc]"));

@@ -7,7 +7,7 @@ import type { Drawing } from "./drawing/prepare.js";
 import type { SheetLayout } from "./drawing/types.js";
 import type { FlatPart } from "./netlist/elaborate.js";
 import { type PartRecord, type PinType, partName, requirementText } from "./parts/schema.js";
-import { type Supplier, TOP_BLOCK } from "./project/config.js";
+import { type Distributor, TOP_BLOCK } from "./project/config.js";
 import type { Comment, Focus, ReviewMode } from "./review.js";
 import type { AppliedWaiver, ValidationResult } from "./validate.js";
 import type { ChangeOp } from "./versions/diff.js";
@@ -38,7 +38,7 @@ export interface PartInfo {
   pins: { number: string; name: string; type: PinType; net?: string }[];
   /** The sign-off on this part, if any; `changed` when it has changed since. */
   approval?: Pick<Approval, "by" | "at"> & { status: "approved" | "changed" };
-  /** The datasheet and supplier searches, for checking the part. */
+  /** The datasheet and distributor searches, for checking the part. */
   links: PartLink[];
 }
 
@@ -47,7 +47,7 @@ export interface PartLink {
   url: string;
 }
 
-const supplierSearches: Record<Supplier, { label: string; search: string }> = {
+const distributorSearches: Record<Distributor, { label: string; search: string }> = {
   lcsc: { label: "LCSC", search: "https://www.lcsc.com/search?q=" },
   digikey: { label: "DigiKey", search: "https://www.digikey.com/en/products/result?keywords=" },
   mouser: { label: "Mouser", search: "https://www.mouser.com/c/?q=" },
@@ -61,13 +61,13 @@ const genericWords: Record<string, string> = {
 
 /**
  * Where to check a part: its datasheet, or a search for it, and a search at each of the project's
- * suppliers, by the supplier's own part number where the record has one. An unresolved generic
+ * distributors, by the distributor's own part number where the record has one. An unresolved generic
  * searches by its spec.
  */
 function partLinks(
   part: FlatPart,
   r: PartRecord | undefined,
-  suppliers: readonly Supplier[],
+  distributors: readonly Distributor[],
 ): PartLink[] {
   const spec = part.spec;
   if (spec.kind === "generic" && spec.fn === "fp") return []; // nothing to buy
@@ -86,9 +86,9 @@ function partLinks(
         : [];
   return [
     ...datasheet,
-    ...suppliers.map((s) => ({
-      label: supplierSearches[s].label,
-      url: supplierSearches[s].search + encodeURIComponent(r?.sourcing?.[s] || term),
+    ...distributors.map((s) => ({
+      label: distributorSearches[s].label,
+      url: distributorSearches[s].search + encodeURIComponent(r?.sourcing?.[s] || term),
     })),
   ];
 }
@@ -250,7 +250,7 @@ export function buildViewerModel(
         type: pin.type,
         ...(pin.net !== undefined && { net: pin.net }),
       })),
-      links: partLinks(p, r, drawing.config.sourcing.suppliers),
+      links: partLinks(p, r, drawing.config.sourcing.distributors),
     };
     const approval = approvals.get(p.path);
     const status = approvalStatus(p, approvals);

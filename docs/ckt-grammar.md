@@ -26,7 +26,7 @@ waive SUBJECT CODE "reason"                       # suppress a warning
 - **Generics**: `res`, `cap`, `ind` (pins 1, 2) take a value first; `led` (color) and `diode`
   (kind) have pins K (1), A (2). Further arguments, in any order, are recognized by form:
   voltage `16V`, current `1A`, power `0.1W`, tolerance `1%`, dielectric `X7R`/`C0G`, package
-  `0603`/`SOD-123`. Values use SI prefixes: `330n`, `4k7`, `10uF`. A chip package (`0603`)
+  `0603`/`SOD-123`. Values use SI prefixes: `330n`, `4.7k`, `10uF`. A chip package (`0603`)
   gives the part a footprint even before it resolves to an MPN.
 - **Polarized capacitors**: `cap(100u, 25V, polarized)` has pins `+` (1) and `-` (2). It resolves
   only to a polarized library part, which gives it its footprint.
@@ -43,7 +43,7 @@ waive SUBJECT CODE "reason"                       # suppress a warning
 
 ## Layout hints
 
-`part R4 res(100k) [2 r90]`, `part J2 lib:X [1 flip]`, `use filter as F1 [3]`: how the human
+`part R4 res(4.7k) [2 r90]`, `part J2 lib:X [1 flip]`, `use filter as F1 [3]`: how the human
 arranged the drawing in the viewer. Each item is optional; whatever is left out is chosen
 automatically. They change only the drawing, never the circuit.
 
@@ -55,7 +55,7 @@ automatically. They change only the drawing, never the circuit.
 - **`r0` `r90` `r180` `r270`**: rotation of a two-terminal part (R, C, L, F, FB, D, LED).
 - **`flip` / `noflip`**: mirror anything else left to right, or keep it as the library draws it.
 
-Keep hints when editing a statement: `= part R4 res(220k)` without brackets keeps R4's hint, and
+Keep hints when editing a statement: `= part R4 res(30.9k)` without brackets keeps R4's hint, and
 `[]` clears it. A diff reports layout-only edits as one line per block.
 
 ## Hierarchy

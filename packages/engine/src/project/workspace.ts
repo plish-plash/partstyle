@@ -1786,7 +1786,7 @@ export class Workspace {
         result.netlist.parts.map((p) => p.path),
         parseAnnotationLock(await this.lock("annotation.lock")),
       );
-      const preferred = result.config.sourcing.suppliers;
+      const preferred = result.config.sourcing.distributors;
       const bom = resolveBom(
         result.netlist,
         result.library,
@@ -1808,7 +1808,9 @@ export class Workspace {
         ...bom.issues.map((i) => formatIssue(i)),
       ];
       if (preferred.length === 0) {
-        lines.push(`note: no sourcing.suppliers in ${PROJECT_FILE}; none were used to rank parts`);
+        lines.push(
+          `note: no sourcing.distributors in ${PROJECT_FILE}; none were used to rank parts`,
+        );
       }
       return { ok: true, text: lines.join("\n") };
     });

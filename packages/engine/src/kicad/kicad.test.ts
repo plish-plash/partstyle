@@ -236,7 +236,7 @@ net AIN2 : B.AIN`;
 });
 
 describe("resolveBom", () => {
-  it("prefers parts stocked by the preferred suppliers, then keeps the choice locked", () => {
+  it("prefers parts stocked by the preferred distributors, then keeps the choice locked", () => {
     const lib = new Map(result.library);
     const base = lib.get("CL10B104KB8NNNC");
     if (!base) throw new Error("seed record missing");

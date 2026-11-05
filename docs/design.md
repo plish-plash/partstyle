@@ -44,7 +44,7 @@ A project is a folder of text files, split by who reads them: the AI reads circu
 
 ```
 my-board/
-  partstyle-project.yaml  # name, description, design context, preferred suppliers, checks
+  partstyle-project.yaml  # name, description, design context, preferred distributors, checks
   variants/buck/          # an alternative: only the blocks (and project-file keys) it changes
   circuit/
     main.ckt              # top level: instantiates blocks, joins ports
@@ -121,7 +121,7 @@ provenance:
 - **Symbols are generated** from the pin table (pins grouped by type and function), so there is no separate abstract symbol to keep in sync. A record may optionally map to a KiCad library symbol for export; generic ones like `Device:Q_NPN` pair up with its pins by name.
 - **Footprints are compared** with the pin table at record creation. A mismatch is a warning for the person to review, not a refusal; pads named MP are mounting points, a PCB detail.
 
-**Sourcing.** Part records hold per-supplier data (LCSC/JLCPCB, Digi-Key, Mouser). Each project names its preferred suppliers in its project file, and BOM resolution and stock checks use only those.
+**Sourcing.** Part records hold per-distributor data (LCSC/JLCPCB, Digi-Key, Mouser). Each project names its preferred distributors in its project file, and BOM resolution and stock checks use only those.
 
 ### The project file (partstyle-project.yaml)
 
@@ -152,7 +152,7 @@ external_interfaces:
       - hazard: miswiring to 12 V
         accepted: bench tool; it may destroy the clamp, but the series resistor protects the op-amp
 sourcing:
-  suppliers: [lcsc, digikey]
+  distributors: [lcsc, digikey]
 ```
 
 External interfaces are the person's statement of what the outside world does at each connection, the power input included: what is on the other end and its hazards, so the AI can ask "is J2 protected against what it will actually see?" They are requirements for the AI to design and review against, not engine checks. A hazard the person accepts is recorded on the hazard, so the project file stays the one place that says what the board must survive.
@@ -215,7 +215,7 @@ The viewer is where the human sees, points and decides; it is a read-mostly wind
 
 - **Point.** Click a part, pin or net to select it; `focus()` hands the selection to the AI, so "why is this here?" needs no refdes typed.
 - **Comment.** Attach a note to a part or net; the AI sees open comments via `focus()` and `overview`.
-- **Review.** Sign off parts, with a progress count and links to each part's datasheet and suppliers; revert a changeset, whole or per statement.
+- **Review.** Sign off parts, with a progress count and links to each part's datasheet and distributors; revert a changeset, whole or per statement.
 - **Arrange the layout.** Move a group a stage earlier or later in the signal chain, rotate a two-terminal part, mirror anything else. Stored as hints on the part's .ckt line; there is no fine-grained dragging: coarse controls over a deterministic layout should be enough.
 - **Verify parts.** Mark an AI-extracted part record as checked against its datasheet.
 - **Edit connectivity.** Rename a net, swap or re-value a part, connect or disconnect a pin from the UI; each becomes an ordinary .ckt edit the AI sees in its next diff. Any text editor works too.
@@ -225,7 +225,7 @@ The viewer is where the human sees, points and decides; it is a read-mostly wind
 1. The AI calls `apply`; the engine applies it to the working copy, validates it and logs it as a changeset.
 2. The viewer highlights everything changed since the last checkpoint, with any new issues.
 3. The human reverts any changeset or statement they disagree with, edits it, or comments back.
-4. The human checks parts one at a time and signs each off, with its datasheet and supplier searches a click away. The AI usually creates a whole circuit at once, so this is the review that matters. It can approve for them when asked ("approve all the resistors"). An approval covers a part's spec and connections, so a later change shows up as needing another look.
+4. The human checks parts one at a time and signs each off, with its datasheet and distributor searches a click away. The AI usually creates a whole circuit at once, so this is the review that matters. It can approve for them when asked ("approve all the resistors"). An approval covers a part's spec and connections, so a later change shows up as needing another look.
 5. When the human wants a state to keep, they make a checkpoint. Checkpoints are theirs to use or not; the AI doesn't raise them.
 
 Auto-apply is the default. A per-project setting switches to accept-before-apply for high-stakes work, where AI changes wait as pending changesets.
@@ -272,7 +272,7 @@ Interop works through files and `kicad-cli`, not KiCad's live API: KiCad 10's IP
 
 1. **Netlist to PCB.** Emit a KiCad S-expression netlist with refdes, values, footprints and MPN fields. This is enough to start layout in the PCB editor, and is the most robust hand-off.
 2. **Schematic for humans.** Emit a `.kicad_sch` per block (hierarchical sheets for `use` instances), using the viewer's layout positions. Connections are made with net labels on pin endpoints rather than routed wires, which is reliable to generate and readable enough. [SchemaSeed](https://pypi.org/project/schemaseed/) is prior art for this approach, including a round-trip check that re-derives the netlist from the written file.
-3. **Symbols and fields.** Emit a project symbol library generated from part records (or reference a mapped KiCad library symbol), with Manufacturer, MPN, Datasheet and supplier fields filled so KiCad's BOM tools also work.
+3. **Symbols and fields.** Emit a project symbol library generated from part records (or reference a mapped KiCad library symbol), with Manufacturer, MPN, Datasheet and distributor fields filled so KiCad's BOM tools also work.
 4. **Verification.** After export, run `kicad-cli sch export netlist` on the written schematic and compare it with the source netlist; then run `kicad-cli sch erc`. Any difference is an exporter bug.
 
 ### Import
@@ -309,7 +309,7 @@ Each milestone ends with something usable on a real design; the order front-load
 
 1. **M0 — Format + engine.** .ckt grammar, part-record schema, parser, connectivity, structural ERC, CLI `validate`. _Exit:_ a hand-written 30-part design validates with useful errors.
 2. **M1 — Claude Code workflow + MCP server.** `overview`, `read_block`, `query`, `apply`, `validate` and part tools, as CLI commands and MCP tools, plus a short grammar reference for CLAUDE.md. _Exit:_ Claude Code builds and edits a design end to end through files and the CLI, with the same operations available over MCP; token use measured against the same task in KiCad + Konnect.
-3. **M2 — KiCad export + BOM.** Netlist, generated symbols, `.kicad_sch` with labels, round-trip check, BOM with generic resolution against preferred suppliers. _Exit:_ an exported design opens in KiCad, passes ERC, and updates a PCB.
+3. **M2 — KiCad export + BOM.** Netlist, generated symbols, `.kicad_sch` with labels, round-trip check, BOM with generic resolution against preferred distributors. _Exit:_ an exported design opens in KiCad, passes ERC, and updates a PCB.
 4. **M3 — Viewer.** Auto-layout, live reload, issue pins, part cards, selection → `focus()`. _Exit:_ the human can follow and steer a session without opening files.
 5. **M4 — Review + versioning.** Changeset highlighting and revert, checkpoints, variants, semantic diff, optional accept-before-apply mode.
 6. **M5 — KiCad import.** Netlist-based import, MPN mapping, unresolved-parts worklist.

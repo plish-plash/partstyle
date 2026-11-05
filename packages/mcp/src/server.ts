@@ -397,7 +397,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "bom_export",
     {
       description:
-        "Resolve generic parts to library MPNs (preferring the project's suppliers), update bom.lock and write bom.csv. Only when asked.",
+        "Resolve generic parts to library MPNs (preferring the project's distributors), update bom.lock and write bom.csv. Only when asked.",
       inputSchema: { variant },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
