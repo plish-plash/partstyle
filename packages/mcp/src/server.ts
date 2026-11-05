@@ -9,7 +9,12 @@ import {
   queryUsage,
   type TextResult,
 } from "@partstyle/engine";
-import { type Projects, readGrammarReference, Workspace } from "@partstyle/engine/node";
+import {
+  type Projects,
+  readGrammarReference,
+  readPartFormat,
+  Workspace,
+} from "@partstyle/engine/node";
 import { z } from "zod";
 
 const reply = (r: TextResult) => ({
@@ -140,6 +145,28 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
       annotations: readOnly,
     },
     async () => reply({ ok: true, text: await readGrammarReference() }),
+  );
+
+  server.registerResource(
+    "part_format",
+    "partstyle://part-format",
+    {
+      title: "Part record format",
+      description: "Read before writing a part record",
+      mimeType: "text/markdown",
+    },
+    async (uri) => ({
+      contents: [{ uri: uri.href, mimeType: "text/markdown", text: await readPartFormat() }],
+    }),
+  );
+
+  server.registerTool(
+    "part_format",
+    {
+      description: "The part record format. Read it before part_put.",
+      annotations: readOnly,
+    },
+    async () => reply({ ok: true, text: await readPartFormat() }),
   );
 
   if (projects) {
@@ -299,7 +326,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
   server.registerTool(
     "part_search",
     {
-      description: "Search the part library by id, MPN, manufacturer, summary or package words.",
+      description: "Search the part library; words may appear anywhere in a record.",
       inputSchema: { q: z.string() },
       annotations: readOnly,
     },
@@ -314,7 +341,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "part_get",
     {
       description:
-        "Read a part record. tier=summary (default): identity and ratings; pins: plus pin table, requirements and notes; full: the YAML.",
+        "Read a part record, not its datasheet. tier=summary (default): identity, ratings; pins: plus pin table, requirements, notes; full: all the YAML.",
       inputSchema: { id: z.string(), tier: z.enum(["summary", "pins", "full"]).optional() },
       annotations: readOnly,
     },
@@ -329,7 +356,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "part_put",
     {
       description:
-        "Create or update a part record (YAML, validated against the schema; run 'partstyle schema part' for it). Leave provenance.verified_by null: only a human verifies. To remove a record, ask the person to delete its file; never blank it.",
+        "Create or update a part record (YAML; see part_format). Capture the whole datasheet, in free-form sections where no field fits. Leave provenance.verified_by null. To remove a record, ask the person to delete its file.",
       inputSchema: {
         record: z.string().describe("The full YAML record"),
         scope: z

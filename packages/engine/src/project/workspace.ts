@@ -115,18 +115,23 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-const referenceUrl = new URL("../../../../docs/ckt-grammar.md", import.meta.url);
+const docsUrl = (name: string) => new URL(`../../../../docs/${name}`, import.meta.url);
 
-let embeddedGrammar: string | undefined;
+let embeddedReferences: { grammar: string; partFormat: string } | undefined;
 
-/** Uses this text as the grammar reference instead of docs/: for a standalone executable. */
-export function embedGrammarReference(text: string): void {
-  embeddedGrammar = text;
+/** Uses these texts as the references instead of docs/: for a standalone executable. */
+export function embedReferences(texts: { grammar: string; partFormat: string }): void {
+  embeddedReferences = texts;
 }
 
 /** The .ckt grammar and patch reference, served to the AI as an MCP resource and by the CLI. */
 export async function readGrammarReference(): Promise<string> {
-  return embeddedGrammar ?? readFile(referenceUrl, "utf8");
+  return embeddedReferences?.grammar ?? readFile(docsUrl("ckt-grammar.md"), "utf8");
+}
+
+/** The part record format, served to the AI as an MCP resource and by the CLI. */
+export async function readPartFormat(): Promise<string> {
+  return embeddedReferences?.partFormat ?? readFile(docsUrl("part-records.md"), "utf8");
 }
 
 /**
@@ -254,14 +259,17 @@ export class Workspace {
     const result = validateProject(source);
     const { footprints } = await this.kicad();
     if (footprints && result.netlist) {
-      const ids = new Set(result.netlist.parts.flatMap((p) => (p.record ? [p.record.id] : [])));
-      const entries = [...ids].flatMap((id) => {
+      const users = new Map<string, string[]>();
+      for (const p of result.netlist.parts) {
+        if (p.record) users.set(p.record.id, [...(users.get(p.record.id) ?? []), p.path]);
+      }
+      const entries = [...users.keys()].flatMap((id) => {
         const e = result.library.get(id);
         return e ? [e] : [];
       });
-      result.issues = [...result.issues, ...(await checkFootprints(entries, footprints))].sort(
-        compareIssues,
-      );
+      const found = await checkFootprints(entries, footprints, (id) => users.get(id) ?? []);
+      // Again with them, so that waivers apply to them too.
+      if (found.length > 0) return { source, result: validateProject(source, found) };
     }
     return { source, result };
   }
@@ -705,11 +713,15 @@ export class Workspace {
         );
       }
       for (const s of generated) {
+        if (s.adaptedFrom) {
+          lines.push(`adapted symbol ${s.libId} from ${s.adaptedFrom}: pins matched by name`);
+          continue;
+        }
         const why =
           s.rejected.length > 0
             ? s.rejected.join("; ")
             : symbols
-              ? "no KiCad symbol matches its MPN; set kicad_symbol in the part record"
+              ? "no KiCad symbol matches its name; set kicad_symbol in the part record"
               : "KiCad symbol libraries not found";
         lines.push(`generated symbol ${s.libId}: ${why}`);
       }
@@ -810,7 +822,7 @@ export class Workspace {
   /**
    * Imports a KiCad project (a .kicad_pro, .kicad_sch or its folder) through kicad-cli, which
    * resolves the connectivity. Creates the project if there is none; importing again replaces
-   * circuit/ as one changeset, keeping intents, net attributes, port kinds, waivers and block
+   * circuit/ as one changeset, keeping intents, net attributes, port kinds, nc, waivers and block
    * descriptions. Symbols that match no library record become draft records in parts/.
    */
   kicadImport(source: string, opts: { replace?: boolean } = {}): Promise<TextResult> {
@@ -1045,9 +1057,10 @@ export class Workspace {
         return { ok: true, text: `${id} is already verified` };
       const file = path.resolve(this.root, entry.file);
       const text = await readFile(file, "utf8");
-      const updated = text.replace(/verified_by:\s*null/, "verified_by: human");
-      if (updated === text) return fail(`could not find 'verified_by: null' in ${entry.file}`);
-      await writeFile(file, updated, "utf8");
+      // Edited as a document so comments stay, whether or not the record has provenance yet.
+      const doc = parseDocument(text);
+      doc.setIn(["provenance", "verified_by"], "human");
+      await writeFile(file, doc.toString(), "utf8");
       return { ok: true, text: `marked ${id} verified in ${entry.file}` };
     });
   }
@@ -1168,6 +1181,7 @@ export class Workspace {
       top: TOP_BLOCK,
       summary: { errors, warnings, waived: result.waived },
       issues: result.issues,
+      waivers: result.waivers,
       sheets: [],
       symbols: {},
       parts: {},

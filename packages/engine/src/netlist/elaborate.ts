@@ -1,5 +1,5 @@
 import type { CktFile, NetDecl, PartSpec, PortKind, UseDecl, WaiverDecl } from "../ckt/ast.js";
-import type { Issue, Location } from "../diagnostics.js";
+import { globToRegExp, type Issue, type Location } from "../diagnostics.js";
 import { checkGenericArgs, generics } from "../parts/generic.js";
 import type { PartLibrary } from "../parts/library.js";
 import type { PartRecord, PinType } from "../parts/schema.js";
@@ -14,6 +14,29 @@ export interface FlatPin {
   type: PinType;
   /** Flat net name, once connected. */
   net?: string;
+  /** Left open on purpose, by an `nc` statement. */
+  open?: true;
+  /** What the part record says about leaving it unconnected. */
+  unused?: "open" | "required";
+}
+
+const quietWhenOpen: ReadonlySet<PinType> = new Set([
+  "bidir",
+  "output",
+  "tristate",
+  "open_collector",
+  "open_emitter",
+  "nc",
+]);
+
+/**
+ * Whether an unconnected pin is normal: said so by an `nc` statement or the part record, or a
+ * pin that needs nothing outside the part, like a spare GPIO. A power input never is.
+ */
+export function isOpenByDesign(pin: Pick<FlatPin, "type" | "open" | "unused">): boolean {
+  if (pin.type === "power_in") return false;
+  if (pin.open || pin.unused === "open") return true;
+  return pin.unused !== "required" && quietWhenOpen.has(pin.type);
 }
 
 export interface FlatPart {
@@ -313,6 +336,22 @@ class Elaborator {
       }
     }
 
+    // After the nets: an nc pin must not be on one.
+    for (const decl of ckt.ncs) {
+      const { target, pin } = decl.pin;
+      const part = localParts.get(target);
+      if (part) {
+        this.markOpen(part, pin, decl.location);
+      } else if (!unresolved.has(target)) {
+        this.error(
+          "elab.unknown-ref",
+          decl.location,
+          [prefix + target],
+          `'${target}' is not a part in block '${name}'`,
+        );
+      }
+    }
+
     for (const p of declaredPorts.values()) {
       if (!portMap.has(p.name)) {
         this.error(
@@ -360,6 +399,7 @@ class Elaborator {
         number,
         name: p.name,
         type: p.type,
+        ...(p.unused !== undefined && { unused: p.unused }),
       }));
       return { pins, record: entry.record };
     }
@@ -370,19 +410,54 @@ class Elaborator {
   }
 
   /** A pin token matches a pin number exactly, otherwise every pin with that name (e.g. all GND pins). */
-  private connectPin(part: FlatPart, pin: string, node: number, location: Location): void {
+  private pinsNamed(part: FlatPart, pin: string): FlatPin[] {
     const byNumber = part.pins.filter((p) => p.number === pin);
-    const matches = byNumber.length > 0 ? byNumber : part.pins.filter((p) => p.name === pin);
+    return byNumber.length > 0 ? byNumber : part.pins.filter((p) => p.name === pin);
+  }
+
+  private unknownPin(part: FlatPart, pin: string, location: Location): void {
+    const ref = part.path.replace(/^.*\//, "");
+    const names = [...new Set(part.pins.map((p) => p.name))];
+    const shown = names.length > 12 ? `${names.slice(0, 12).join(" ")} …` : names.join(" ");
+    this.error(
+      "elab.unknown-pin",
+      location,
+      [`${part.path}.${pin}`, part.path],
+      `${ref} has no pin '${pin}' (pins: ${shown})`,
+    );
+  }
+
+  /** An `nc` statement: a glob covers the pins it matches that are open; a named pin must be. */
+  private markOpen(part: FlatPart, pin: string, location: Location): void {
+    const glob = pin.includes("*");
+    const pattern = globToRegExp(pin);
+    const matches = glob
+      ? part.pins.filter((p) => pattern.test(p.name) || pattern.test(p.number))
+      : this.pinsNamed(part, pin);
     if (matches.length === 0) {
-      const ref = part.path.replace(/^.*\//, "");
-      const names = [...new Set(part.pins.map((p) => p.name))];
-      const shown = names.length > 12 ? `${names.slice(0, 12).join(" ")} …` : names.join(" ");
-      this.error(
-        "elab.unknown-pin",
-        location,
-        [`${part.path}.${pin}`, part.path],
-        `${ref} has no pin '${pin}' (pins: ${shown})`,
-      );
+      this.unknownPin(part, pin, location);
+      return;
+    }
+    for (const p of matches) {
+      const node = this.pinNode.get(p);
+      if (node === undefined) {
+        p.open = true;
+      } else if (!glob) {
+        const net = this.nodes[node]?.name ?? "?";
+        this.error(
+          "elab.nc-connected",
+          location,
+          [`${part.path}.${p.name}`, part.path],
+          `${part.path}.${p.name} (pin ${p.number}) is marked nc but is on net ${net}; remove one`,
+        );
+      }
+    }
+  }
+
+  private connectPin(part: FlatPart, pin: string, node: number, location: Location): void {
+    const matches = this.pinsNamed(part, pin);
+    if (matches.length === 0) {
+      this.unknownPin(part, pin, location);
       return;
     }
     for (const p of matches) {

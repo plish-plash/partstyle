@@ -1,6 +1,6 @@
-id: MCP6002-I_SN
+id: MCP6002
 manufacturer: Microchip
-mpn: MCP6002-I/SN
+preferred_mpn: MCP6002-I/SN
 summary: Dual 1 MHz rail-to-rail I/O op-amp, 1.8-6 V, SOIC-8
 package: SOIC-8
 footprint: Package_SO:SOIC-8_3.9x4.9mm_P1.27mm

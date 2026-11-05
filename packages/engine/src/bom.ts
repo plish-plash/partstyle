@@ -8,7 +8,7 @@ import {
   satisfies,
 } from "./parts/generic.js";
 import type { PartLibrary } from "./parts/library.js";
-import type { PartRecord } from "./parts/schema.js";
+import { type PartRecord, partName } from "./parts/schema.js";
 import type { distributors } from "./project/config.js";
 
 type Distributor = (typeof distributors)[number];
@@ -81,12 +81,14 @@ export function resolveBom(
   for (const part of netlist.parts) {
     const spec = printSpec(part.spec);
     if (part.spec.kind === "lib") {
+      const r = part.record;
       entries.push({
         part,
         spec,
         status: "library",
-        value: part.record?.mpn ?? part.spec.id,
-        ...(part.record && { record: part.record, footprint: part.record.footprint }),
+        value: r ? partName(r) : part.spec.id,
+        ...(r && { record: r }),
+        ...(r?.footprint && { footprint: r.footprint }),
       });
       continue;
     }
@@ -116,7 +118,7 @@ export function resolveBom(
         spec,
         record: chosen.record,
         status: "resolved",
-        footprint: chosen.record.footprint,
+        ...(chosen.record.footprint && { footprint: chosen.record.footprint }),
         value,
       });
     } else {
@@ -189,6 +191,7 @@ export function formatBomCsv(
     const notes = [
       e.status === "unresolved" ? "unresolved generic" : "",
       r && !r.provenance.verified_by ? "record unverified" : "",
+      r && !r.preferred_mpn ? "no preferred MPN" : "",
     ].filter(Boolean);
     return [
       group
@@ -199,7 +202,7 @@ export function formatBomCsv(
       e.value,
       [...new Set(group.map((g) => g.spec))].join("; "),
       r?.manufacturer ?? "",
-      r?.mpn ?? "",
+      r?.preferred_mpn ?? "",
       e.footprint ?? "",
       ...preferred.map((d) => r?.sourcing?.[d] ?? ""),
       notes.join("; "),

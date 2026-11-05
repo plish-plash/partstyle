@@ -258,7 +258,12 @@ function showChange(c: { block: string; kind: string; key: string }) {
           onlayout={(op) => void layout(op)}
           {layoutMessage}
         />
-        <IssueList issues={model.issues} comments={model.comments} onshow={show} />
+        <IssueList
+          issues={model.issues}
+          waivers={model.waivers}
+          comments={model.comments}
+          onshow={show}
+        />
       {:else if model.versions}
         <Changes
           versions={model.versions}

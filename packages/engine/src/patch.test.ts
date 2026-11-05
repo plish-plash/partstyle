@@ -15,7 +15,9 @@ net +5V  : U1.OUT C1.1 -> port +5V
 net GND  : U1.GND C1.2 C2.2 -> port GND
 net BULK : C2.1
 
-waive C2.1 "test"
+nc C2.3 @ spare
+
+waive C2.1 erc.single-pin-net "test"
 `;
 
 const main = `block main
@@ -77,14 +79,22 @@ describe("applyPatch", () => {
     expect(text).not.toContain("BULK");
   });
 
-  it("removing a part drops its pins, nets left empty, and its waivers", () => {
+  it("removing a part drops its pins, nets left empty, its nc statements and waivers", () => {
     const r = applyPatch(source(), "in power\n- part C2");
     const text = r.source.circuits[0]?.text ?? "";
     expect(text).not.toMatch(/C2/);
     expect(text).not.toContain("BULK");
     expect(r.log).toEqual([
-      "power: - part C2 (disconnected from net GND; removed net BULK (no pins left); removed waiver C2.1)",
+      "power: - part C2 (disconnected from net GND; removed net BULK (no pins left); removed nc C2.3; removed waiver C2.1)",
     ]);
+  });
+
+  it("adds, replaces and removes nc statements by pin", () => {
+    const added = patched("in power\n+ nc U1.TRIM @ not trimmed");
+    expect(added).toContain("nc C2.3 @ spare\nnc U1.TRIM @ not trimmed\n");
+    expect(error("in power\n+ nc C2.3")).toMatch(/^2: nc C2\.3 already exists in power/);
+    expect(patched("in power\n= nc C2.3 @ reserved")).toContain("nc C2.3 @ reserved\n");
+    expect(patched("in power\n- nc C2.3")).not.toContain("nc C2.3");
   });
 
   it("removing a port unbinds its net", () => {
@@ -95,11 +105,12 @@ describe("applyPatch", () => {
     expect(patched("in power\n- waive C2.1")).not.toContain("waive");
   });
 
-  it("renames a part through nets and waivers", () => {
+  it("renames a part through nets, nc statements and waivers", () => {
     const text = patched("in power\nrename part C2 C9");
     expect(text).toContain("part C9 cap(10u)");
     expect(text).toContain("net GND : U1.GND C1.2 C9.2 -> port GND");
-    expect(text).toContain('waive C9.1 "test"');
+    expect(text).toContain("nc C9.3 @ spare");
+    expect(text).toContain('waive C9.1 erc.single-pin-net "test"');
   });
 
   it("renames an instance in the parent", () => {
@@ -144,7 +155,7 @@ describe("applyPatch", () => {
     ],
     ["in power\n= part C9 cap(1u)", "2: no part C9 in power; use '+' to add it"],
     ["in power\n- part C9", "2: no part C9 in power"],
-    ["in power\n- block power", "2: usage: - part|net|port|use|waive KEY"],
+    ["in power\n- block power", "2: usage: - part|net|port|use|nc|waive KEY"],
     ["in power\nnet NOPE += C1.1", "2: no net NOPE in power"],
     ["in power\nnet +5V += C1.1", "2: C1.1 is already on net +5V"],
     ["in power\nnet +5V -= C2.1", "2: C2.1 is not on net +5V"],

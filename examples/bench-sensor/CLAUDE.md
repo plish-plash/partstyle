@@ -11,9 +11,10 @@ Commands below are the `partstyle` CLI; the Partstyle MCP server has a tool for 
 
 1. Run `partstyle grammar` and follow it exactly; it includes the naming conventions and an
    example block.
-2. Fill in `partstyle-project.yaml` with the user: use case, environment, power source, assembly,
-   external interfaces and the hazards the user names for them. Checks and design review use it.
-   It also holds the project's name and settings (distributors, capacitor derating).
+2. Fill in `partstyle-project.yaml` with the user: use case, environment, assembly, and every external
+   interface (each connection to the outside world, the power input included) with the hazards
+   the user names for it. It also holds the project's name and settings (distributors, capacitor
+   derating).
 3. Plan one block per functional area (power, mcu, sensor input, ...), each in its own
    `circuit/<block>.ckt`, instantiated and joined in `circuit/main.ckt` with `use`.
 
@@ -24,7 +25,8 @@ Start cheap and drill down:
 1. `partstyle overview`: blocks, part counts, issues, context
 2. `partstyle read-block BLOCK --detail summary`, then `read-block BLOCK` for the full text
 3. `partstyle query "part U1"`, `query "net +5V"`, `query "parts where vin_max < 15V"`
-4. `partstyle part get ID` (tiers: summary, pins, full); prefer this to re-reading datasheets
+4. `partstyle part get ID` (tiers: summary, pins, full): a record caches its datasheet, so read
+   this instead
 
 ## The person and the viewer
 
@@ -64,10 +66,16 @@ Do what the person asked. Fix errors your own edit caused; anything else that ch
 (protection, extra parts, waivers, fixes for warnings) is the person's call: raise it with a
 suggested fix.
 
+- Errors are design faults: fix them. They cannot be waived, and one that looks wrong is a
+  Partstyle bug to raise with the person. Warnings need a fix or the person's decision.
+- Mark a pin left open on purpose with `nc U2.GAIN* @ open = gain 20`, not a waiver.
+- The engine does not check an interface's hazards: handle them in the design. If the person
+  accepts one, record it in the project file as `{hazard: ESD, accepted: why}`.
 - Use generics for passives: `res(10k, 1%, 0603)`, `cap(100n, 16V, X7R, 0603)`, `led(red, 0603)`.
   Use `lib:ID` for everything else. Find records with `partstyle part search`; add missing ones
-  with `partstyle part put` (`partstyle schema part` prints the schema), only for parts you know
-  exist (from memory or a datasheet), never an MPN extrapolated from a series. Leave
+  with `partstyle part put` (`partstyle part format` has the format), only for parts you know
+  exist (from memory or a datasheet), never an MPN extrapolated from a series. A record caches
+  the datasheet: put everything in it, in sections of your own where no field fits. Leave
   `verified_by: null`: only a human verifies a record.
 - A design imported from KiCad (`partstyle kicad import`) has draft records for symbols the
   library lacked, each a `part.draft` warning: identify the part with the person, then complete
@@ -89,8 +97,8 @@ Export only when the person asks.
   `generic: cap(100n, 50V, X7R, 10%, 0603)` on a concrete 100 nF part.
 - `partstyle kicad export` writes `kicad/` and checks it with kicad-cli (netlist round trip and
   KiCad ERC). It draws parts with KiCad's own symbols, found by MPN; when it reports a
-  generated symbol for a part KiCad has under another name (connectors, generic modules), set
-  `kicad_symbol: Library:Symbol` in the part record. Never edit `kicad/*.kicad_sch`: change the .ckt files and export again. PCB layout
+  generated symbol for a part KiCad has under another name (connectors, transistors, generic
+  modules), set `kicad_symbol: Library:Symbol` in the part record. Never edit `kicad/*.kicad_sch`: change the .ckt files and export again. PCB layout
   happens in KiCad, and re-export never touches the PCB.
 - Keep `annotation.lock` and `bom.lock` under version control: they hold refdes and part
   choices stable across exports.

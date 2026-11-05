@@ -17,7 +17,7 @@ const cli = (args: string[], stdin?: string) => run(args, io(stdin));
 describe("partstyle validate", () => {
   it("prints a summary and exits 0 for a clean design", async () => {
     expect(await cli(["validate", example])).toEqual({
-      stdout: "bench-sensor: 0 errors, 0 warnings (19 waived)",
+      stdout: "bench-sensor: 0 errors, 0 warnings",
       exitCode: 0,
     });
     expect((await cli(["-p", example, "validate"])).exitCode).toBe(0);
@@ -69,13 +69,13 @@ describe("partstyle read commands", () => {
 
   it("query joins its arguments", async () => {
     expect((await inExample(["query", "parts", "where", "vin_max", "<", "15V"])).stdout).toBe(
-      "1 part\nPWR/U2  lib:MCP1700T-3302E_TT  vin_max=6V",
+      "1 part\nPWR/U2  lib:MCP1700-3302  vin_max=6V",
     );
     expect((await inExample(["query", "help"])).stdout).toMatch(/^queries:/);
   });
 
   it("part search and get", async () => {
-    expect((await inExample(["part", "search", "op-amp"])).stdout).toMatch(/^MCP6002-I_SN: /);
+    expect((await inExample(["part", "search", "op-amp"])).stdout).toMatch(/^MCP6002: /);
     expect((await inExample(["part", "get", "L7805CV", "--tier", "pins"])).stdout).toContain(
       "  3 OUT power_out",
     );
@@ -178,10 +178,9 @@ describe("partstyle", () => {
     expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("prints the grammar and the part-record JSON Schema", async () => {
+  it("prints the grammar and the part record format", async () => {
     expect((await cli(["grammar"])).stdout).toMatch(/^# \.ckt grammar reference/);
-    const r = await cli(["schema", "part"]);
-    expect(JSON.parse(r.stdout).required).toContain("pins");
+    expect((await cli(["part", "format"])).stdout).toMatch(/^# Part record format/);
   });
 
   it("lists and prints procedures, checking their arguments", async () => {

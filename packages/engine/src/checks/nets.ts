@@ -41,12 +41,6 @@ const groundName = /^([ADPS]?GND\w*|GND\w*|VSS\w?|0V)$/i;
 export const isGroundNet = (n: FlatNet) =>
   n.portKinds.includes("ground") || n.aliases.some((a) => groundName.test(bare(a)));
 
-/** Nets that carry power: power pins on them, or a power or ground port. */
-export const isPowerNet = (n: FlatNet) =>
-  isGroundNet(n) ||
-  n.pins.some((p) => p.type === "power_in" || p.type === "power_out") ||
-  n.portKinds.some((k) => k === "power_in" || k === "power_out");
-
 /**
  * What a net's voltage is known to be: its `voltage` attribute, else a ground net's 0 V, else
  * the voltage its name states (`+3V3`). Undefined when nothing says.

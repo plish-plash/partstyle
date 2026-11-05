@@ -1,6 +1,6 @@
 id: RC0603FR-07330RL
 manufacturer: Yageo
-mpn: RC0603FR-07330RL
+preferred_mpn: RC0603FR-07330RL
 summary: 330 ohm 1% 0.1 W thick-film resistor, 0603
 package: "0603"
 footprint: Resistor_SMD:R_0603_1608Metric

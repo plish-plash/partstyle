@@ -43,7 +43,7 @@ export function writeKicadNetlist(input: NetlistInput): string {
       ["Footprint", entry?.footprint ?? ""],
       ["Datasheet", r?.provenance.datasheet?.url ?? ""],
       ["Description", r?.summary ?? entry?.spec ?? ""],
-      ["MPN", r?.mpn ?? ""],
+      ["MPN", r?.preferred_mpn ?? ""],
       ["Manufacturer", r?.manufacturer ?? ""],
       ["Spec", entry?.spec ?? ""],
     ];

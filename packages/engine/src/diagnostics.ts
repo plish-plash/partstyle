@@ -19,6 +19,12 @@ export interface Issue {
   subjects: string[];
 }
 
+/** A subject or pin glob (`U2.PD*`) as a regular expression. */
+export function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\?]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
+}
+
 const severityRank: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
 export function compareIssues(a: Issue, b: Issue): number {

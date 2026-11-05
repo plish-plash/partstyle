@@ -11,9 +11,10 @@ export {
 } from "./project/settings.js";
 export { embedVersion, partstyleVersion } from "./project/version.js";
 export {
-  embedGrammarReference,
+  embedReferences,
   type LayoutOp,
   layoutOps,
   readGrammarReference,
+  readPartFormat,
   Workspace,
 } from "./project/workspace.js";

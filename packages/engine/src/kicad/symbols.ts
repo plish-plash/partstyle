@@ -1,4 +1,4 @@
-import type { PartRecord, PinType } from "../parts/schema.js";
+import { type PartRecord, type PinType, partName } from "../parts/schema.js";
 import { type SExpr, sym, yesNo } from "./sexpr.js";
 
 /** Schematic grid: every pin connection point lands on multiples of this. */
@@ -237,7 +237,7 @@ export function symbolForRecord(record: PartRecord): GeneratedSymbol {
       record.id,
       {
         refPrefix: refPrefixFor(record),
-        value: record.mpn,
+        value: partName(record),
         description: record.summary,
         showPinNames: showNames,
         showPinNumbers: true,

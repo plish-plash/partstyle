@@ -219,13 +219,19 @@ export async function footprintPads(
   return new Set(pads);
 }
 
+/** A mounting pad: part of the PCB land, not the part's pinout. */
+const mountingPad = /^MP\d*$/i;
+
 /**
- * Checks that each record's footprint exists and that its numbered pads match the pin table
- * exactly: a mismatch means a wrong pinout or footprint, which is a board respin.
+ * Checks that each record's footprint exists and that its numbered pads match the pin table.
+ * A mismatch may be a wrong pinout or footprint, or a pad the datasheet doesn't list, so it is a
+ * warning for the person to review. `users` gives the parts using each record, so that a waiver
+ * can name them.
  */
 export async function checkFootprints(
   entries: LibraryEntry[],
   footprintsDir: string,
+  users: (id: string) => string[] = () => [],
 ): Promise<Issue[]> {
   const issues: Issue[] = [];
   for (const e of entries) {
@@ -246,7 +252,7 @@ export async function checkFootprints(
     }
     const pins = new Set(Object.keys(r.pins));
     const noPad = [...pins].filter((p) => !pads.has(p));
-    const noPin = [...pads].filter((p) => !pins.has(p));
+    const noPin = [...pads].filter((p) => !pins.has(p) && !mountingPad.test(p));
     if (noPad.length + noPin.length > 0) {
       const parts = [
         noPad.length > 0 ? `pins with no pad: ${noPad.join(" ")}` : "",
@@ -254,10 +260,10 @@ export async function checkFootprints(
       ].filter(Boolean);
       issues.push({
         code: "part.footprint-pads",
-        severity: "error",
+        severity: "warning",
         message: `${r.id}: pin table does not match ${r.footprint} (${parts.join("; ")})`,
         location,
-        subjects: [r.id],
+        subjects: [r.id, ...users(r.id)],
       });
     }
   }

@@ -45,7 +45,7 @@ describe("runQuery", () => {
 
   it("filters parts by rating with numeric comparison", () => {
     expect(q("parts where vin_max < 15V").text).toBe(
-      "1 part\nPWR/U2  lib:MCP1700T-3302E_TT  vin_max=6V",
+      "1 part\nPWR/U2  lib:MCP1700-3302  vin_max=6V",
     );
     expect(q("parts where vin_max >= 6V").text.split("\n")[0]).toBe("2 parts");
   });
@@ -64,8 +64,10 @@ describe("runQuery", () => {
     expect(q("nets where pins > 20").text).toMatch(/^1 net\nGND: /);
   });
 
-  it("lists unconnected pins, including waived ones", () => {
-    expect(q("unconnected").text.split("\n")[0]).toBe("17 unconnected pins");
+  it("lists unconnected pins, including ones that may stay open", () => {
+    const lines = q("unconnected").text.split("\n");
+    expect(lines[0]).toBe("17 unconnected pins");
+    expect(lines).toContain("  MCU/U4.PB0 (pin 12, bidir)");
   });
 
   it.each([
@@ -111,11 +113,11 @@ describe("overview and readBlock", () => {
       "context: Benchtop sensor interface",
     ]);
     expect(text).toContain(
-      "  interface AFE/J2: remote sensor on 2 m cable; hazards: ESD, miswiring to 12 V",
+      "  interface AFE/J2: remote sensor on 2 m cable (0-3.3 V analog, sensor powered from +5V); hazards: ESD, miswiring to 12 V (accepted: on a bench tool; it may destroy D3, but R2 keeps it out of U3)",
     );
     expect(text).toContain("  power (circuit/power.ckt): 11 parts; ports +5V +3V3 GND");
     expect(text).toContain("parts: 30 (10 library, 20 generic; 9 of 9 records unverified)");
-    expect(text).toContain("issues: 0 errors, 0 warnings (19 waived)");
+    expect(text).toContain("issues: 0 errors, 0 warnings");
     // Rough budget check: ~4 characters per token.
     expect(text.length / 4).toBeLessThan(800);
   });
@@ -126,7 +128,7 @@ describe("overview and readBlock", () => {
     const summary = readBlock(source, result, "mcu", "summary").text.split("\n");
     expect(summary[1]).toBe("ports: +3V3 power_in, GND ground, AIN input");
     expect(summary).toContain("  R5 res(10k, 1%, 0603) @ RESET pull-up");
-    expect(summary.at(-1)).toBe("waivers: 5");
+    expect(summary.at(-1)).toMatch(/^nets: /);
     expect(readBlock(source, result, "nope", "full")).toEqual({
       ok: false,
       text: "no block 'nope' (blocks: main, mcu, power, sensor_afe)",
@@ -155,7 +157,7 @@ describe("part search and get", () => {
     expect(pins).toContain("  1 IN power_in max 35V");
     expect(pins).toContain("  2 GND power_in (tab is GND)");
     expect(pins).toContain("requires: 0.33 uF on IN, close to the pin [checked]");
-    expect(describePart(result.library, "MCP6002-I_SN", "pins").text).toContain(
+    expect(describePart(result.library, "MCP6002", "pins").text).toContain(
       "requires: tie unused amplifier halves off (e.g. follower with input at a defined level)",
     );
     expect(describePart(result.library, "L7805CV", "full").text).toMatch(

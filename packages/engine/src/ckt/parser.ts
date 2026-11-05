@@ -284,19 +284,27 @@ function parseTokens(c: Cursor, loc: (offset: number) => Location): Statement {
         },
       };
     }
-    case "waive": {
-      const subject = c.expect("word", "waiver subject").text;
-      const code = c.is("word") ? c.next().text : undefined;
-      const reason = c.expect("string", "quoted reason").text;
+    case "nc": {
+      const t = c.expect("word", "REF.PIN");
+      const pin = parsePinRef(t.text, loc(t.start));
+      if (!pin) throw new StatementError(`expected REF.PIN, found '${t.text}'`, t.start);
+      const intent = c.optionalIntent();
       c.expectEnd();
       return {
-        kind: "waive",
-        decl: { subject, reason, location, ...(code !== undefined && { code }) },
+        kind: "nc",
+        decl: { pin, location, ...(intent !== undefined && { intent }) },
       };
+    }
+    case "waive": {
+      const subject = c.expect("word", "waiver subject").text;
+      const code = c.expect("word", "issue code").text;
+      const reason = c.expect("string", "quoted reason").text;
+      c.expectEnd();
+      return { kind: "waive", decl: { subject, code, reason, location } };
     }
     default:
       throw new StatementError(
-        `unknown statement '${keyword.text}' (expected block, port, part, net, use or waive)`,
+        `unknown statement '${keyword.text}' (expected block, port, part, net, use, nc or waive)`,
         keyword.start,
       );
   }
@@ -312,6 +320,7 @@ export function parseCkt(text: string, file: string): { ast: CktFile; issues: Is
     parts: [],
     nets: [],
     uses: [],
+    ncs: [],
     waivers: [],
   };
 
@@ -340,6 +349,9 @@ export function parseCkt(text: string, file: string): { ast: CktFile; issues: Is
         break;
       case "use":
         ast.uses.push(statement.decl);
+        break;
+      case "nc":
+        ast.ncs.push(statement.decl);
         break;
       case "waive":
         ast.waivers.push(statement.decl);

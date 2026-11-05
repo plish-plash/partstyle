@@ -268,7 +268,7 @@ export function writeSchematics(drawing: Drawing): SchematicOutput {
       const s = symbolsByLibId.get(u.libId);
       const unit = s?.units.find((x) => x.unit === u.unit);
       const fields: [string, string][] = [
-        ["MPN", record?.mpn ?? ""],
+        ["MPN", record?.preferred_mpn ?? ""],
         ["Manufacturer", record?.manufacturer ?? ""],
         ["Spec", entry?.spec ?? ""],
         ["LCSC", record?.sourcing?.lcsc ?? ""],

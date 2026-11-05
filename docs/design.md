@@ -89,12 +89,12 @@ net GND     : J1.SLEEVE U1.GND C1.2 C2.2 C3.2 -> port GND
 
 ### Part records
 
-One YAML file per MPN in a global library, shared across projects. Records are tiered so a read can stop early: a one-line summary, the pin table, ratings, then requirements and notes.
+A part record is a local, readable cache of a datasheet: once one exists, nobody should need the datasheet again. There is one YAML file per electrical part in one package, in a global library shared across projects. The record tracks the part's electrical specification rather than an order code, so ordering and packaging suffixes collapse into one record with an optional preferred MPN. A second package is a second record, since pads and footprint differ. Records are tiered so a read can stop early: a one-line summary, the pin table, ratings, then requirements and notes, then everything else in the file.
 
 ```yaml
 id: L7805CV
 manufacturer: STMicroelectronics
-mpn: L7805CV
+preferred_mpn: L7805CV
 summary: 5 V 1.5 A linear regulator, TO-220
 package: TO-220-3
 footprint: Package_TO_SOT_THT:TO-220-3_Vertical
@@ -114,9 +114,10 @@ provenance:
   verified_by: human # or null until checked
 ```
 
-- **Datasheet ingestion** is a workflow, not a feature of the engine: the AI reads the datasheet once with its own tools, writes the record, the engine validates the schema, and the human marks it verified in the viewer.
-- **Symbols are generated** from the pin table (pins grouped by type and function), so there is no separate abstract symbol to keep in sync. A record may optionally map to a KiCad library symbol for export.
-- **Footprint correctness** is checked at record creation: pad count and numbering in the referenced KiCad footprint must match the pin table.
+- **Datasheet ingestion** is a workflow, not a feature of the engine: the AI reads the datasheet once with its own tools, writes the record, and the human marks it verified in the viewer.
+- **The format never loses information.** Only an id, a summary and pins are required. Any other section is kept as written, so the AI never drops a datasheet fact for want of a field, and a field the engine can't use stays in the file with a warning. The format is in [part-records.md](part-records.md), served to the AI by `part_format`.
+- **Symbols are generated** from the pin table (pins grouped by type and function), so there is no separate abstract symbol to keep in sync. A record may optionally map to a KiCad library symbol for export; generic ones like `Device:Q_NPN` pair up with its pins by name.
+- **Footprints are compared** with the pin table at record creation. A mismatch is a warning for the person to review, not a refusal; pads named MP are mounting points, a PCB detail.
 
 **Sourcing.** Part records hold per-distributor data (LCSC/JLCPCB, Digi-Key, Mouser). Each project names its preferred distributors in its project file, and BOM resolution and stock checks use only those.
 
@@ -134,24 +135,27 @@ use_case: Benchtop sensor interface
 environment:
   temp_c: [0, 50]
   indoor: true
-power:
-  source: 12 V wall adapter
-  connector: J1
 assembly:
   method: SMT service + hand-soldered THT
   volume: 10
 external_interfaces:
-  - connector: J4
+  - connector: PWR/J1
+    connects_to: 12 V wall adapter
+    signal: 12 V DC
+    hazards:
+      - reverse polarity
+  - connector: AFE/J2
     connects_to: remote sensor on 2 m cable
     signal: 0-3.3 V analog
     hazards:
       - ESD
-      - miswiring to 12 V
+      - hazard: miswiring to 12 V
+        accepted: bench tool; it may destroy the clamp, but the series resistor protects the op-amp
 sourcing:
   distributors: [lcsc, digikey]
 ```
 
-External interfaces are first-class: each names a connector, what is on the other end, and its hazards, so review can ask "is J4 protected against what it will actually see?"
+External interfaces are the person's statement of what the outside world does at each connection, the power input included: what is on the other end and its hazards, so the AI can ask "is J2 protected against what it will actually see?" They are requirements for the AI to design and review against, not engine checks. A hazard the person accepts is recorded on the hazard, so the project file stays the one place that says what the board must survive.
 
 ### Notes
 
@@ -171,7 +175,7 @@ Claude Code and chat clients such as Claude Desktop are equally supported AI sur
 | `apply(patch)`                                    | Batched edits in the .ckt language (add/remove/modify statements); returns only new or resolved issues | small                 |
 | `validate(scope)`                                 | ERC + part + context checks; terse, issues only                                                        | small                 |
 | `part_search(q)` / `part_get(id, tier)`           | Local library; tier = summary, pins, full                                                              | small–medium          |
-| `part_put(record)`                                | Create or update a part record (schema-validated, footprint pad check)                                 | small                 |
+| `part_put(record)`                                | Create or update a part record (reports what the engine cannot use)                                    | small                 |
 | `context_get` / `context_update`                  | Environment and interfaces                                                                             | small                 |
 | `focus()`                                         | What the human has selected or commented on in the viewer                                              | small                 |
 | `checkpoint(msg)` / `diff(since)` / `variant(op)` | Versioning, with semantic diffs                                                                        | small                 |
@@ -242,18 +246,22 @@ The global part library is versioned separately; `parts.lock` pins each project 
 
 ## Validation and design review
 
-Checks split by who can do them: the engine runs deterministic checks on every change; the AI does judgement-based review on request, using the same data.
+Checks split by who can do them: the engine runs deterministic checks on every change, limited to ERC-style connectivity and numeric datasheet limits; the AI handles broad design judgement, during the design and in review, using the same data.
 
-| Layer          | Run by                         | Examples                                                                                                                                                                  |
-| -------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Structural ERC | Engine, every `apply`          | Unconnected required pins, output-to-output conflicts, power pins with no source, single-pin nets, undriven inputs                                                        |
-| Part-aware     | Engine, every `apply`          | Net voltage vs part ratings (incl. capacitor derating), unverified part records, footprint/pin-table mismatch, datasheet `requirements` not yet satisfied                 |
-| Context-aware  | Engine, on `validate`          | External interfaces without protection matching their listed hazards, parts outside the stated temperature range, assembly-method conflicts (e.g. BGA with hand assembly) |
-| Design review  | AI, via `design_review` prompt | Topology sanity, values against stated intent, missing decoupling, stability, test points, manufacturability                                                              |
+| Layer          | Run by                         | Examples                                                                                                                                                  |
+| -------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structural ERC | Engine, every `apply`          | Unconnected required pins, output-to-output conflicts, power pins with no source, single-pin nets, undriven inputs                                        |
+| Part-aware     | Engine, every `apply`          | Net voltage vs part ratings (incl. capacitor derating), unverified part records, footprint/pin-table mismatch, datasheet `requirements` not yet satisfied |
+| Temperature    | Engine, on `validate`          | Parts outside the stated temperature range                                                                                                                |
+| Design review  | AI, via `design_review` prompt | Protection against each interface's hazards, topology sanity, values against stated intent, missing decoupling, stability, test points, manufacturability |
 
 Datasheet requirements are checked as reminders rather than proofs: "U1 requires 0.33 µF on IN — C1 on net +12V, confirm placement in pcb.md". The engine can verify presence and value; proximity is passed to the PCB notes.
 
-Issues can be waived with a reason (`waive U3.NC2 "unused, per datasheet leave floating"`), stored in the .ckt file so the waiver is reviewed and versioned like any other change.
+An issue is something to act on, never a normal step of designing. Each one is a hint for the AI to retry, a design fault, or something the person must decide.
+
+- **Errors are design faults that must be fixed.** They cannot be waived and they block export. The engine only reports an error it can be sure of, so a wrong one is an engine bug.
+- **Warnings can be waived with a reason** (`waive U3.TRIM erc.unconnected-pin "trim unused"`), stored in the .ckt file so the waiver is reviewed and versioned like any other change. A waiver is the person's decision, and the viewer lists each one with the issues it hides.
+- **A design decision is a statement, not a waiver.** A pin left open on purpose is `nc U2.GAIN1 @ open = gain 20`.
 
 ## KiCad interoperability
 
@@ -285,7 +293,7 @@ Decision: TypeScript end to end, one local process that serves MCP, the CLI and 
 | ------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
 | Engine (parser, connectivity, checks, diff) | TypeScript library                                         | Shared by every interface; runs in Node and, if useful, in the browser |
 | .ckt parser                                 | Hand-written or Lezer/Chevrotain grammar                   | Good error messages with line numbers matter more than speed           |
-| Part records                                | YAML + JSON Schema                                         | Schema doubles as the AI's spec for writing records                    |
+| Part records                                | YAML, read leniently                                       | A readable datasheet cache; the AI's format reference is a document    |
 | MCP server                                  | Official MCP TypeScript SDK, stdio                         | Works with Claude Desktop/Code; same process as viewer                 |
 | Viewer                                      | Local web app (Vite + Svelte or React), SVG rendering      | Opens in any browser; can be wrapped in Tauri later                    |
 | Auto-layout                                 | Own: groups by signal stage, grid-packed, grid maze router | Deterministic single pass, steerable by stored hints; no retry layouts |

@@ -1,12 +1,13 @@
 <script lang="ts">
-import type { Comment, Issue } from "@partstyle/engine";
+import type { AppliedWaiver, Comment, Issue } from "@partstyle/engine";
 
 interface Props {
   issues: Issue[];
+  waivers: AppliedWaiver[];
   comments: Comment[];
   onshow: (subjects: string[]) => void;
 }
-let { issues, comments, onshow }: Props = $props();
+let { issues, waivers, comments, onshow }: Props = $props();
 
 const open = $derived(comments.filter((c) => c.status === "open"));
 const order = { error: 0, warning: 1, info: 2 } as const;
@@ -29,6 +30,25 @@ const sorted = $derived([...issues].sort((a, b) => order[a.severity] - order[b.s
       </li>
     {/each}
   </ul>
+  {#if waivers.length > 0}
+    <h3>Waived ({waivers.length})</h3>
+    <ul>
+      {#each waivers as w, k (k)}
+        <li>
+          <b>{w.subject}</b> <code>{w.code}</code>
+          {w.reason}
+          <small>{w.location.file}:{w.location.line}</small>
+          <ul>
+            {#each w.issues as i, n (n)}
+              <li>
+                <button class="link" onclick={() => onshow(i.subjects)}>{i.message}</button>
+              </li>
+            {/each}
+          </ul>
+        </li>
+      {/each}
+    </ul>
+  {/if}
   <h3>Open comments ({open.length})</h3>
   <ul>
     {#each open as c (c.id)}

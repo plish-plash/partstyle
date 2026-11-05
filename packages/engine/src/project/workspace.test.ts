@@ -46,8 +46,8 @@ describe("Workspace.apply", () => {
         "  power: + part C13 cap(47u, 25V) @ bulk",
         "  power: net +12V += C13.1",
         "new issues:",
-        "  circuit/power.ckt:18:1 warning erc.unconnected-pin PWR/C13.2 (pin 2, passive) is not connected; connect it or waive it",
-        "now: 0 errors, 1 warning (19 waived)",
+        "  circuit/power.ckt:18:1 warning erc.unconnected-pin PWR/C13.2 (pin 2, passive) is not connected; connect it, or mark it nc if it is open on purpose",
+        "now: 0 errors, 1 warning",
       ].join("\n"),
     });
     expect(await read("circuit/power.ckt")).toContain("part C13 cap(47u, 25V) @ bulk\n");
@@ -83,7 +83,7 @@ describe("Workspace.partPut", () => {
     [
       `id: ${id}`,
       "manufacturer: ACME",
-      `mpn: ${id}`,
+      `preferred_mpn: ${id}`,
       "summary: test regulator",
       "package: SOT-23",
       "footprint: Package_TO_SOT_SMD:SOT-23",
@@ -105,19 +105,81 @@ describe("Workspace.partPut", () => {
   });
 
   it.skipIf(!kicad.footprints)(
-    "rejects a pin table that does not match the footprint pads",
+    "writes a record whose pins differ from the footprint, with a warning",
     async () => {
       const twoPins = record("X3").replace("  3: {name: IN, type: power_in}\n", "");
-      expect(await ws.partPut(twoPins)).toEqual({
-        ok: false,
-        text: "X3: pin table does not match Package_TO_SOT_SMD:SOT-23 (pads with no pin: 3); not written",
-      });
+      const r = await ws.partPut(twoPins);
+      expect(r.ok).toBe(true);
+      expect(r.text).toContain(
+        "warning: X3: pin table does not match Package_TO_SOT_SMD:SOT-23 (pads with no pin: 3)",
+      );
       const missing = await ws.partPut(record("X4").replace("SMD:SOT-23", "SMD:SOT-99"));
       expect(missing.text).toContain("warning: X4: footprint Package_TO_SOT_SMD:SOT-99 is not in");
     },
   );
 
-  it("rejects invalid records without writing", async () => {
+  it.skipIf(!kicad.footprints)("does not expect mounting pads in the pin table", async () => {
+    const shape = "Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal";
+    const yaml = [
+      "id: X5",
+      "summary: test header",
+      `footprint: ${shape}`,
+      "pins:",
+      "  1: {name: A}",
+      "  2: {name: B}",
+    ].join("\n");
+    expect((await ws.partPut(yaml)).text).not.toContain("does not match");
+  });
+
+  it("accepts a minimal record, keeps free-form sections and mentions them", async () => {
+    const yaml = [
+      "id: X6",
+      "summary: test amp",
+      "pins:",
+      "  1: {name: A, vmax: VCC + 0.3V}",
+      "timing: {tpd: 10ns}",
+      "temp_c: cold",
+    ].join("\n");
+    const put = (await ws.partPut(yaml)).text;
+    expect(put).toContain("warning: lib:X6: temp_c must be [min, max]");
+    expect(put).toContain("note: pins.1.vmax 'VCC + 0.3V' is kept but not checked");
+    expect(put).toContain("free-form sections, kept for tier full: timing");
+    expect((await ws.partGet("X6", "summary")).text).toContain("more: timing (tier full)");
+    expect((await ws.partGet("X6", "pins")).text).toContain("1 A passive max VCC + 0.3V");
+    expect((await ws.partGet("X6", "full")).text).toContain("tpd: 10ns");
+    expect((await ws.partSearch("tpd")).text).toMatch(/^X6: test amp/);
+  });
+
+  it("shows other keys on pins and requirements at tier pins", async () => {
+    const yaml = [
+      "id: X8",
+      "summary: test",
+      "pins:",
+      "  1: {name: A, esd: 2kV, levels: {vil: 0.8V}}",
+      "  2: {name: B}",
+      "requirements:",
+      "  - {text: bypass A, cap: {from: A, min: 100n}, source: table 3}",
+      "  - {text: keep traces short, source: section 9}",
+      "  - plain text",
+    ].join("\n");
+    await ws.partPut(yaml);
+    const lines = (await ws.partGet("X8", "pins")).text.split("\n");
+    expect(lines).toContain('  1 A passive esd=2kV levels={"vil":"0.8V"}');
+    expect(lines).toContain("  2 B passive");
+    expect(lines).toContain("requires: bypass A [checked] source=table 3");
+    expect(lines).toContain("requires: keep traces short source=section 9");
+    expect(lines).toContain("requires: plain text");
+  });
+
+  it("marks a record without provenance verified, keeping its comments", async () => {
+    await ws.partPut("# hand note\nid: X7\nsummary: test\npins:\n  1: {name: A}\n");
+    await ws.verifyPart("X7");
+    const text = await readFile(path.join(tmp, "library/X7.yaml"), "utf8");
+    expect(text).toContain("# hand note");
+    expect((await ws.partGet("X7", "summary")).text).not.toContain("[unverified]");
+  });
+
+  it("rejects only what the engine cannot use", async () => {
     const r = await ws.partPut(record("bad/id"));
     expect(r.ok).toBe(false);
     expect(r.text).toMatch(/^id: id may contain only/);
@@ -136,7 +198,7 @@ describe("settings", () => {
     await writeFile(path.join(stateDir, "settings.yaml"), "libraries: []\n");
     expect((await ws.validate()).text).toContain("elab.unknown-part");
     await writeFile(path.join(stateDir, "settings.yaml"), "libraries: [../library]\n");
-    expect((await ws.validate()).text).toBe("bench-sensor: 0 errors, 0 warnings (19 waived)");
+    expect((await ws.validate()).text).toBe("bench-sensor: 0 errors, 0 warnings");
   });
 
   it("report a broken settings file instead of ignoring it", async () => {

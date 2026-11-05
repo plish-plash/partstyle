@@ -5,9 +5,9 @@ import type { TextResult } from "../query.js";
 import { checkFootprints } from "./kicad.js";
 
 /**
- * Validates a part record and writes it to `dir` as `<id>.yaml`, refusing it when KiCad's
- * footprint libraries show its pads do not match the footprint. Shared by a project's part_put
- * and global mode's, which writes to the shared library before any project is open.
+ * Writes a part record to `dir` as `<id>.yaml`, refusing only one the engine cannot use at all
+ * and reporting everything else for review. Shared by a project's part_put and global mode's,
+ * which writes to the shared library before any project is open.
  */
 export async function writePartRecord(
   yaml: string,
@@ -22,19 +22,25 @@ export async function writePartRecord(
     exists: (id: string) => boolean;
   },
 ): Promise<TextResult> {
-  const { record, issues } = parsePartRecord(yaml, "<record>");
+  const { record, issues, notes: readNotes } = parsePartRecord(yaml, "<record>");
   if (!record) return { ok: false, text: issues.map((i) => i.message).join("\n") };
 
   const file = path.join(opts.dir, `${record.id}.yaml`);
   const shown = opts.shown(file);
-  const notes: string[] = [];
-  if (opts.footprints) {
+  const notes = [
+    ...issues.map((i) => `warning: ${i.message}`),
+    ...readNotes.map((n) => `note: ${n}`),
+  ];
+  if (record.extras.length > 0) {
+    notes.push(`free-form sections, kept for tier full: ${record.extras.join(", ")}`);
+  }
+  if (record.footprint === "") {
+    notes.push("note: no footprint yet, so pads were not checked");
+  } else if (opts.footprints) {
     const fpIssues = await checkFootprints(
       [{ record, file: shown, layer: opts.layer, text: yaml }],
       opts.footprints,
     );
-    const pads = fpIssues.find((i) => i.code === "part.footprint-pads");
-    if (pads) return { ok: false, text: `${pads.message}; not written` };
     notes.push(...fpIssues.map((i) => `warning: ${i.message}`));
   } else {
     notes.push("note: KiCad footprint libraries not found, so pads were not checked");

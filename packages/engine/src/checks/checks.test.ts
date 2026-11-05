@@ -6,7 +6,7 @@ import { parseVoltageRange, railVoltage } from "./nets.js";
 const records = {
   LDO: `id: LDO
 manufacturer: ACME
-mpn: LDO
+preferred_mpn: LDO
 summary: test LDO
 package: SOT-23
 footprint: Lib:SOT-23
@@ -23,7 +23,7 @@ provenance: { extracted_by: ai, verified_by: null }
 `,
   MCU: `id: MCU
 manufacturer: ACME
-mpn: MCU
+preferred_mpn: MCU
 summary: test MCU
 package: QFN-32
 footprint: Lib:QFN-32
@@ -44,7 +44,7 @@ provenance: { extracted_by: ai, verified_by: human }
 `,
   CONN: `id: CONN
 manufacturer: ACME
-mpn: CONN
+preferred_mpn: CONN
 summary: test 3-pin connector
 package: PinHeader
 footprint: Lib:Header
@@ -147,6 +147,32 @@ net SDA : U1.SDA R1.2
   });
 });
 
+it("reports a tie requirement on an unconnected pin, which ERC may leave alone", () => {
+  const text = `id: TIED
+summary: test
+pins:
+  1: {name: EN, type: bidir}
+  2: {name: VIN, type: power_in}
+requirements:
+  - text: EN tied to VIN
+    tie: { from: EN, to: VIN }
+`;
+  const r = validateProject({
+    project: { file: "partstyle-project.yaml", text: "name: t" },
+    circuits: [
+      {
+        file: "circuit/main.ckt",
+        text: 'block main "t"\npart U1 lib:TIED\nnet V : U1.VIN {source: bench}\n',
+      },
+    ],
+    parts: [{ file: "lib/TIED.yaml", text, layer: "global" }],
+  });
+  expect(r.issues.map((i) => i.code)).toContain("part.requirement");
+  expect(r.issues.find((i) => i.code === "part.requirement")?.message).toContain(
+    "EN is not connected",
+  );
+});
+
 describe("context checks", () => {
   const board = (protection: string) => `block main "t"
 part J1 lib:CONN
@@ -160,29 +186,19 @@ net +3V3 : J1.PWR U1.VCC U1.EN C1.1 C2.1 R1.1 {source: J1}
 net GND : J1.GND U1.GND C1.2 C2.2 ${protection ? "D1.2" : ""}
 `;
   const context = (hazards: string, more = "") => `environment: {temp_c: [-20, 70]}
-assembly: {method: hand soldering}
 external_interfaces:
   - connector: J1
     hazards: [${hazards}]
 ${more}`;
 
-  it("checks an interface's ESD, voltage and reverse-polarity hazards at its connector", () => {
-    const bare = check(board(""), { context: context("ESD, miswiring to 12 V, reverse polarity") });
-    expect(codes(bare, "context.hazard")).toEqual([
-      "warning context.hazard J1 (ESD): no ESD/TVS clamp to ground on SIG",
-      "warning context.hazard J1 (miswiring to 12 V): 12V would reach U1.SDA (max 3.6V) on SIG",
-      "warning context.hazard J1 (reverse polarity): no diode or FET on SIG, +3V3 to block reversed supply",
-    ]);
-    const clamped = check(board("part D1 diode(tvs, SOD-323)"), { context: context("ESD") });
-    expect(codes(clamped, "context.hazard")).toEqual([]);
+  it("leaves an interface's hazards to the AI, plain or accepted", () => {
+    const hazards = "ESD, miswiring to 12 V, {hazard: reverse polarity, accepted: keyed plug}";
+    expect(codes(check(board(""), { context: context(hazards) }), "context")).toEqual([]);
   });
 
-  it("checks temperature and assembly against the parts", () => {
+  it("checks temperature against the parts", () => {
     const issues = check(board(""), { context: context("") });
     expect(codes(issues, "context.temperature")).toEqual([]);
-    expect(codes(issues, "context.assembly")).toEqual([
-      "warning context.assembly U1: QFN-32 is hard to hand-solder (assembly: hand soldering)",
-    ]);
     const cold = check(ldo("+5V", "cap(1u, 16V, 0603)"), {
       context: context("", "environment: {temp_c: [-55, 70]}\n").replace(
         "environment: {temp_c: [-20, 70]}\n",
@@ -195,9 +211,16 @@ ${more}`;
   });
 
   it("reports an interface whose connector is not in the design", () => {
-    const issues = check(board(""), { context: context("ESD").replace("J1", "PWR/J9") });
+    const issues = check(board(""), { context: context("ESD").replace("J1", "J9") });
     expect(codes(issues, "context.unknown")).toEqual([
-      "warning context.unknown-connector external interface PWR/J9 is not a part in the design (use its instance path, e.g. PWR/J1)",
+      "warning context.unknown-connector external interface J9 is not a part in the design (use its instance path, e.g. PWR/J1)",
     ]);
+  });
+
+  it("waits for the connector's block before reporting it", () => {
+    const planned = check(board(""), { context: context("ESD").replace("J1", "PWR/J1") });
+    expect(codes(planned, "context.unknown")).toEqual([]);
+    const empty = check('block main "t"\n', { context: context("ESD") });
+    expect(codes(empty, "context.unknown")).toEqual([]);
   });
 });

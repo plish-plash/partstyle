@@ -1,5 +1,5 @@
 import type { Issue } from "../diagnostics.js";
-import type { FlatNet, FlatPin, Netlist } from "../netlist/elaborate.js";
+import { type FlatNet, type FlatPin, isOpenByDesign, type Netlist } from "../netlist/elaborate.js";
 import type { PinType } from "../parts/schema.js";
 
 const drivers: ReadonlySet<PinType> = new Set(["output", "power_out"]);
@@ -43,14 +43,17 @@ export function runErc(netlist: Netlist): Issue[] {
 
   for (const part of netlist.parts) {
     for (const pin of part.pins) {
-      if (pin.net !== undefined || pin.type === "nc") continue;
+      if (pin.net !== undefined || isOpenByDesign(pin)) continue;
       const power = pin.type === "power_in";
+      const hint = !power
+        ? "; connect it, or mark it nc if it is open on purpose"
+        : pin.open
+          ? "; a power pin cannot be nc"
+          : "";
       issues.push({
         code: "erc.unconnected-pin",
         severity: power ? "error" : "warning",
-        message: `${pinLabel(pin)} (pin ${pin.number}, ${pin.type}) is not connected${
-          power ? "" : "; connect it or waive it"
-        }`,
+        message: `${pinLabel(pin)} (pin ${pin.number}, ${pin.type}) is not connected${hint}`,
         location: part.location,
         subjects: pinSubjects(pin),
       });

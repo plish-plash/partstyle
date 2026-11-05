@@ -20,7 +20,7 @@ const PATCH_FILE = "<patch>";
 class PatchError extends Error {}
 
 /** Statement order within a file; new statements go after the last one of the same or an earlier kind. */
-const kindOrder: StatementKind[] = ["block", "port", "part", "use", "net", "waive"];
+const kindOrder: StatementKind[] = ["block", "port", "part", "use", "net", "nc", "waive"];
 
 /** What identifies a statement within its block: a part's ref, a net's name, and so on. */
 export function keyOf(s: Statement): string {
@@ -33,12 +33,14 @@ export function keyOf(s: Statement): string {
       return s.decl.ref;
     case "use":
       return s.decl.instance;
+    case "nc":
+      return printPinRef(s.decl.pin);
     case "waive":
       return s.decl.subject;
   }
 }
 
-/** A file's statements in canonical order: block, ports, parts, uses, nets, waivers. */
+/** A file's statements in canonical order: block, ports, parts, uses, nets, ncs, waivers. */
 export function statementsOf(ast: CktFile): Statement[] {
   return [
     { kind: "block", decl: ast.block },
@@ -46,6 +48,7 @@ export function statementsOf(ast: CktFile): Statement[] {
     ...ast.parts.map((decl) => ({ kind: "part" as const, decl })),
     ...ast.uses.map((decl) => ({ kind: "use" as const, decl })),
     ...ast.nets.map((decl) => ({ kind: "net" as const, decl })),
+    ...ast.ncs.map((decl) => ({ kind: "nc" as const, decl })),
     ...ast.waivers.map((decl) => ({ kind: "waive" as const, decl })),
   ];
 }
@@ -64,7 +67,7 @@ function keepLayout(s: Statement, old: Statement): Statement {
   return s;
 }
 
-const removableKinds = new Set<string>(["port", "part", "use", "net", "waive"]);
+const removableKinds = new Set<string>(["port", "part", "use", "net", "nc", "waive"]);
 const reservedNameChars = /[./]/;
 
 /** One .ckt file being edited. Re-parsed after every edit so line numbers stay correct. */
@@ -181,6 +184,12 @@ class FileEdit {
       }
     }
     if (kind === "part" || kind === "use") {
+      for (const n of this.ast.ncs) {
+        if (n.pin.target === key) {
+          edits.set(n.location.line, null);
+          notes.push(`removed nc ${printPinRef(n.pin)}`);
+        }
+      }
       for (const w of this.ast.waivers) {
         if (w.subject === key || w.subject.startsWith(`${key}.`)) {
           edits.set(w.location.line, null);
@@ -236,6 +245,11 @@ class FileEdit {
       } else if (net.pins.some((p) => p.target === from)) {
         const pins = net.pins.map((p) => (p.target === from ? { ...p, target: to } : p));
         set({ kind: "net", decl: { ...net, pins } });
+      }
+    }
+    for (const n of this.ast.ncs) {
+      if (kind !== "net" && n.pin.target === from) {
+        set({ kind: "nc", decl: { ...n, pin: { ...n.pin, target: to } } });
       }
     }
     for (const w of this.ast.waivers) {
@@ -333,7 +347,7 @@ export function applyPatch(source: ProjectSource, patch: string): PatchResult {
           extra.length > 0 ||
           !removableKinds.has(kind)
         ) {
-          throw new PatchError("usage: - part|net|port|use|waive KEY");
+          throw new PatchError("usage: - part|net|port|use|nc|waive KEY");
         }
         const notes = t.remove(kind as StatementKind, key);
         log.push(`${where}: - ${kind} ${key}${notes.length > 0 ? ` (${notes.join("; ")})` : ""}`);

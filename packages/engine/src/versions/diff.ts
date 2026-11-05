@@ -14,7 +14,7 @@ export interface StatementChange {
   /** The .ckt file the block lives in (after the change, or before it for a removed block). */
   file: string;
   kind: StatementKind;
-  /** Part ref, net or port name, instance, waived subject, or the block name. */
+  /** Part ref, net or port name, instance, nc pin, waived subject, or the block name. */
   key: string;
   /** Printed statement(s); waivers sharing a subject are joined by newlines. */
   before?: string;
@@ -89,7 +89,7 @@ function index(files: TextFile[]): Map<string, Entry> {
   return out;
 }
 
-const kindOrder: StatementKind[] = ["block", "port", "part", "use", "net", "waive"];
+const kindOrder: StatementKind[] = ["block", "port", "part", "use", "net", "nc", "waive"];
 
 /** The statements that differ between two sets of circuit files, in block then statement order. */
 export function diffCircuits(before: TextFile[], after: TextFile[]): StatementChange[] {

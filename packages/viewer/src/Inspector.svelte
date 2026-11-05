@@ -78,7 +78,7 @@ async function verify(id: string) {
       {@const r = part.record}
       <dl>
         <dt>Part</dt>
-        <dd>{r.manufacturer} {r.mpn}</dd>
+        <dd>{r.manufacturer} {r.preferredMpn ?? r.id}</dd>
         <dt>Summary</dt>
         <dd>{r.summary}</dd>
         <dt>Footprint</dt>

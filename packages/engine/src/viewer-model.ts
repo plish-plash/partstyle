@@ -7,7 +7,7 @@ import type { SheetLayout } from "./drawing/types.js";
 import { type PinType, requirementText } from "./parts/schema.js";
 import { TOP_BLOCK } from "./project/config.js";
 import type { Comment, Focus, ReviewMode } from "./review.js";
-import type { ValidationResult } from "./validate.js";
+import type { AppliedWaiver, ValidationResult } from "./validate.js";
 import type { ChangeOp } from "./versions/diff.js";
 import { countIssues } from "./views.js";
 
@@ -20,7 +20,7 @@ export interface PartInfo {
   intent?: string;
   record?: {
     id: string;
-    mpn: string;
+    preferredMpn?: string;
     manufacturer: string;
     summary: string;
     package: string;
@@ -96,6 +96,8 @@ export interface ViewerModel {
   top: string;
   summary: { errors: number; warnings: number; waived: number };
   issues: Issue[];
+  /** What waivers hide, so the person can review them. */
+  waivers: AppliedWaiver[];
   sheets: ViewerSheet[];
   symbols: Record<string, SymbolGraphics>;
   parts: Record<string, PartInfo>;
@@ -164,7 +166,7 @@ export function buildViewerModel(
       ...(r && {
         record: {
           id: r.id,
-          mpn: r.mpn,
+          ...(r.preferred_mpn !== undefined && { preferredMpn: r.preferred_mpn }),
           manufacturer: r.manufacturer,
           summary: r.summary,
           package: r.package,
@@ -207,6 +209,7 @@ export function buildViewerModel(
     top: TOP_BLOCK,
     summary: { errors, warnings, waived: result.waived },
     issues: [...result.issues, ...drawing.issues],
+    waivers: result.waivers,
     sheets,
     symbols,
     parts,

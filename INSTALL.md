@@ -72,7 +72,8 @@ Targets are Bun's: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-
 `bun-windows-x64`. Set `BUN` to the bun binary if it is not on PATH.
 
 `scripts/standalone.mjs` writes a generated entry (`packages/cli/standalone/entry.js`) that
-embeds `docs/ckt-grammar.md` and the viewer's `dist/`, then runs `bun build --compile`.
+embeds `docs/ckt-grammar.md`, `docs/part-records.md` and the viewer's `dist/`, then runs
+`bun build --compile`.
 `packages/cli/src/standalone.test.ts` smoke-tests the native executable when it exists (CLI
 output, MCP over stdio, the embedded grammar and viewer); set `PARTSTYLE_BINARY` to test a
 particular file, which also makes a missing file fail the test instead of skipping it.

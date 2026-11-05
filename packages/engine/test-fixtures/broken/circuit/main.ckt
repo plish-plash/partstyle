@@ -4,9 +4,9 @@ port GND : ground
 
 part U1 lib:L7805CV
 part U2 lib:L7805CV               @ second regulator fighting U1
-part U3 lib:MCP6002-I_SN
+part U3 lib:MCP6002
 part U4 lib:NOT_IN_LIBRARY
-part U5 lib:MCP1700T-3302E_TT     @ fed from 12 V, over its 6.5 V input limit
+part U5 lib:MCP1700-3302     @ fed from 12 V, over its 6.5 V input limit
 part C1 cap(100n, 16V)            @ under 1.5x derating at 12 V, and too small for U1's input
 part C2 cap(1uH)
 

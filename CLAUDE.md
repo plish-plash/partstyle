@@ -1,7 +1,8 @@
 # Partstyle
 
 AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.ckt` text
-([grammar](docs/ckt-grammar.md)), parts are YAML records, and geometry is never part of the AI's view.
+([grammar](docs/ckt-grammar.md)), parts are YAML records that cache their datasheet
+([format](docs/part-records.md)), and geometry is never part of the AI's view.
 
 ## Commands
 
@@ -47,10 +48,14 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
 
 - `packages/engine`: pure core in `src/index.ts` (no fs; must stay browser-safe for the viewer);
   node-only code is behind `src/node.ts` (`@partstyle/engine/node`).
+  - Part records: `parts/schema.ts` `readPartRecord` refuses only what the engine needs (id,
+    summary, pins); a field it can't use is dropped from `PartRecord` with a `part.format`
+    warning but stays in the YAML, and unknown sections are kept. Keep this lenient: a record
+    must never lose datasheet information to validation.
   - Pipeline: `ckt/parser` → `parts/library` → `netlist/elaborate` (hierarchy flattening,
     union-find net joining) → `erc/rules`, `checks/parts` (pin `vmax`, capacitor derating,
-    requirement checks) and `checks/context` (the project file's interface hazards,
-    temperature, assembly; `checks/nets` has net voltages) → waivers in `validate.ts`.
+    requirement checks) and `checks/context` (temperature range, interfaces naming real
+    connectors; `checks/nets` has net voltages) → waivers in `validate.ts` (warnings only).
   - Configuration: `project/config.ts` (`partstyle-project.yaml`: name, description, design
     context, `sourcing`, `checks`; the top block is always `main`), `project/settings.ts` (node:
     the user's `settings.yaml` with libraries and KiCad overrides, read fresh per call). The
@@ -70,7 +75,8 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   command with identical output; add both together (see [docs/claude-code.md](docs/claude-code.md)).
   - KiCad hand-off: `bom.ts` (generic → MPN resolution, bom.lock), `kicad/` (S-expressions,
     annotation, schematic and netlist writers; pure). Symbols: `kicad/libsym.ts` matches and
-    vets KiCad library symbols (flattening, units, pin compatibility), `kicad/power.ts` power
+    vets KiCad library symbols (flattening, units, pin compatibility, `adaptedSymbol`'s copies
+    renumbered by pin name), `kicad/power.ts` power
     symbols, `kicad/symbols.ts` generated fallbacks. `project/kicad.ts` (node) finds kicad-cli
     and the stock libraries, indexes symbol names, checks footprint pads and parses ERC.
   - Drawing (shared by the viewer and KiCad export, pure, one deterministic pass: no trial
@@ -121,6 +127,10 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
 
 - Issues carry a stable `code`, a `file:line:col` location and flat-path `subjects`; waivers
   match subjects. Add new codes to the table in `docs/ckt-grammar.md`.
+- An issue is a hint for the AI to retry, a design fault, or something for the person to decide,
+  never a normal step of designing. Errors must be fixed and cannot be waived, so only report one
+  the engine can be sure of. Engine checks stay to ERC-style connectivity and numeric datasheet
+  limits; broad design judgement (protection, hazards) belongs to the AI and `design_review`.
 - AI-facing output is terse text, budgeted in tokens (tests assert rough limits). Prefer one
   line per item and omit defaults (e.g. pin type `passive`).
 - TS is strict with `exactOptionalPropertyTypes`; spread optional fields

@@ -1,6 +1,6 @@
 import { parse as parseYaml } from "yaml";
 import type { Issue } from "../diagnostics.js";
-import { type PartRecord, PartRecordSchema } from "./schema.js";
+import { type PartRecord, readPartRecord } from "./schema.js";
 
 export interface PartSource {
   file: string;
@@ -15,14 +15,23 @@ export interface LibraryEntry {
   layer: PartSource["layer"];
   /** YAML source, for full-detail reads. */
   text: string;
+  /** `part.format` issues: reported only for records a design uses. */
+  warnings?: Issue[];
 }
 
 export type PartLibrary = Map<string, LibraryEntry>;
 
+/**
+ * Reads a record file. Without a `record` the file is unusable (`part.yaml`, `part.schema`);
+ * these are warnings, since a library file a design does not use is no fault of the design, and
+ * one that does gets `elab.unknown-part`. With a `record`, `issues` are `part.format` warnings
+ * and `notes` are worth saying once, when it is written.
+ */
 export function parsePartRecord(
   text: string,
   file: string,
-): { record?: PartRecord; issues: Issue[] } {
+): { record?: PartRecord; issues: Issue[]; notes: string[] } {
+  const location = { file, line: 1, col: 1 };
   let data: unknown;
   try {
     data = parseYaml(text);
@@ -32,27 +41,39 @@ export function parsePartRecord(
       issues: [
         {
           code: "part.yaml",
-          severity: "error",
+          severity: "warning",
           message: `invalid YAML: ${message}`,
-          location: { file, line: 1, col: 1 },
+          location,
           subjects: [],
         },
       ],
+      notes: [],
     };
   }
-  const result = PartRecordSchema.safeParse(data);
-  if (!result.success) {
+  const { record, problems, warnings, notes } = readPartRecord(data);
+  if (!record) {
     return {
-      issues: result.error.issues.map((i) => ({
+      issues: problems.map((message) => ({
         code: "part.schema",
-        severity: "error" as const,
-        message: `${i.path.length > 0 ? `${i.path.join(".")}: ` : ""}${i.message}`,
-        location: { file, line: 1, col: 1 },
+        severity: "warning" as const,
+        message,
+        location,
         subjects: [],
       })),
+      notes: [],
     };
   }
-  return { record: result.data, issues: [] };
+  return {
+    record,
+    issues: warnings.map((message) => ({
+      code: "part.format",
+      severity: "warning" as const,
+      message: `lib:${record.id}: ${message}`,
+      location,
+      subjects: [record.id],
+    })),
+    notes,
+  };
 }
 
 /** Builds the effective library: global records first, then project records override by id. */
@@ -65,8 +86,10 @@ export function buildLibrary(sources: PartSource[]): { library: PartLibrary; iss
   ];
   for (const source of ordered) {
     const { record, issues: recordIssues } = parsePartRecord(source.text, source.file);
-    issues.push(...recordIssues);
-    if (!record) continue;
+    if (!record) {
+      issues.push(...recordIssues);
+      continue;
+    }
     const existing = library.get(record.id);
     if (existing && existing.layer === source.layer) {
       issues.push({
@@ -77,7 +100,13 @@ export function buildLibrary(sources: PartSource[]): { library: PartLibrary; iss
         subjects: [],
       });
     }
-    library.set(record.id, { record, file: source.file, layer: source.layer, text: source.text });
+    library.set(record.id, {
+      record,
+      file: source.file,
+      layer: source.layer,
+      text: source.text,
+      ...(recordIssues.length > 0 && { warnings: recordIssues }),
+    });
   }
   return { library, issues };
 }

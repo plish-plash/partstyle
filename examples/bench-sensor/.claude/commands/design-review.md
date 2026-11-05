@@ -7,11 +7,13 @@ Review this Partstyle design. Report findings; do not change the circuit until t
 
 1. Gather: `partstyle overview`, `partstyle validate`, partstyle-project.yaml, notes/decisions.md, then each block with `partstyle read-block`. For every library part, `partstyle part get ID --tier pins`.
 2. Check, citing refdes and nets:
-   - Each validate issue: its cause, and a fix or a waiver with a real reason.
+   - Each validate issue: its cause and a fix. Errors must be fixed; a warning may instead get a
+     waiver with a real reason, if the person agrees.
    - Datasheet requirements not marked [checked]: is each one met, and how?
    - Each external interface in the project file: is every listed hazard handled at the connector
-     (ESD, overvoltage, reverse polarity, shorts, cable length)? The engine checks ESD clamps,
-     voltage hazards on signal pins and reverse-polarity parts; judge the rest.
+     (ESD, overvoltage, reverse polarity, shorts, fusing, cable length)? The engine does not check
+     hazards, so this review is the only check. A hazard marked accepted is the person's decision;
+     note it and move on. Flag any connection to the outside world the project file leaves out.
    - Values against each `@ intent`: dividers, filter corners, gain, LED and pull-up currents.
    - Topology: decoupling, unused pins and amplifier halves, reset and boot pins, regulator
      stability (output capacitance and ESR), linear regulator dissipation, power sequencing,

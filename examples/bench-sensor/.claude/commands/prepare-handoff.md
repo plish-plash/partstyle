@@ -6,7 +6,8 @@ Prepare this design for PCB layout in KiCad.
 
 1. `partstyle validate`: no errors. Explain each remaining warning to the person.
 2. `partstyle bom export`: for each unresolved generic, propose a library record
-   (ingest_part) or confirm it can stay generic for the assembler to choose.
+   (ingest_part) or confirm it can stay generic for the assembler to choose. List any part with
+   no preferred MPN for the person.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
    (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,

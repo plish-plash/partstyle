@@ -1,6 +1,6 @@
 id: 1N5819
 manufacturer: onsemi
-mpn: 1N5819RLG
+preferred_mpn: 1N5819RLG
 summary: 40 V 1 A Schottky rectifier, DO-41
 package: DO-41
 footprint: Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal

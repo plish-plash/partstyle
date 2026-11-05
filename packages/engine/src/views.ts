@@ -1,5 +1,5 @@
-import { printSpec } from "./ckt/print.js";
-import { formatIssue } from "./diagnostics.js";
+import { printPinRef, printSpec } from "./ckt/print.js";
+import { formatIssue, type Issue } from "./diagnostics.js";
 import { mergeProjectData, PROJECT_FILE, projectData } from "./project/config.js";
 import type { ProjectSource } from "./project/source.js";
 import type { TextResult } from "./query.js";
@@ -29,6 +29,17 @@ export function formatValidation(result: ValidationResult, fallbackName: string)
   return [...result.issues.map(formatIssue), `${name}: ${issueSummary(result)}`].join("\n");
 }
 
+/** Errors, then warnings, with the often numerous unconnected pins last. */
+const importance = (i: Issue) =>
+  i.severity === "error" ? 0 : i.code === "erc.unconnected-pin" ? 2 : 1;
+
+/** A hazard from the project file: its text, or `{hazard, accepted}` once the person accepts it. */
+function hazardText(h: unknown): string {
+  if (typeof h !== "object" || h === null) return String(h);
+  const { hazard, accepted } = h as { hazard?: unknown; accepted?: unknown };
+  return `${String(hazard)}${accepted === undefined ? "" : ` (accepted: ${String(accepted)})`}`;
+}
+
 /** The design context and settings, without the name and the description (prose for people). */
 function contextLines(source: ProjectSource): string[] {
   const main = projectData(source.project.text);
@@ -43,8 +54,13 @@ function contextLines(source: ProjectSource): string[] {
   }
   const interfaces = Array.isArray(fm.external_interfaces) ? fm.external_interfaces : [];
   for (const i of interfaces as Record<string, unknown>[]) {
-    const hazards = Array.isArray(i.hazards) ? `; hazards: ${i.hazards.join(", ")}` : "";
-    lines.push(`  interface ${String(i.connector)}: ${String(i.connects_to ?? "?")}${hazards}`);
+    const signal = i.signal === undefined ? "" : ` (${String(i.signal)})`;
+    const hazards = Array.isArray(i.hazards)
+      ? `; hazards: ${i.hazards.map(hazardText).join(", ")}`
+      : "";
+    lines.push(
+      `  interface ${String(i.connector)}: ${String(i.connects_to ?? "?")}${signal}${hazards}`,
+    );
   }
   return lines;
 }
@@ -75,6 +91,7 @@ export function overview(
   }
 
   const parts = result.netlist?.parts ?? [];
+  const ranked = [...result.issues].sort((a, b) => importance(a) - importance(b));
   const fromLib = parts.filter((p) => p.record);
   const unverified = new Set(
     fromLib.filter((p) => !p.record?.provenance.verified_by).map((p) => p.record?.id),
@@ -84,7 +101,7 @@ export function overview(
       `${unverified.size} of ${new Set(fromLib.map((p) => p.record?.id)).size} records unverified)`,
     `nets: ${result.netlist?.nets.length ?? 0}`,
     `issues: ${issueSummary(result)}`,
-    ...result.issues.slice(0, MAX_LISTED_ISSUES).map((i) => `  ${formatIssue(i)}`),
+    ...ranked.slice(0, MAX_LISTED_ISSUES).map((i) => `  ${formatIssue(i)}`),
   );
   if (result.issues.length > MAX_LISTED_ISSUES) {
     lines.push(`  ... ${result.issues.length - MAX_LISTED_ISSUES} more (run validate)`);
@@ -125,6 +142,7 @@ export function readBlock(
     `uses: ${block.uses.map((u) => `${u.instance}=${u.block}`).join(" ") || "(none)"}`,
     `nets: ${block.nets.map((n) => `${n.name}(${n.pins.length})`).join(" ") || "(none)"}`,
   ];
+  if (block.ncs.length > 0) lines.push(`nc: ${block.ncs.map((n) => printPinRef(n.pin)).join(" ")}`);
   if (block.waivers.length > 0) lines.push(`waivers: ${block.waivers.length}`);
   return { ok: true, text: lines.join("\n") };
 }

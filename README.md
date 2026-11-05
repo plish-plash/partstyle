@@ -18,8 +18,8 @@ and the intent behind them — and draws the schematic itself. The result:
   resolved to a real part when the BOM is built. Datasheet facts are captured once, with a flag
   for whether a human has verified them.
 - **Checked against reality.** Besides electrical rules, designs are checked against part
-  ratings (pin voltages, capacitor derating, required external parts) and against the board's
-  context: its environment, power source, assembly method and the hazards at each connector.
+  ratings (pin voltages, capacitor derating, required external parts, temperature range), and
+  Claude designs and reviews against the hazards you name at each connector.
 - **You stay in charge.** Claude's edits land as changesets you can revert, whole or statement
   by statement; a checkpoint (a git commit) is your approval. You point at things in the viewer
   instead of typing reference designators.
@@ -75,7 +75,7 @@ How each client is set up, and the full list of MCP tools, is in
    a local web page that redraws as the design changes.
 2. **Describe the board.** Claude fills in `partstyle-project.yaml` with you: what the board does, where it
    runs, how it's powered and assembled, and every external connection with its hazards (ESD,
-   reverse polarity, ...). Checks and design reviews use this.
+   reverse polarity, ...). Claude designs and reviews against this.
 3. **Design block by block.** Claude plans one block per functional area (power, MCU, sensor
    input, ...), picks parts from the library or adds records from datasheets, and applies
    patches. Each patch reports only the issues it added or resolved.
@@ -94,14 +94,15 @@ lacks become draft part records to complete.
 
 ## Documentation
 
-| Document                                   | For                                                                  |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| [INSTALL.md](INSTALL.md)                   | Installing the extension, the executable or a source build; releases |
-| [docs/claude-code.md](docs/claude-code.md) | Using Partstyle from Claude Code, Claude Desktop and MCP clients     |
-| [docs/cli.md](docs/cli.md)                 | Reference for every `partstyle` command                              |
-| [docs/ckt-grammar.md](docs/ckt-grammar.md) | The `.ckt` language, patches, and every issue code                   |
-| [docs/layout.md](docs/layout.md)           | How sheets are laid out, and how to steer the layout                 |
-| [docs/design.md](docs/design.md)           | Design rationale and architecture                                    |
+| Document                                     | For                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------------- |
+| [INSTALL.md](INSTALL.md)                     | Installing the extension, the executable or a source build; releases |
+| [docs/claude-code.md](docs/claude-code.md)   | Using Partstyle from Claude Code, Claude Desktop and MCP clients     |
+| [docs/cli.md](docs/cli.md)                   | Reference for every `partstyle` command                              |
+| [docs/ckt-grammar.md](docs/ckt-grammar.md)   | The `.ckt` language, patches, and every issue code                   |
+| [docs/part-records.md](docs/part-records.md) | The part record format                                               |
+| [docs/layout.md](docs/layout.md)             | How sheets are laid out, and how to steer the layout                 |
+| [docs/design.md](docs/design.md)             | Design rationale and architecture                                    |
 
 ## Development
 

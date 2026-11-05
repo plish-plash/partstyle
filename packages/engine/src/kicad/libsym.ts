@@ -10,6 +10,7 @@ import { LIB, qualified } from "./symbols.js";
 export interface UnitPin extends PinAnchor {
   hidden: boolean;
   type: string;
+  name: string;
 }
 
 export interface SymbolUnit {
@@ -180,6 +181,7 @@ export function unitsOf(def: SExpr[]): SymbolUnit[] {
             // `(hide yes)` in current files, a bare `hide` atom in older ones.
             hidden: child(pin, "hide") !== undefined || pin.some((t) => atomText(t) === "hide"),
             type: atomText(type) ?? String(type),
+            name: value(pin, "name") ?? "",
           });
         }
         visit(p);
@@ -213,11 +215,71 @@ export function generatedSymbol(g: GeneratedSymbol): SchSymbol {
     units: [
       {
         unit: 1,
-        pins: new Map([...g.pins].map(([n, a]) => [n, { ...a, hidden: false, type: "" }])),
+        pins: new Map(
+          [...g.pins].map(([n, a]) => [n, { ...a, hidden: false, type: "", name: "" }]),
+        ),
         box: g.box,
       },
     ],
     generated: g,
+  };
+}
+
+/** Replaces the pin numbers in a symbol definition. */
+function renumbered(node: SExpr[], numbers: Map<string, string>): SExpr[] {
+  if (node[0] === "number" && typeof node[1] === "string") {
+    return ["number", numbers.get(node[1]) ?? node[1], ...node.slice(2)];
+  }
+  return node.map((x) => (Array.isArray(x) ? renumbered(x, numbers) : x));
+}
+
+/**
+ * A copy of a KiCad symbol whose pin numbers follow the part's pads, when the two pair up one to
+ * one by pin name but not by number. Generic symbols number pins by role (`B C E` on
+ * `Device:Q_NPN`, while a record's are pads) and pinout-specific ones may not suit the part
+ * (`Q_NMOS_GSD` on a part whose pin 1 is S). It is a project symbol, as KiCad would flag an edited
+ * copy of its own. Undefined when the names don't pair up, or the numbers already agree.
+ */
+export function adaptedSymbol(sym: SchSymbol, part: FlatPart): SchSymbol | undefined {
+  if (part.spec.kind !== "lib") return undefined;
+  const padOf = new Map(part.pins.map((p) => [p.name, p.number]));
+  const names = new Map<string, string>();
+  for (const u of sym.units) for (const [n, p] of u.pins) names.set(n, p.name);
+  if (names.size !== part.pins.length || padOf.size !== part.pins.length) return undefined;
+
+  const numbers = new Map<string, string>();
+  for (const [number, name] of names) {
+    const pad = padOf.get(name);
+    if (pad === undefined || [...numbers.values()].includes(pad)) return undefined;
+    numbers.set(number, pad);
+  }
+  if ([...numbers].every(([from, to]) => from === to)) return undefined;
+
+  const name = part.spec.id;
+  const local = sym.libId.slice(sym.libId.indexOf(":") + 1);
+  const [head, , ...rest] = renumbered(sym.def, numbers);
+  const body = rest.map((x) =>
+    Array.isArray(x) && x[0] === "symbol"
+      ? ["symbol", `${name}${(x[1] as string).slice(local.length)}`, ...x.slice(2)]
+      : x,
+  );
+  const units = sym.units.map((u) => ({
+    ...u,
+    pins: new Map([...u.pins].map(([n, p]) => [numbers.get(n) ?? n, p])),
+  }));
+  const first = units[0] as SymbolUnit;
+  return {
+    ...sym,
+    libId: `${LIB}:${name}`,
+    def: ["symbol", `${LIB}:${name}`, ...body],
+    units,
+    generated: {
+      name,
+      def: [head as string, name, ...body],
+      pins: first.pins,
+      box: first.box,
+      refPrefix: part.path.replace(/^.*\//, "").replace(/\d.*$/, ""),
+    },
   };
 }
 
@@ -278,14 +340,16 @@ function wildcardPattern(name: string): RegExp | undefined {
 /**
  * Library symbols that plausibly are this part, best first: an exact name match on the id or
  * MPN, then a KiCad wildcard match (`MCP1700x-330xxTT`), then the longest name that is a prefix
- * of the MPN followed by a letter (`L7805` for `L7805CV`, but never `LM317` for `LM3171`).
+ * of the MPN followed by a letter (`L7805` for `L7805CV`, but never `LM317` for `LM3171`), then
+ * the shortest name the id is a prefix of. Pins vet the candidates afterwards.
  */
 export function rankSymbolMatches(
   record: PartRecord,
   names: { lib: string; name: string }[],
   limit = 5,
 ): { lib: string; name: string }[] {
-  const keys = [...new Set([normalize(record.id), normalize(record.mpn)])].filter(Boolean);
+  const id = normalize(record.id);
+  const keys = [...new Set([id, normalize(record.preferred_mpn ?? "")])].filter(Boolean);
   const scored: { lib: string; name: string; score: number }[] = [];
   for (const n of names) {
     const norm = normalize(n.name);
@@ -299,6 +363,8 @@ export function rankSymbolMatches(
         score = Math.max(score, 1000 + norm.length);
       }
     }
+    // An id names the part without its ordering suffix: `MCP6002` for `MCP6002-xSN`.
+    if (score === 0 && id.length >= 4 && norm.startsWith(id)) score = 500 - norm.length;
     if (score > 0) scored.push({ ...n, score });
   }
   return scored

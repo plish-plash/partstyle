@@ -1,6 +1,6 @@
 id: CL21A106KAYNNNE
 manufacturer: Samsung Electro-Mechanics
-mpn: CL21A106KAYNNNE
+preferred_mpn: CL21A106KAYNNNE
 summary: 10 uF 25 V X5R 10% MLCC, 0805
 package: "0805"
 footprint: Capacitor_SMD:C_0805_2012Metric

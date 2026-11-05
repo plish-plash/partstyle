@@ -1,6 +1,7 @@
 import type { LibField } from "../kicad/libsym.js";
 import { powerRotation, powerValueAt } from "../kicad/power.js";
 import type { FlatPart } from "../netlist/elaborate.js";
+import { partName } from "../parts/schema.js";
 import type { Attachment, Group } from "./groups.js";
 import {
   CHAR,
@@ -69,10 +70,17 @@ const toGrid = (o: Pt, p: Pt | undefined): Pt =>
   p ? { x: snap(ceilTo(o.x + p.x) - p.x), y: snap(ceilTo(o.y + p.y) - p.y) } : o;
 const horizontal = (outward: number) => outward === 0 || outward === 180;
 
+/** Flags an unconnected pin, unless it is a mistake: KiCad's ERC should report those. */
+const noConnect = (b: Cell, p: NodePin, at: Pt) => {
+  if (p.open !== false) b.noConnects.push(at);
+};
+
 /** The Value text a part shows (as `resolveBom` derives it), for sizing its field. */
 export const valueText = (part: FlatPart) =>
   part.spec.kind === "lib"
-    ? (part.record?.mpn ?? part.spec.id)
+    ? part.record
+      ? partName(part.record)
+      : part.spec.id
     : (part.spec.args[0] ?? part.spec.fn);
 
 /** Room for a two-terminal part's reference and value, drawn to its right. */
@@ -224,7 +232,7 @@ export function buildCell(
     for (const run of new Set(runOf.values())) {
       const first = run[0] as NodePin;
       if (first.net === undefined) {
-        for (const p of run) b.noConnects.push(at(p));
+        for (const p of run) noConnect(b, p, at(p));
         continue;
       }
       const net = first.net;
@@ -369,7 +377,7 @@ export function buildCell(
       } else if (far.net !== undefined) {
         tag(b, far.net, add(o, far), far.outward, undefined, horizontal(far.outward));
       } else {
-        b.noConnects.push(add(o, far));
+        noConnect(b, far, add(o, far));
       }
       return;
     }
@@ -399,7 +407,7 @@ export function buildCell(
         const o = toGrid({ x: want.x - PITCH, y: want.y }, s.node.pins[0]);
         place(b, s.node, o);
         for (const p of s.node.pins) {
-          if (p.net === undefined) b.noConnects.push(add(o, p));
+          if (p.net === undefined) noConnect(b, p, add(o, p));
           else tag(b, p.net, add(o, p), p.outward);
         }
         right = o.x - origin.x + s.node.box.x - GRID;
@@ -424,7 +432,7 @@ export function buildCell(
       );
       place(b, s.node, o);
       for (const p of s.node.pins) {
-        if (p.net === undefined) b.noConnects.push(add(o, p));
+        if (p.net === undefined) noConnect(b, p, add(o, p));
         else tag(b, p.net, add(o, p), p.outward);
       }
       x = o.x - origin.x + s.node.box.x + s.node.box.w + textRoom(s.node) + GRID;
@@ -435,7 +443,7 @@ export function buildCell(
   function supplyTags(b: Cell, node: Node, o: Pt, signalPin: string): void {
     for (const p of node.pins) {
       if (p.id === signalPin) continue;
-      if (p.net === undefined) b.noConnects.push(add(o, p));
+      if (p.net === undefined) noConnect(b, p, add(o, p));
       else tag(b, p.net, add(o, p), p.outward, undefined, horizontal(p.outward));
     }
   }

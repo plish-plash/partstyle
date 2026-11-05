@@ -1,6 +1,6 @@
-id: MCP1700T-3302E_TT
+id: MCP1700-3302
 manufacturer: Microchip
-mpn: MCP1700T-3302E/TT
+preferred_mpn: MCP1700T-3302E/TT
 summary: 3.3 V 250 mA low-quiescent LDO, SOT-23
 package: SOT-23-3
 footprint: Package_TO_SOT_SMD:SOT-23

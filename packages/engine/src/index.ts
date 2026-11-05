@@ -64,7 +64,12 @@ export {
   parseFocus,
 } from "./review.js";
 export { parseQuantity, type Quantity } from "./units.js";
-export { applyWaivers, type ValidationResult, validateProject } from "./validate.js";
+export {
+  type AppliedWaiver,
+  applyWaivers,
+  type ValidationResult,
+  validateProject,
+} from "./validate.js";
 export {
   type ChangeOp,
   describeChange,

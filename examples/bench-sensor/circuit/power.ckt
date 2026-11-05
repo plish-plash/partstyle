@@ -10,7 +10,7 @@ part U1  lib:L7805CV
 part C1  cap(330n, 50V, X7R, 0603)  @ per U1 datasheet input cap
 part C2  cap(100n, 16V, X7R, 0603)  @ per U1 datasheet output cap
 part C3  cap(10u, 16V, X7R, 0805)   @ bulk for load steps
-part U2  lib:MCP1700T-3302E_TT      @ 3.3 V for op-amp and MCU, fed from 5 V to stay under its 6 V limit
+part U2  lib:MCP1700-3302      @ 3.3 V for op-amp and MCU, fed from 5 V to stay under its 6 V limit
 part C4  cap(1u, 16V, X7R, 0603)    @ per U2 datasheet input cap
 part C5  cap(1u, 10V, X7R, 0603)    @ per U2 datasheet output cap
 part R1  res(1k, 1%, 0603)          @ ~3 mA through D2

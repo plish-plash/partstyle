@@ -6,7 +6,6 @@ import {
   findPrompt,
   formatValidation,
   type PromptDef,
-  partRecordJsonSchema,
   prompts,
   queryUsage,
   type TextResult,
@@ -16,6 +15,7 @@ import {
   ProjectLoadError,
   Projects,
   readGrammarReference,
+  readPartFormat,
   Workspace,
 } from "@partstyle/engine/node";
 import { partstyleVersion } from "@partstyle/mcp";
@@ -47,6 +47,7 @@ commands:
   validate [DIR] [--json]                  parse, connect and ERC-check (exit 1 on errors)
   apply [FILE|-] [--dry-run]               apply a .ckt patch from FILE or stdin
   doc read FILE | doc write FILE [SRC|-]   read or replace the project file or a notes/*.md file
+  part format                              print the part record format
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
@@ -68,7 +69,6 @@ commands:
   prompt [NAME [ARGS...]]                  list or print a procedure (design-review, ingest-part,
                                            prepare-handoff)
   grammar                                  print the .ckt and patch reference
-  schema part                              print the part-record JSON Schema
 
 options:
   -p, --project DIR   project folder (default: current directory)
@@ -232,6 +232,9 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
 
     case "part": {
       const [sub, ...rest] = args;
+      if (sub === "format" && rest.length === 0) {
+        return { stdout: await readPartFormat(), exitCode: 0 };
+      }
       if (sub === "search" && rest.length > 0) return fromText(await ws.partSearch(rest.join(" ")));
       if (sub === "get" && rest.length === 1) {
         const tier = oneOf(values.tier ?? "summary", ["summary", "pins", "full"] as const);
@@ -244,7 +247,7 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
           return usageError("--scope must be global or project");
         return withInput(rest[0], io, async (yaml) => fromText(await ws.partPut(yaml, scope)));
       }
-      return usageError("usage: part search QUERY | part get ID | part put [FILE|-]");
+      return usageError("usage: part format | part search QUERY | part get ID | part put [FILE|-]");
     }
 
     case "kicad":
@@ -361,10 +364,6 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
 
     case "grammar":
       return { stdout: await readGrammarReference(), exitCode: 0 };
-
-    case "schema":
-      if (args[0] !== "part") return usageError("usage: schema part");
-      return { stdout: JSON.stringify(partRecordJsonSchema(), null, 2), exitCode: 0 };
 
     default:
       return usageError(`unknown command '${command}'`);

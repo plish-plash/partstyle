@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { findPrompt } from "@partstyle/engine";
-import { Projects, readGrammarReference, Workspace } from "@partstyle/engine/node";
+import { Projects, readGrammarReference, readPartFormat, Workspace } from "@partstyle/engine/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
 
@@ -42,6 +42,7 @@ describe("MCP server", () => {
       "kicad_export",
       "kicad_import",
       "overview",
+      "part_format",
       "part_get",
       "part_put",
       "part_search",
@@ -55,7 +56,7 @@ describe("MCP server", () => {
     // Tool definitions are paid on every turn; keep them short. (grammar, read_doc and
     // write_doc serve clients without file tools, such as Claude Desktop; the `variant`
     // parameters let one call work on any version of the design.)
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(2175);
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(2225);
   });
 
   it("sends the workflow as instructions", () => {
@@ -151,10 +152,16 @@ describe("MCP server", () => {
 
   it("serves the grammar reference as a resource and a tool", async () => {
     const { resources } = await client.listResources();
-    expect(resources.map((r) => r.uri)).toEqual(["partstyle://grammar"]);
+    expect(resources.map((r) => r.uri)).toEqual(["partstyle://grammar", "partstyle://part-format"]);
     const r = await client.readResource({ uri: "partstyle://grammar" });
     expect((r.contents[0] as { text: string }).text).toMatch(/^# \.ckt grammar reference/);
     expect((await call("grammar")).text).toBe(await readGrammarReference());
+  });
+
+  it("serves the part record format as a resource and a tool", async () => {
+    const r = await client.readResource({ uri: "partstyle://part-format" });
+    expect((r.contents[0] as { text: string }).text).toMatch(/^# Part record format/);
+    expect((await call("part_format")).text).toBe(await readPartFormat());
   });
 });
 
@@ -241,7 +248,7 @@ describe("MCP server for many projects", () => {
     expect(tools.map((t) => t.name)).toEqual(
       expect.arrayContaining(["list_projects", "open_project"]),
     );
-    expect(JSON.stringify(tools).length / 4).toBeLessThan(2400);
+    expect(JSON.stringify(tools).length / 4).toBeLessThan(2450);
     expect(await text("overview")).toEqual({
       text: "no project open: list_projects shows them; open_project NAME opens one, init_project NAME creates one",
       isError: true,

@@ -162,8 +162,10 @@ function checkRequirement(
   } else {
     for (const n of netsNamed(part, check.from, netlist)) fromNets.set(n, 1);
   }
-  if (fromNets.size === 0) return undefined; // an unconnected pin is ERC's to report
   const to = targets(part, check.to, netlist);
+  // ERC may stay quiet about an open pin, but a tie is a statement that it must not be.
+  if (fromNets.size === 0 && req.tie) return `${check.from} is not connected, not ${to.label}`;
+  if (fromNets.size === 0) return undefined; // an unconnected pin is ERC's to report
 
   if (req.tie) {
     const off = [...fromNets.keys()].filter((n) => !to.nets.has(n));

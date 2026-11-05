@@ -1,6 +1,6 @@
 id: TSW-103-07-G-S
 manufacturer: Samtec
-mpn: TSW-103-07-G-S
+preferred_mpn: TSW-103-07-G-S
 summary: 1x3 2.54 mm pin header, through-hole
 package: PinHeader_1x03
 footprint: Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical

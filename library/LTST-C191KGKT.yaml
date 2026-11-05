@@ -1,6 +1,6 @@
 id: LTST-C191KGKT
 manufacturer: Lite-On
-mpn: LTST-C191KGKT
+preferred_mpn: LTST-C191KGKT
 summary: Green LED, 571 nm, 0603
 package: "0603"
 footprint: LED_SMD:LED_0603_1608Metric

@@ -1,6 +1,6 @@
 id: CL10B334KB8NNNC
 manufacturer: Samsung Electro-Mechanics
-mpn: CL10B334KB8NNNC
+preferred_mpn: CL10B334KB8NNNC
 summary: 330 nF 50 V X7R 10% MLCC, 0603
 package: "0603"
 footprint: Capacitor_SMD:C_0603_1608Metric

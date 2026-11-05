@@ -31,11 +31,13 @@ const designReview: PromptDef = {
     block ? `\`partstyle read-block ${block}\`` : "each block with `partstyle read-block`"
   }. For every library part, \`partstyle part get ID --tier pins\`.
 2. Check, citing refdes and nets:
-   - Each validate issue: its cause, and a fix or a waiver with a real reason.
+   - Each validate issue: its cause and a fix. Errors must be fixed; a warning may instead get a
+     waiver with a real reason, if the person agrees.
    - Datasheet requirements not marked [checked]: is each one met, and how?
    - Each external interface in the project file: is every listed hazard handled at the connector
-     (ESD, overvoltage, reverse polarity, shorts, cable length)? The engine checks ESD clamps,
-     voltage hazards on signal pins and reverse-polarity parts; judge the rest.
+     (ESD, overvoltage, reverse polarity, shorts, fusing, cable length)? The engine does not check
+     hazards, so this review is the only check. A hazard marked accepted is the person's decision;
+     note it and move on. Flag any connection to the outside world the project file leaves out.
    - Values against each \`@ intent\`: dividers, filter corners, gain, LED and pull-up currents.
    - Topology: decoupling, unused pins and amplifier halves, reset and boot pins, regulator
      stability (output capacitance and ESR), linear regulator dissipation, power sequencing,
@@ -62,22 +64,19 @@ const ingestPart: PromptDef = {
 
 1. \`partstyle part search ${part ?? "MPN"}\`: if a record exists (or a KiCad import draft,
    extracted_by: kicad), complete it rather than adding another.
-2. Read the datasheet once, then write the record (\`partstyle schema part\` has the schema):
-   - Identity: manufacturer, the exact orderable MPN, id (the MPN with / as _), a one-line
-     summary with key ratings and package, package, and a KiCad footprint (Library:Footprint
-     from KiCad's standard libraries) whose pads match the pin table. Set kicad_symbol when
-     KiCad has the symbol under another name.
-   - pins: every pad by number, with the datasheet name (~ for active low, e.g. ~RESET) and
-     type: power_in, power_out, input, output, bidir, tristate, passive, open_collector,
-     open_emitter or nc. Include exposed pads. Give supply and input pins vmax: their absolute
-     maximum relative to ground.
-   - ratings: the limits a designer checks (vin_max, iout_max, ...) and temp_c: [min, max],
-     the operating range of this grade.
-   - requirements: each external part or condition the datasheet asks for, as text; add a
-     check where it fits: cap {from, to, min, each}, res {from, to, min, max} or tie {from, to}.
-   - notes: gotchas a designer would otherwise miss.
+2. \`partstyle part format\` has the format and a worked example. Read the datasheet once, then
+   write the record so that nobody needs the datasheet again: everything a designer could want,
+   in sections of your own where no field fits.
+   - Identity: the part's name without ordering codes as the id, a one-line summary with key
+     ratings and package, the orderable part as preferred_mpn, package and a KiCad footprint.
+     Set kicad_symbol for discretes and anything else KiCad doesn't name.
+   - pins: every pad by number, with the datasheet name and type. Give supply and input pins
+     vmax, and unused where the datasheet says a pin may float or must be connected.
+   - ratings, temp_c, requirements (with a check where one fits), notes, and characteristics,
+     tables, timing, thermal data and application circuits as sections of your own.
    - provenance: datasheet url, extracted_by: ai, verified_by: null.
-3. \`partstyle part put\` it; fix any schema or footprint pad errors it reports.
+3. \`partstyle part put\` it. It reports what the engine couldn't use and any pad mismatch with the
+   footprint: fix what is your mistake, and tell the person about the rest.
 4. Tell the person it awaits their verification in the viewer, and list anything the
    datasheet left ambiguous.`,
 };
@@ -90,7 +89,8 @@ const prepareHandoff: PromptDef = {
 
 1. \`partstyle validate\`: no errors. Explain each remaining warning to the person.
 2. \`partstyle bom export\`: for each unresolved generic, propose a library record
-   (ingest_part) or confirm it can stay generic for the assembler to choose.
+   (ingest_part) or confirm it can stay generic for the assembler to choose. List any part with
+   no preferred MPN for the person.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
    (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,

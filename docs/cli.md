@@ -7,7 +7,7 @@ partstyle [-p DIR] <command> [args] [options]
 Every command works on one project folder: `-p/--project DIR`, or the current directory.
 `--variant NAME` makes it work on one of the project's [variants](#variant-list--create-name-description--diffadoptremove-name)
 instead of the main circuit (`apply` takes it several times). Each command except `init`,
-`grammar` and `schema` reads the project fresh, so edits made by hand or by another tool are
+`grammar` and `part format` reads the project fresh, so edits made by hand or by another tool are
 always picked up.
 
 Every MCP tool has a matching command with identical output (see
@@ -57,15 +57,20 @@ partstyle init boards/thermo --name thermo
 | `description`           | plain paragraphs for people, usually a `\|` block                              |
 | `use_case`              | one line; `overview` leads with it                                             |
 | `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes     |
-| `power`, others         | free-form context for people and design review                                 |
-| `assembly`              | `method` (hand soldering, SMT service, ...) is checked against packages        |
+| `assembly`, others      | free-form context for people and design review                                 |
 | `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards` |
 | `sourcing.distributors` | preferred distributors for `bom export`: `lcsc`, `digikey`, `mouser`           |
 | `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                |
 
+`external_interfaces` lists every connection to the outside world, the power input included:
+what the person says the board will face at each connector. Hazards are for the AI and design
+review to handle; the engine does not check them. Each is plain text, or
+`{hazard: TEXT, accepted: WHY}` once the person accepts the risk.
+
 The top block is always `main`, in `circuit/main.ckt`. A project file that is not valid YAML or
 has no `name` is a `project.config` error and nothing else is checked; malformed design context
-is a `context.invalid` warning and only the context checks are skipped.
+is a `context.invalid` warning and only the context checks are skipped. An interface whose
+connector is not in the design is a `context.unknown-connector` warning once its block has parts.
 
 ### Settings
 
@@ -92,12 +97,12 @@ first library, or to the project's `parts/` folder when there are none.
 
 The cheap first read (a few hundred tokens): blocks with part counts, ports and uses, the design
 context and settings from the project file (not its description), part totals, issue counts and
-the first ten issues.
+the ten most important issues: errors, then warnings, with unconnected pins last.
 
 ### `read-block BLOCK [--detail summary|full]`
 
 `full` (default) prints the block's `.ckt` file. `summary` prints only ports, parts with intent,
-instances and net names with pin counts.
+instances, net names with pin counts, `nc` pins and the number of waivers.
 
 ### `query EXPR...`
 
@@ -110,15 +115,15 @@ shell characters like `<` and `>`.
 | `net NAME`               | the net's attributes, joined names and pins |
 | `parts [where COND ...]` | matching parts, one per line                |
 | `nets [where COND ...]`  | matching nets with their pins               |
-| `unconnected`            | every pin on no net, including waived ones  |
+| `unconnected`            | every pin on no net, marking `nc` ones      |
 | `help`                   | the syntax summary                          |
 
 COND is `FIELD OP VALUE`, joined with `and`. OP is `= != < <= > >=` or `~` (contains,
 case-insensitive). Quantities compare numerically (`35V > 5V`, `4k7 < 10k`). A part or net
 missing the field never matches.
 
-- Part fields: `path id mpn manufacturer package footprint kind fn value verified intent` and
-  every rating in the part record (`vin_max`, `iout_max`, ...).
+- Part fields: `path id preferred_mpn manufacturer package footprint kind fn value verified
+  intent` and every rating in the part record (`vin_max`, or `vout.max` for a nested one).
 - Net fields: `name pins` (pin count) and every net attribute (`voltage`, `source`, ...).
 - REF and NAME may omit the instance path when unambiguous (`U1` for `PWR/U1`).
 
@@ -132,8 +137,8 @@ partstyle query "nets where pins = 1"
 ### `validate [DIR] [--json]`
 
 Parses, connects and checks the project. Prints one line per unwaived issue,
-`file:line:col severity code message`, then a summary. Exits 1 if there are errors. `--json`
-prints `{errors, warnings, waived, issues}`. Issue codes are listed in
+`file:line:col severity code message`, then a summary. Exits 1 if there are errors, which cannot
+be waived. `--json` prints `{errors, warnings, waived, issues}`. Issue codes are listed in
 [ckt-grammar.md](ckt-grammar.md#issue-codes).
 
 Besides structural ERC, every validate (and so every `apply`) runs:
@@ -148,16 +153,10 @@ Besides structural ERC, every validate (and so every `apply`) runs:
   capacitor of at least `min` from the pin to ground or `to`, or one per pin with `each`), `res`
   (a resistor within `min`..`max`) and `tie` (the pin on the same net as `to`). `to` is a pin of
   the part or a net name. Text-only requirements are left for design review.
-- **Design context** in the project file, for each external interface's connector (its
-  instance path):
-  - `ESD` in its hazards: every signal net on the connector (not power or ground) needs an
-    ESD/TVS part (`diode(tvs)`, or a record whose summary says ESD or TVS) to ground.
-  - a hazard naming a voltage (`miswiring to 12 V`): no part pin with a lower `vmax`, and no
-    capacitor rated lower, may sit directly on those signal nets.
-  - `reverse polarity`: a diode or FET on one of the connector's non-ground nets.
-  - Records with `temp_c` must cover `environment.temp_c`, and with a hand-only
-    `assembly.method` (no service or reflow) fine-pitch packages (QFN, BGA, 0201, ...) are
-    flagged.
+- **Temperature.** Records with `temp_c` must cover the project file's `environment.temp_c`.
+
+Broader design questions (protection, hazards, packages against the assembly method) are for the
+AI and the `design_review` prompt, not the engine.
 
 Overview counts records not yet verified by a person; validate does not repeat it.
 
@@ -192,26 +191,33 @@ You can also edit `.ckt` files directly with any editor, then run `validate`.
 
 ## Parts
 
+### `part format`
+
+Prints the part record format, with a worked example ([part-records.md](part-records.md)).
+
 ### `part search QUERY...`
 
-Searches the part library; every word must appear in the id, MPN, manufacturer, summary or
-package. Id and MPN matches rank first.
+Searches the part library; every word must appear somewhere in the record. Id and preferred MPN
+matches rank first, then manufacturer, summary and package.
 
 ### `part get ID [--tier summary|pins|full]`
 
 Reads a record at the lowest tier that answers the question: `summary` (identity, package,
-ratings), `pins` (plus the pin table, requirements and notes) or `full` (the YAML file).
+ratings), `pins` (plus the pin table, requirements and notes, with any other keys they have) or
+`full` (the YAML file). The first two end with `more: ...` when the record has free-form sections.
 
 ### `part put [FILE|-] [--scope global|project]`
 
-Validates a YAML part record against the schema and writes it as `<id>.yaml`: to the first
-global library path when one is configured (`global`, the default), otherwise to `parts/`
-(`project`). Project records override global records with the same id. Leave
-`provenance.verified_by: null`; a human marks records verified.
+Writes a YAML part record as `<id>.yaml`: to the first global library path when one is configured
+(`global`, the default), otherwise to `parts/` (`project`). Project records override global
+records with the same id. Leave `provenance.verified_by: null`; a human marks records verified.
 
-When KiCad's footprint libraries are found, the record's footprint is checked first: if its
-numbered pads differ from the pin table, the record is rejected (a wrong pinout is a board
-respin); if the footprint is not in the libraries, it is written with a warning.
+Only a record without a usable `id`, `summary` or `pins`, or with an unknown pin type, is refused.
+Everything else is written and reported: a field the engine can't use is a `warning:` line (and a
+`part.format` warning while a design uses the record), and free-form sections are listed, which
+also shows up a misspelt field. When KiCad's footprint libraries are found, a footprint that is
+not in them or whose pads differ from the pin table is a `warning:` line too. Pads named `MP` are
+mounting points and need no pin.
 
 A record for a concrete passive can carry `generic: cap(100n, 50V, X7R, 10%, 0603)`, the
 generic it satisfies, so `bom export` and `kicad export` can resolve generics to it.
@@ -276,13 +282,16 @@ library exactly; without KiCad, built-in look-alikes with the same names are use
 1. Generics use `Device:R`, `Device:C`, `Device:L`, `Device:LED`, and `Device:D` (or
    `D_Schottky`, `D_Zener`, `D_TVS` for `diode(schottky|zener|tvs)`).
 2. A part record's `kicad_symbol: Lib:Name` is used when set. Use it for parts KiCad does not
-   name by MPN, such as connectors (`Connector_Generic:Conn_01x03`).
-3. Otherwise the libraries are searched by the record's id and MPN: an exact name, a KiCad
-   wildcard name (`MCP6002-xSN` for `MCP6002-I/SN`, `MCP1700x-330xxTT` for
-   `MCP1700T-3302E/TT`), or the longest name that is a prefix of the MPN followed by a letter
-   (`L7805` for `L7805CV`).
+   name, such as connectors (`Connector_Generic:Conn_01x03`) and transistors (`Device:Q_NPN`).
+3. Otherwise the libraries are searched by the record's id and preferred MPN: an exact name, a
+   KiCad wildcard name (`MCP6002-xSN` for `MCP6002-I/SN`, `MCP1700x-330xxTT` for
+   `MCP1700T-3302E/TT`), the longest name that is a prefix of the MPN followed by a letter
+   (`L7805` for `L7805CV`), or the shortest name the id is a prefix of.
 
-A candidate is used only if its pin numbers match the record exactly. It must also have no
+When a candidate's pin names pair up one to one with the record's but its numbers differ, as on
+`Device:Q_NPN` (numbered `B C E`) or a pinout-specific symbol for another pinout, a copy
+renumbered to the record's pads goes into `partstyle.kicad_sym`, and the export reports it.
+Otherwise a candidate is used only if its pin numbers match the record exactly. It must also have no
 hidden power inputs, which KiCad would connect globally by name. Any hidden pins must sit under
 a visible pin on the same net. Derived symbols are flattened and multi-unit symbols place every
 unit (a dual op-amp becomes U3A, U3B and its power unit U3C). Otherwise a symbol is generated
@@ -306,7 +315,9 @@ Unless `--no-check` is given and when kicad-cli is found, the export is then ver
    schematic, and it must match the design net for net. A mismatch is an exporter bug.
 2. **ERC:** `kicad-cli sch erc` runs on the schematic; violations are listed.
 
-The command fails (exit 1) on a round-trip mismatch, KiCad ERC errors or footprint pad errors.
+The command fails (exit 1) on a round-trip mismatch or KiCad ERC errors. Only pins open by design
+get a no-connect flag (see `erc.unconnected-pin` in [ckt-grammar.md](ckt-grammar.md#issue-codes)),
+so KiCad's ERC also reports a pin left open by mistake; the files are still written.
 Next step: open `kicad/<name>.kicad_pro`, then in the PCB editor run Tools > Update PCB from
 Schematic.
 
@@ -334,7 +345,7 @@ How KiCad maps onto blocks:
   (`Net-(R1-Pad2)`) is named after a pin, `N_R1_2`, and listed for renaming.
 - **PWR_FLAG** on a net becomes `{source: KiCad PWR_FLAG}`.
 - **No-connect flags**: pins KiCad's ERC accepts as unconnected get
-  `waive REF.PIN erc.unconnected-pin "no-connect flag in KiCad"`.
+  `nc REF.PIN @ no-connect flag in KiCad`, unless they may stay open anyway.
 - **Parts** are matched in order: Partstyle's own Spec field (a design exported from here), the
   MPN field (also "Manufacturer Part Number" and similar), the LCSC field, then plain R, C, L
   and coloured LED symbols become generics (`res(10k, 1%, 0603)`) when the value parses and the
@@ -342,8 +353,7 @@ How KiCad maps onto blocks:
   library record must have every pin number of the KiCad symbol.
 - **Everything else** becomes a draft record per distinct symbol, value, footprint and MPN, built
   from KiCad's pin table (`~{RESET}` becomes `~RESET`), with `provenance.extracted_by: kicad`
-  and footprint pads the symbol lacks as `nc` pins. Drafts may leave manufacturer, MPN, package
-  and footprint empty. Each draft in use is a `part.draft` warning, the unresolved-parts
+  and footprint pads the symbol lacks as `nc` pins, other than `MP` pads. Each draft in use is a `part.draft` warning, the unresolved-parts
   worklist: identify the part, complete the record from its datasheet and set `extracted_by`,
   or switch the parts to another record.
 
@@ -353,7 +363,8 @@ skipped.
 
 **Re-importing** (after editing in KiCad) replaces `circuit/` as one changeset, revertible like
 any other, and reports the semantic diff. It keeps what KiCad cannot hold: part and net intents,
-net attributes, port kinds, waivers and block descriptions, and the local refdes, net and port
+net attributes, port kinds, `nc` statements (other than the ones import wrote), waivers and block
+descriptions, and the local refdes, net and port
 names the design had (matched by `annotation.lock` and by pins). Drafts are remade; records
 someone completed are left alone. A project with a design that was not imported needs
 `--replace`. Exporting and re-importing an unchanged design gives no circuit changes; a value
@@ -370,7 +381,7 @@ KiCad, exports still work but skip the checks and use look-alike power symbols, 
 checks are skipped everywhere.
 
 When the footprint libraries are found, `validate`, `overview` and `apply` also report
-`part.footprint-pads` (error) and `part.footprint-missing` (warning) for the library parts in use.
+`part.footprint-pads` and `part.footprint-missing` warnings for the library parts in use.
 
 ## Viewer and review
 
@@ -565,7 +576,6 @@ person's decisions.
 | `prompt`                | the procedures, with their arguments                              |
 | `prompt NAME [ARGS...]` | a procedure for the AI to follow (below)                          |
 | `grammar`               | the `.ckt` and patch reference ([ckt-grammar.md](ckt-grammar.md)) |
-| `schema part`           | the part-record JSON Schema                                       |
 | `--help`                | the command summary                                               |
 | `--version`             | `partstyle VERSION`: a release's version, or the source's         |
 

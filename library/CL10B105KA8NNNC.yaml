@@ -1,6 +1,6 @@
 id: CL10B105KA8NNNC
 manufacturer: Samsung Electro-Mechanics
-mpn: CL10B105KA8NNNC
+preferred_mpn: CL10B105KA8NNNC
 summary: 1 uF 25 V X7R 10% MLCC, 0603
 package: "0603"
 footprint: Capacitor_SMD:C_0603_1608Metric

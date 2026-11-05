@@ -1,6 +1,7 @@
 import type {
   BlockDecl,
   LayoutHint,
+  NcDecl,
   NetDecl,
   PartDecl,
   PartSpec,
@@ -50,8 +51,8 @@ const printers = {
   },
   use: (d: UseDecl, explicit = false) =>
     `use ${d.block} as ${d.instance}${printLayout(d.layout, explicit)}${intent(d.intent)}`,
-  waive: (d: WaiverDecl) =>
-    `waive ${d.subject}${d.code === undefined ? "" : ` ${d.code}`} ${quote(d.reason)}`,
+  nc: (d: NcDecl) => `nc ${printPinRef(d.pin)}${intent(d.intent)}`,
+  waive: (d: WaiverDecl) => `waive ${d.subject} ${d.code} ${quote(d.reason)}`,
 };
 
 /**
@@ -70,6 +71,8 @@ export function printStatement(s: Statement, explicitLayout = false): string {
       return printers.net(s.decl);
     case "use":
       return printers.use(s.decl, explicitLayout);
+    case "nc":
+      return printers.nc(s.decl);
     case "waive":
       return printers.waive(s.decl);
   }

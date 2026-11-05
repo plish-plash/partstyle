@@ -1,6 +1,6 @@
 id: ATMEGA328P-AU
 manufacturer: Microchip
-mpn: ATMEGA328P-AU
+preferred_mpn: ATMEGA328P-AU
 summary: 8-bit AVR MCU, 32 KB flash, 2 KB SRAM, 1.8-5.5 V, TQFP-32
 package: TQFP-32
 footprint: Package_QFP:TQFP-32_7x7mm_P0.8mm
@@ -23,7 +23,7 @@ pins:
   16: { name: PB4, type: bidir, note: MISO }
   17: { name: PB5, type: bidir, note: SCK }
   18: { name: AVCC, type: power_in, vmax: 6V }
-  19: { name: ADC6, type: input }
+  19: { name: ADC6, type: input, unused: open }
   20: { name: AREF, type: passive }
   21: { name: GND, type: power_in }
   22: { name: ADC7, type: input }

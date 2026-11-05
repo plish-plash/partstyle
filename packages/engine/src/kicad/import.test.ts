@@ -172,7 +172,7 @@ const record = (id: string, mpn: string, pins: Record<string, [string, string]>)
   [
     `id: ${id}`,
     "manufacturer: ACME",
-    `mpn: ${mpn}`,
+    `preferred_mpn: ${mpn}`,
     `summary: ${id}`,
     "package: X",
     "footprint: Lib:X",
@@ -278,7 +278,7 @@ describe("buildImport", () => {
         "net N_R1_2 : R1.2 U1.IN+",
         "net OUT    : U1.OUT U1.IN-",
         "",
-        'waive U1.TRIM erc.unconnected-pin "no-connect flag in KiCad"',
+        "nc U1.TRIM @ no-connect flag in KiCad",
         "",
       ].join("\n"),
     );
@@ -306,7 +306,7 @@ describe("buildImport", () => {
     const { record, issues } = parsePartRecord(draft, "C_100n.yaml");
     expect(issues).toEqual([]);
     expect(record?.provenance.extracted_by).toBe("kicad");
-    expect(record?.mpn).toBe("");
+    expect(record?.preferred_mpn).toBeUndefined();
     expect(x.report.join("\n")).toContain(
       `lib:C_100n (chan/C1): KiCad Test:C, value 100n; footprint ${disc} is not a standard chip footprint`,
     );
@@ -321,9 +321,9 @@ describe("buildImport", () => {
     expect(x.drafts[0]?.text).toContain("  3: { name: NC, type: nc }");
   });
 
-  it("does not waive pins KiCad reports unconnected", () => {
+  it("does not mark pins KiCad reports unconnected as nc", () => {
     const x = buildImport(input({ unconnected: new Set(["U1.7"]) }));
-    expect(text(x, "chan")).not.toContain("waive");
+    expect(text(x, "chan")).not.toMatch(/^nc /m);
     const { unconnected: _, ...withoutErc } = input();
     expect(buildImport(withoutErc).report.join("\n")).toContain("no-connect flags: unknown");
   });
@@ -373,6 +373,21 @@ describe("buildImport", () => {
     expect(chanText).toContain("port IN  : input");
     expect(chanText).toContain("net CH_IN  : R1.1 -> port IN");
     expect(again.report.join("\n")).not.toContain("named after a pin");
+  });
+
+  it("keeps the person's nc statements on a re-import, and follows KiCad's flags for its own", () => {
+    const first = buildImport(input());
+    const parsed = (from: string) =>
+      first.circuits.map((c) => parseCkt(c.text.replace(/^nc .*$/m, from), c.file).ast);
+    const previous = (from: string) => ({ blocks: parsed(from), annotation: first.annotation });
+
+    const own = buildImport(input({ previous: previous("nc U1.TRIM @ offset not trimmed") }));
+    expect(text(own, "chan")).toContain("nc U1.TRIM @ offset not trimmed");
+    expect(text(own, "chan")).not.toContain("no-connect flag in KiCad");
+
+    const unflagged = input({ previous: previous("nc U1.TRIM @ no-connect flag in KiCad") });
+    unflagged.unconnected = new Set(["U1.7"]);
+    expect(text(buildImport(unflagged), "chan")).not.toMatch(/^nc /m);
   });
 
   it("names nets KiCad left unnamed after a pin, and reports them", () => {

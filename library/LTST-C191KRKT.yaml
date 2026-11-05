@@ -1,6 +1,6 @@
 id: LTST-C191KRKT
 manufacturer: Lite-On
-mpn: LTST-C191KRKT
+preferred_mpn: LTST-C191KRKT
 summary: Red LED, 631 nm, 0603
 package: "0603"
 footprint: LED_SMD:LED_0603_1608Metric

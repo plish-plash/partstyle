@@ -173,8 +173,8 @@ describe("orient", () => {
   const upright: SymbolUnit = {
     unit: 1,
     pins: new Map([
-      ["1", { x: 0, y: 3.81, outward: 90, hidden: false, type: "passive" }],
-      ["2", { x: 0, y: -3.81, outward: 270, hidden: false, type: "passive" }],
+      ["1", { x: 0, y: 3.81, outward: 90, hidden: false, type: "passive", name: "" }],
+      ["2", { x: 0, y: -3.81, outward: 270, hidden: false, type: "passive", name: "" }],
     ]),
     box: { minX: -1, maxX: 1, minY: -3.81, maxY: 3.81 },
   };
@@ -210,7 +210,9 @@ describe("orient", () => {
   it("mirrors pins left to right", () => {
     const side: SymbolUnit = {
       unit: 1,
-      pins: new Map([["1", { x: -5.08, y: 2.54, outward: 180, hidden: false, type: "passive" }]]),
+      pins: new Map([
+        ["1", { x: -5.08, y: 2.54, outward: 180, hidden: false, type: "passive", name: "" }],
+      ]),
       box: { minX: -5.08, maxX: 2, minY: -1, maxY: 3 },
     };
     const m = mirrorUnit(side);
@@ -433,7 +435,7 @@ describe("prepareDrawing", () => {
   it("honours stored rotation, flip and stage", async () => {
     // U3 pinned too, as the viewer does on a sheet's first edit: else it follows J2 along.
     const d = await patched(
-      "in sensor_afe\n= part J2 lib:TSW-103-07-G-S [3 noflip]\n= part U3 lib:MCP6002-I_SN [2]\n= part R4 res(100k, 1%, 0603) [r0]",
+      "in sensor_afe\n= part J2 lib:TSW-103-07-G-S [3 noflip]\n= part U3 lib:MCP6002 [2]\n= part R4 res(100k, 1%, 0603) [r0]",
     );
     const afe = sheetOf(d, "sensor_afe");
     expect(checkConnectivity(afe)).toEqual([]);
@@ -446,7 +448,7 @@ describe("prepareDrawing", () => {
 
   it("warns of hints a part cannot take", async () => {
     const d = await patched(
-      "in sensor_afe\n= part U3 lib:MCP6002-I_SN [r90]\n= part R4 res(100k, 1%, 0603) [flip]",
+      "in sensor_afe\n= part U3 lib:MCP6002 [r90]\n= part R4 res(100k, 1%, 0603) [flip]",
     );
     const bad = d.issues.filter((i) => i.code === "layout.bad-hint").flatMap((i) => i.subjects);
     expect(bad.sort()).toEqual(["R4", "U3"]);
@@ -463,7 +465,7 @@ describe("prepareDrawing", () => {
   it("labels nets between groups that are not neighbours", async () => {
     // U3 moved two stages on: J2 and U3 no longer sit side by side, so SENSE is labelled.
     const d = await patched(
-      "in sensor_afe\n= part U3 lib:MCP6002-I_SN [4]\n= part J2 lib:TSW-103-07-G-S [1]\n+ part U9 lib:MCP6002-I_SN [2]",
+      "in sensor_afe\n= part U3 lib:MCP6002 [4]\n= part J2 lib:TSW-103-07-G-S [1]\n+ part U9 lib:MCP6002 [2]",
     );
     const afe = sheetOf(d, "sensor_afe");
     expect(checkConnectivity(afe)).toEqual([]);
@@ -475,7 +477,7 @@ describe("prepareDrawing", () => {
     const patch = [
       "in chain",
       "+ block chain",
-      ...chain.map((i) => `+ part U${i} lib:MCP6002-I_SN [${i}]`),
+      ...chain.map((i) => `+ part U${i} lib:MCP6002 [${i}]`),
       ...chain.slice(1).map((i) => `+ net N${i} : U${i - 1}.OUTA U${i}.VINA+`),
       "in main",
       "+ use chain as CH",
@@ -533,9 +535,9 @@ describe("prepareDrawing", () => {
       [
         "in pick",
         "+ block pick",
-        "+ part U1 lib:MCP6002-I_SN [1]",
-        "+ part U2 lib:MCP6002-I_SN [1]",
-        "+ part U3 lib:MCP6002-I_SN [2]",
+        "+ part U1 lib:MCP6002 [1]",
+        "+ part U2 lib:MCP6002 [1]",
+        "+ part U3 lib:MCP6002 [2]",
         "+ net HI : U2.OUTA U3.VINA-",
         "+ net LO : U1.OUTA U3.VINB+",
         "in main",
@@ -576,7 +578,7 @@ describe("prepareDrawing", () => {
     // BUF reaches a part two slots on (past U8), so it is labelled; U3's output also feeds R3
     // in line.
     const far = await patched(
-      "in sensor_afe\n+ part U8 lib:MCP6002-I_SN [4]\n+ part U9 lib:MCP6002-I_SN [6]\nnet BUF += U9.VINA+\n= part U3 lib:MCP6002-I_SN [2]",
+      "in sensor_afe\n+ part U8 lib:MCP6002 [4]\n+ part U9 lib:MCP6002 [6]\nnet BUF += U9.VINA+\n= part U3 lib:MCP6002 [2]",
     );
     const sheets = [...drawing.sheets.values(), sheetOf(far, "sensor_afe")];
     expect(
@@ -606,11 +608,11 @@ describe("prepareDrawing", () => {
       [
         "in tee",
         "+ block tee",
-        "+ part U1 lib:MCP6002-I_SN",
+        "+ part U1 lib:MCP6002",
         "+ part R1 res(10k)",
         "+ part R2 res(1k)",
-        "+ part U8 lib:MCP6002-I_SN [5]",
-        "+ part U9 lib:MCP6002-I_SN [6]",
+        "+ part U8 lib:MCP6002 [5]",
+        "+ part U9 lib:MCP6002 [6]",
         "+ net +5V : R1.1 U1.VDD U9.VDD",
         "+ net GND : U1.VSS U9.VSS",
         "+ net P : U1.VINA- R1.2",

@@ -1,6 +1,6 @@
 import type { CktFile, LayoutHint, PortKind } from "../ckt/ast.js";
 import type { SchSymbol, SymbolUnit } from "../kicad/libsym.js";
-import type { FlatPart, Netlist } from "../netlist/elaborate.js";
+import { type FlatPart, isOpenByDesign, type Netlist } from "../netlist/elaborate.js";
 import { mirrorUnit, type NetRole, orient, type Rotation, rotateUnit, turnable } from "./orient.js";
 import type { DrawingPlan, NetPlan } from "./plan.js";
 import type { Rect } from "./types.js";
@@ -21,6 +21,8 @@ export interface NodePin {
   /** Electrical type (`input`, `power_out`, ...), or the port kind of a sheet pin. */
   type: string;
   net?: string;
+  /** False on a part's pin left open by mistake: KiCad's ERC should see it unflagged. */
+  open?: boolean;
 }
 
 /** Something placed on a sheet: one unit of a part, or a child sheet. */
@@ -168,6 +170,7 @@ export function sheetInput(
             // The part record's type: a generated symbol may not carry one.
             type: own?.type ?? a.type,
             ...(net !== undefined && { net }),
+            open: own !== undefined && isOpenByDesign(own),
           };
         }),
         box: { x: 0, y: 0, w: 0, h: 0 },

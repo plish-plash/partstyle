@@ -1,5 +1,7 @@
 import type { CktFile, PartSpec, PortKind } from "../ckt/ast.js";
-import { printSpec } from "../ckt/print.js";
+import { printPinRef, printSpec, printStatement } from "../ckt/print.js";
+import { globToRegExp } from "../diagnostics.js";
+import { isOpenByDesign } from "../netlist/elaborate.js";
 import {
   checkGenericArgs,
   type GenericPin,
@@ -11,7 +13,6 @@ import {
 import type { PartLibrary } from "../parts/library.js";
 import { isDraft, type PartRecord, type PinType } from "../parts/schema.js";
 import { parseQuantity } from "../units.js";
-import { globToRegExp } from "../validate.js";
 import { type Annotation, formatAnnotationLock } from "./annotate.js";
 import type { ParsedNetlist } from "./netlist.js";
 import { child, children, readSExpr, type SExpr, value, writeSExpr } from "./sexpr.js";
@@ -155,7 +156,7 @@ export interface ImportResult {
   blocks: string[];
 }
 
-export const NC_REASON = "no-connect flag in KiCad";
+export const NC_INTENT = "no-connect flag in KiCad";
 export const FLAG_SOURCE = "KiCad PWR_FLAG";
 
 const natural = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
@@ -218,6 +219,7 @@ interface PinDef {
   number: string;
   name: string;
   type: PinType;
+  unused?: "open" | "required";
 }
 
 type How = "spec" | "mpn" | "lcsc" | "value" | "generic" | "draft";
@@ -232,7 +234,12 @@ interface Resolution {
 }
 
 const recordPins = (r: PartRecord): PinDef[] =>
-  Object.entries(r.pins).map(([number, p]) => ({ number, name: p.name, type: p.type }));
+  Object.entries(r.pins).map(([number, p]) => ({
+    number,
+    name: p.name,
+    type: p.type,
+    ...(p.unused !== undefined && { unused: p.unused }),
+  }));
 
 /** A record fits when it has every pin number KiCad's symbol has. */
 function fits(r: PartRecord, pins: KicadPin[]): boolean {
@@ -319,7 +326,8 @@ function resolve(c: KicadComp, kpins: KicadPin[], byMpn: Map<string, PartRecord>
   const spec = c.fields.Spec?.trim() ?? "";
   if (spec.startsWith("lib:")) {
     const r = byMpn.get(`id:${spec.slice(4)}`);
-    if (r && fits(r, kpins) && (!mpn || norm(mpn) === norm(r.mpn))) return lib(r, "spec");
+    const sameMpn = !mpn || !r?.preferred_mpn || norm(mpn) === norm(r.preferred_mpn);
+    if (r && fits(r, kpins) && sameMpn) return lib(r, "spec");
   } else if (spec !== "") {
     const g = /^([a-z]+)\((.*)\)$/.exec(spec);
     const fn = g?.[1] ?? "";
@@ -452,7 +460,7 @@ function inferKind(name: string, types: Set<PinType>): PortKind {
  * Turns KiCad's view of a design into partstyle files: one block per sheet file (a reused sheet
  * is one block used twice), ports where nets cross sheets, parts mapped to the library or to
  * generics where exact, and draft records for the rest. On a re-import, the person's intents,
- * net attributes, port kinds, waivers and block descriptions are carried over.
+ * net attributes, port kinds, nc statements, waivers and block descriptions are carried over.
  */
 export function buildImport(input: ImportInput): ImportResult {
   const report: string[] = [];
@@ -464,7 +472,7 @@ export function buildImport(input: ImportInput): ImportResult {
   for (const { record: r } of input.library.values()) {
     if (isDraft(r)) continue;
     byMpn.set(`id:${r.id}`, r);
-    if (!byMpn.has(norm(r.mpn))) byMpn.set(norm(r.mpn), r);
+    if (r.preferred_mpn && !byMpn.has(norm(r.preferred_mpn))) byMpn.set(norm(r.preferred_mpn), r);
     if (!byMpn.has(norm(r.id))) byMpn.set(norm(r.id), r);
     if (r.sourcing?.lcsc) byMpn.set(`lcsc:${norm(r.sourcing.lcsc)}`, r);
   }
@@ -567,7 +575,7 @@ export function buildImport(input: ImportInput): ImportResult {
         // A pad with no symbol pin (an NC pin left off the symbol) is unconnected in KiCad.
         const numbers = new Set(p.res.pins.map((x) => x.number));
         const extra = [...(input.pads?.get(c.footprint) ?? [])].filter(
-          (n) => !numbers.has(n) && /^[A-Za-z0-9]+$/.test(n),
+          (n) => !numbers.has(n) && /^[A-Za-z0-9]+$/.test(n) && !/^MP\d*$/i.test(n),
         );
         const res = {
           ...p.res,
@@ -787,7 +795,7 @@ export function buildImport(input: ImportInput): ImportResult {
   const circuits: ImportResult["circuits"] = [];
   const counts = new Map<How, number>();
   const notes: string[] = [];
-  let ncWaived = 0;
+  let ncFlags = 0;
   for (const m of models.values()) {
     const prev = previous.get(m.block);
     const prevPart = new Map(prev?.parts.map((p) => [p.ref, p]));
@@ -878,38 +886,47 @@ export function buildImport(input: ImportInput): ImportResult {
     }
     section(lines, netLines);
 
-    // Pins KiCad's ERC accepts as unconnected carry a no-connect flag.
-    const waivers: string[] = [];
+    // Pins KiCad's ERC accepts as unconnected carry a no-connect flag. The person's nc statements
+    // stay while a pin they cover is still open; the ones import wrote follow KiCad's flags.
     const connected = new Set(
       m.nets
         .filter((_, i) => used(m, i) || m.ports.has(i))
         .flatMap((n) => n.pins.map((p) => `${p.part.ref}.${p.num}`)),
     );
     const inst = firstInst.get(m.file);
-    const kept = (prev?.waivers ?? []).filter(
-      (w) => w.reason !== NC_REASON && (w.code === undefined || w.code === "erc.unconnected-pin"),
-    );
-    const covered = kept.map((w) => globToRegExp(w.subject));
+    const carried = (prev?.ncs ?? []).filter((n) => {
+      if (n.intent === NC_INTENT) return false;
+      const part = m.parts.find((p) => p.ref === n.pin.target);
+      const pattern = globToRegExp(n.pin.pin);
+      return part?.res.pins.some(
+        (pin) =>
+          !connected.has(`${part.ref}.${pin.number}`) &&
+          (pattern.test(pin.name) || pattern.test(pin.number)),
+      );
+    });
+    const ncs = carried.map((decl) => printStatement({ kind: "nc", decl }));
+    const covered = [
+      ...carried.map((n) => printPinRef(n.pin)),
+      ...(prev?.waivers ?? [])
+        .filter((w) => w.code === "erc.unconnected-pin")
+        .map((w) => w.subject),
+    ].map(globToRegExp);
     if (input.unconnected) {
       for (const p of m.parts) {
         const kicadRef = (inst && rootComp.get(`${inst.tstamps}|${p.uuid}`)?.ref) ?? p.comp.ref;
         for (const pin of p.res.pins) {
-          if (pin.type === "nc" || connected.has(`${p.ref}.${pin.number}`)) continue;
+          // A pin that may stay open needs no nc: its flag says nothing new.
+          if (isOpenByDesign(pin) || connected.has(`${p.ref}.${pin.number}`)) continue;
           if (input.unconnected.has(`${kicadRef}.${pin.number}`)) continue;
           const subjects = [`${p.ref}.${pin.name}`, `${p.ref}.${pin.number}`, p.ref];
           if (covered.some((re) => subjects.some((s) => re.test(s)))) continue;
-          waivers.push(
-            `waive ${p.ref}.${p.token.get(pin.number)} erc.unconnected-pin "${NC_REASON}"`,
-          );
-          ncWaived++;
+          ncs.push(`nc ${p.ref}.${p.token.get(pin.number)} @ ${NC_INTENT}`);
+          ncFlags++;
         }
       }
     }
-    for (const w of prev?.waivers ?? []) {
-      if (w.reason === NC_REASON) continue;
-      const line = `waive ${w.subject}${w.code ? ` ${w.code}` : ""} ${quote(w.reason)}`;
-      if (!waivers.includes(line)) waivers.push(line);
-    }
+    const waivers = (prev?.waivers ?? []).map((decl) => printStatement({ kind: "waive", decl }));
+    if (ncs.length > 0) lines.push(...ncs, "");
     if (waivers.length > 0) lines.push(...waivers, "");
     circuits.push({ file: `circuit/${m.block}.ckt`, text: `${lines.join("\n").trimEnd()}\n` });
   }
@@ -963,8 +980,8 @@ export function buildImport(input: ImportInput): ImportResult {
     report.push(
       "no-connect flags: unknown (KiCad ERC did not run), so unconnected pins are reported",
     );
-  } else if (ncWaived > 0) {
-    report.push(`no-connect flags: ${ncWaived} pins waived (erc.unconnected-pin, "${NC_REASON}")`);
+  } else if (ncFlags > 0) {
+    report.push(`no-connect flags: ${ncFlags} pins marked nc`);
   }
 
   // What KiCad says the design connects, minus what import left out.
@@ -1071,15 +1088,16 @@ function draftYaml(
   const datasheet = c.fields.Datasheet?.trim() ?? "";
   const pkg = c.footprint === "" ? "" : (c.footprint.replace(/^.*:/, "").split("_")[0] ?? "");
   const summary = c.fields.Description?.trim() || `${c.value || c.part} (KiCad symbol ${libId})`;
+  const optional = (key: string, v: string) => (v === "" ? [] : [`${key}: ${yamlScalar(v)}`]);
   const lines = [
     `# Draft from KiCad import (symbol ${libId}, value ${c.value || "-"}). Complete it from the`,
     "# datasheet (identity, ratings, requirements), then set provenance.extracted_by to ai or human.",
     `id: ${yamlScalar(id)}`,
-    `manufacturer: ${yamlScalar(field(c, "manufacturer"))}`,
-    `mpn: ${yamlScalar(field(c, "mpn"))}`,
     `summary: ${yamlScalar(summary)}`,
-    `package: ${yamlScalar(pkg)}`,
-    `footprint: ${yamlScalar(c.footprint)}`,
+    ...optional("manufacturer", field(c, "manufacturer")),
+    ...optional("preferred_mpn", field(c, "mpn")),
+    ...optional("package", pkg),
+    ...optional("footprint", c.footprint),
     ...(symbol ? [`kicad_symbol: ${yamlScalar(symbol)}`] : []),
     "pins:",
     ...[...res.pins]
@@ -1098,7 +1116,7 @@ function notesMarkdown(input: ImportInput, autoNamed: Map<string, string[]>): st
     "# KiCad import",
     "",
     `Imported from \`${input.source ?? input.project}\`${input.date ? ` on ${input.date}` : ""}. Re-importing replaces`,
-    "circuit/ but keeps intents, net attributes, port kinds, waivers and block descriptions.",
+    "circuit/ but keeps intents, net attributes, port kinds, nc statements, waivers and block descriptions.",
     "",
   ];
   if (autoNamed.size > 0) {

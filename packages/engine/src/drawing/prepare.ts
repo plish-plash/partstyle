@@ -1,7 +1,13 @@
 import { type BomEntry, type BomResult, resolveBom } from "../bom.js";
 import type { Issue } from "../diagnostics.js";
 import { type Annotation, annotate, parseAnnotationLock } from "../kicad/annotate.js";
-import { generatedSymbol, incompatibility, type SchSymbol, symbolKey } from "../kicad/libsym.js";
+import {
+  adaptedSymbol,
+  generatedSymbol,
+  incompatibility,
+  type SchSymbol,
+  symbolKey,
+} from "../kicad/libsym.js";
 import { type PowerLibrary, powerLibrary, type SymbolLib } from "../kicad/power.js";
 import { symbolForGeneric, symbolForRecord } from "../kicad/symbols.js";
 import type { FlatPart, Netlist } from "../netlist/elaborate.js";
@@ -35,6 +41,8 @@ export interface SymbolChoice {
   generated: boolean;
   /** Candidates tried and why each was not used. */
   rejected: string[];
+  /** The KiCad symbol this is a renumbered copy of. */
+  adaptedFrom?: string;
 }
 
 /** Everything needed to draw a design: shared by the viewer and the KiCad export. */
@@ -72,10 +80,14 @@ function chooseSymbols(
   for (const [key, group] of byKey) {
     const rejected: string[] = [];
     let pick: SchSymbol | undefined;
+    let adaptedFrom: string | undefined;
     for (const c of candidates.get(key) ?? []) {
-      const why = c.symbol ? incompatibility(c.symbol, group) : "not found in the KiCad libraries";
+      const adapted = c.symbol && adaptedSymbol(c.symbol, group[0] as FlatPart);
+      const symbol = adapted ?? c.symbol;
+      const why = symbol ? incompatibility(symbol, group) : "not found in the KiCad libraries";
       if (!why) {
-        pick = c.symbol;
+        pick = symbol;
+        if (adapted) adaptedFrom = c.libId;
         break;
       }
       rejected.push(`${c.libId}: ${why}`);
@@ -100,7 +112,13 @@ function chooseSymbols(
       pick = generatedSymbol(g);
     }
     chosen.set(key, pick);
-    choices.push({ key, libId: pick.libId, generated: pick.generated !== undefined, rejected });
+    choices.push({
+      key,
+      libId: pick.libId,
+      generated: pick.generated !== undefined,
+      rejected,
+      ...(adaptedFrom !== undefined && { adaptedFrom }),
+    });
   }
   return { chosen, choices, issues };
 }

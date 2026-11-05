@@ -27,9 +27,3 @@ net TXD    : U4.PD1 J5.1
 net RXD    : U4.PD0 J5.2
 net LED    : U4.PB1 R6.1
 net LED_A  : R6.2 D4.A
-
-waive U4.PB* erc.unconnected-pin "spare GPIO"
-waive U4.PC* erc.unconnected-pin "spare GPIO"
-waive U4.PD* erc.unconnected-pin "spare GPIO"
-waive U4.ADC6 erc.unconnected-pin "spare analog input"
-waive J5 context.hazard "bench debug header for a grounded USB-UART adapter; no clamp needed"

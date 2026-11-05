@@ -15,7 +15,7 @@ export const queryUsage = `queries:
   net NAME                      pins on one net
   parts [where COND [and ...]]  e.g. parts where vin_max < 15V, parts where kind = generic
   nets [where COND [and ...]]   e.g. nets where pins = 1, nets where voltage ~ 5V
-  unconnected                   every pin on no net, including waived ones
+  unconnected                   every pin on no net, marking those left open by nc
 COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path id mpn
 manufacturer package footprint kind fn value verified intent, or any rating. Net fields: name
 pins, or any attribute. Quantities compare numerically (35V > 5V). REF and NAME may omit the
@@ -75,15 +75,23 @@ function partFields(part: FlatPart): Record<string, string> {
   }
   if (r) {
     Object.assign(fields, {
-      mpn: r.mpn,
+      preferred_mpn: r.preferred_mpn ?? "",
       manufacturer: r.manufacturer,
       package: r.package,
       footprint: r.footprint,
       verified: r.provenance.verified_by ? "yes" : "no",
     });
-    for (const [k, v] of Object.entries(r.ratings ?? {})) fields[k] = String(v);
+    addRatings(fields, r.ratings ?? {}, "");
   }
   return fields;
+}
+
+/** Ratings as query fields; nested ones are dotted, like `vout.max`. */
+function addRatings(fields: Record<string, string>, ratings: object, prefix: string): void {
+  for (const [k, v] of Object.entries(ratings)) {
+    if (typeof v === "object" && v !== null) addRatings(fields, v, `${prefix}${k}.`);
+    else fields[prefix + k] = String(v);
+  }
 }
 
 function netFields(net: FlatNet): Record<string, string> {
@@ -227,7 +235,7 @@ export function runQuery(netlist: Netlist, expr: string): TextResult {
       if (pins.length === 0) return ok("every pin is connected");
       return ok(
         `${counted(pins.length, "unconnected pin")}\n${pins
-          .map((p) => `  ${p.part}.${p.name} (pin ${p.number}, ${p.type})`)
+          .map((p) => `  ${p.part}.${p.name} (pin ${p.number}, ${p.type}${p.open ? ", nc" : ""})`)
           .join("\n")}`,
       );
     }

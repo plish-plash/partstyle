@@ -16,8 +16,9 @@ part U1  lib:L7805CV
 part C1  cap(330n, 50V, X7R, 0603) @ per U1 datasheet input cap
 use sensor as AFE @ remote sensor
 net +5V : U1.OUT C1.1 AFE.VDD -> port +5V {voltage: 5V ±5%, kind: power} @ main rail
-waive U4.PD* erc.unconnected-pin "spare GPIO"
-waive C1 "reason only"
+nc U1.TRIM @ not trimmed
+nc U4.PD*
+waive U4.PD* erc.single-pin-net "spare GPIO"
 `);
     expect(issues).toEqual([]);
     expect(ast.block).toMatchObject({ name: "power", description: "12 V input" });
@@ -42,11 +43,13 @@ waive C1 "reason only"
       attrs: { voltage: "5V ±5%", kind: "power" },
       intent: "main rail",
     });
-    expect(ast.waivers).toMatchObject([
-      { subject: "U4.PD*", code: "erc.unconnected-pin", reason: "spare GPIO" },
-      { subject: "C1", reason: "reason only" },
+    expect(ast.ncs).toMatchObject([
+      { pin: { target: "U1", pin: "TRIM" }, intent: "not trimmed" },
+      { pin: { target: "U4", pin: "PD*" } },
     ]);
-    expect(ast.waivers[1]).not.toHaveProperty("code");
+    expect(ast.waivers).toMatchObject([
+      { subject: "U4.PD*", code: "erc.single-pin-net", reason: "spare GPIO" },
+    ]);
   });
 
   it("records 1-based line and column", () => {
@@ -69,7 +72,7 @@ waive C1 "reason only"
         "part R1 res(1k)",
         "net N : R1",
         "frobnicate R1",
-        'waive R1 "unterminated',
+        'waive R1 erc.x "unterminated',
         "part R2 res(1k)",
       ].join("\n"),
     );
@@ -78,7 +81,7 @@ waive C1 "reason only"
       [2, 10, expect.stringContaining("unknown port kind 'sideways'")],
       [4, 9, "expected REF.PIN, found 'R1'"],
       [5, 1, expect.stringContaining("unknown statement 'frobnicate'")],
-      [6, 10, "unterminated string"],
+      [6, 16, "unterminated string"],
     ]);
   });
 
@@ -92,7 +95,11 @@ waive C1 "reason only"
     ["net N : R1.1 {voltage 5V}", "expected ':', found '5V'"],
     ["net N : R1.1 {a: 1, a: 2}", "duplicate attribute 'a'"],
     ["use x AFE", "expected 'as'"],
-    ["waive R1", "expected quoted reason, found end of line"],
+    ["waive R1", "expected issue code, found end of line"],
+    ['waive R1 "no code"', `expected issue code, found '"no code"'`],
+    ["waive R1 erc.single-pin-net", "expected quoted reason, found end of line"],
+    ["nc R1", "expected REF.PIN, found 'R1'"],
+    ["nc R1.1 R1.2", "unexpected 'R1.2'"],
     ["block c", "a file declares exactly one block"],
   ])("%s", (line, message) => {
     const { issues } = parse(`block b\n${line}`);

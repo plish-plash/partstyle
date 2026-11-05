@@ -1,6 +1,6 @@
 id: L7805CV
 manufacturer: STMicroelectronics
-mpn: L7805CV
+preferred_mpn: L7805CV
 summary: 5 V 1.5 A linear regulator, TO-220
 package: TO-220-3
 footprint: Package_TO_SOT_THT:TO-220-3_Vertical

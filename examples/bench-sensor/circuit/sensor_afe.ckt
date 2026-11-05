@@ -10,7 +10,7 @@ part D3  lib:PESD5V0S1BL            @ ESD clamp at the connector
 part R2  res(1k, 1%, 0603)          @ limits clamp current; with C6 a 16 kHz low-pass
 part R4  res(100k, 1%, 0603)        @ reads 0 V when the sensor is unplugged
 part C6  cap(10n, 16V, X7R, 0603)
-part U3  lib:MCP6002-I_SN
+part U3  lib:MCP6002
 part C8  cap(100n, 16V, X7R, 0603)  @ U3 bypass
 part R3  res(1k, 1%, 0603)          @ isolates the buffer from the ADC sample cap
 part C7  cap(100n, 16V, X7R, 0603)  @ ADC charge reservoir
@@ -23,5 +23,3 @@ net SPARE_B   : U3.OUTB U3.VINB-          @ unused half as a grounded follower
 net +5V       : J2.2                      -> port +5V
 net +3V3      : U3.VDD C8.1               -> port +3V3
 net GND       : J2.3 D3.2 R4.2 C6.2 C7.2 C8.2 U3.VSS U3.VINB+ -> port GND
-
-waive J2 context.hazard "12 V miswire accepted on a bench tool: it may destroy D3, but R2 keeps it out of U3"

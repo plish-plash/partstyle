@@ -73,10 +73,17 @@ export interface UseDecl {
   location: Location;
 }
 
+/** A part pin left open on purpose; `*` in the pin matches any run of characters. */
+export interface NcDecl {
+  pin: PinRef;
+  intent?: string;
+  location: Location;
+}
+
 export interface WaiverDecl {
   /** Refdes, pinref or net name; `*` matches any run of characters. */
   subject: string;
-  code?: string;
+  code: string;
   reason: string;
   location: Location;
 }
@@ -88,6 +95,7 @@ export interface CktFile {
   parts: PartDecl[];
   nets: NetDecl[];
   uses: UseDecl[];
+  ncs: NcDecl[];
   waivers: WaiverDecl[];
 }
 
@@ -98,6 +106,7 @@ export type Statement =
   | { kind: "part"; decl: PartDecl }
   | { kind: "net"; decl: NetDecl }
   | { kind: "use"; decl: UseDecl }
+  | { kind: "nc"; decl: NcDecl }
   | { kind: "waive"; decl: WaiverDecl };
 
 export type StatementKind = Statement["kind"];

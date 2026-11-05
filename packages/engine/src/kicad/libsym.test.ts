@@ -6,6 +6,7 @@ import { loadProject } from "../project/load.js";
 import { type ValidationResult, validateProject } from "../validate.js";
 import { exportKicad, type SymbolCandidate } from "./export.js";
 import {
+  adaptedSymbol,
   flattenSymbol,
   genericSymbolId,
   incompatibility,
@@ -125,10 +126,10 @@ describe("library symbols", () => {
       { lib: "Reg", name: "LM317" },
       { lib: "Diode", name: "1N5819" },
     ];
-    const rec = (id: string, mpn = id) => ({ id, mpn }) as PartRecord;
+    const rec = (id: string, preferred_mpn = id) => ({ id, preferred_mpn }) as PartRecord;
     const ids = (r: PartRecord) => rankSymbolMatches(r, names).map((m) => `${m.lib}:${m.name}`);
-    expect(ids(rec("MCP6002-I_SN", "MCP6002-I/SN"))).toEqual(["Amp:MCP6002-xSN"]);
-    expect(ids(rec("MCP1700T-3302E_TT", "MCP1700T-3302E/TT"))).toEqual(["Reg:MCP1700x-330xxTT"]);
+    expect(ids(rec("MCP6002", "MCP6002-I/SN"))).toEqual(["Amp:MCP6002-xSN", "Amp:MCP6002-xP"]);
+    expect(ids(rec("MCP1700-3302", "MCP1700T-3302E/TT"))).toEqual(["Reg:MCP1700x-330xxTT"]);
     expect(ids(rec("L7805CV"))).toEqual(["Reg:L7805"]);
     expect(ids(rec("1N5819", "1N5819RLG"))).toEqual(["Diode:1N5819"]);
     expect(ids(rec("LM3171"))).toEqual([]); // a digit after the prefix is a different part
@@ -222,7 +223,7 @@ describe("export with KiCad symbols", () => {
       { annotation: "", bom: "" },
       { symbolCandidates: candidates },
     );
-    expect(x.symbols.find((s) => s.key === "lib:MCP6002-I_SN")).toMatchObject({
+    expect(x.symbols.find((s) => s.key === "lib:MCP6002")).toMatchObject({
       libId: "L:MCP6002-xSN",
       generated: false,
     });
@@ -265,5 +266,70 @@ describe("export with KiCad symbols", () => {
     ]);
     expect(x.issues.map((i) => i.code)).toContain("kicad.symbol-fallback");
     expect(x.files.get("partstyle.kicad_sym")).toContain('(symbol "L7805CV"');
+  });
+});
+
+describe("adaptedSymbol", () => {
+  const pin = (number: string, name: string): SExpr[] => [
+    "pin",
+    sym("passive"),
+    sym("line"),
+    ["at", 0, 0, 0],
+    ["name", name],
+    ["number", number],
+  ];
+  const symbol = (pins: [string, string][]) =>
+    kicadSymbol("Device:Q_NPN", [
+      "symbol",
+      "Q_NPN",
+      ["property", "Reference", "Q"],
+      ["symbol", "Q_NPN_1_1", ...pins.map(([n, name]) => pin(n, name))],
+    ]);
+  const part = (pins: [string, string][]) =>
+    ({
+      path: "AMP/Q1",
+      spec: { kind: "lib", id: "BC817" },
+      pins: pins.map(([number, name]) => ({ number, name, type: "passive" })),
+    }) as FlatPart;
+  const sot23: [string, string][] = [
+    ["1", "B"],
+    ["2", "E"],
+    ["3", "C"],
+  ];
+  const byRole: [string, string][] = [
+    ["B", "B"],
+    ["C", "C"],
+    ["E", "E"],
+  ];
+
+  it("renumbers a generic symbol's pins to the part's pads, by name", () => {
+    const s = adaptedSymbol(symbol(byRole), part(sot23));
+    expect(s?.libId).toBe("partstyle:BC817");
+    expect(s?.generated?.name).toBe("BC817");
+    expect(s?.generated?.def[1]).toBe("BC817");
+    expect([...(s?.units[0]?.pins.keys() ?? [])]).toEqual(["1", "3", "2"]);
+    expect(s?.units[0]?.pins.get("3")?.name).toBe("C");
+    expect(JSON.stringify(s?.def)).toContain('["symbol","BC817_1_1"');
+    expect(incompatibility(s as NonNullable<typeof s>, [part(sot23)])).toBeUndefined();
+  });
+
+  it("corrects a pinout-specific symbol whose numbers disagree with the part's names", () => {
+    const cbe = symbol([
+      ["1", "C"],
+      ["2", "B"],
+      ["3", "E"],
+    ]);
+    expect(adaptedSymbol(cbe, part(sot23))?.units[0]?.pins.get("1")?.name).toBe("B");
+  });
+
+  it("leaves a symbol alone when names don't pair up or the numbers already agree", () => {
+    expect(adaptedSymbol(symbol(sot23), part(sot23))).toBeUndefined();
+    const renamed: [string, string][] = [
+      ["1", "BASE"],
+      ["2", "E"],
+      ["3", "C"],
+    ];
+    expect(adaptedSymbol(symbol(byRole), part(renamed))).toBeUndefined();
+    expect(adaptedSymbol(symbol(byRole), part(sot23.slice(0, 2)))).toBeUndefined();
   });
 });
