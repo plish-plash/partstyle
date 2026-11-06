@@ -238,12 +238,6 @@ checks:
     {
       file: "circuit/main.ckt",
       text: `block main "TODO: what this board does, in one line"
-
-# The top level instantiates one block per functional area and joins their ports, e.g.
-#   use power as PWR
-#   use mcu   as MCU
-#   net +3V3 : PWR.+3V3 MCU.+3V3
-#   net GND  : PWR.GND MCU.GND
 `,
     },
     ...Object.entries(noteTemplates).map(([file, text]) => ({ file, text })),

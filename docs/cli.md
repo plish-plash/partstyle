@@ -127,8 +127,9 @@ misspelt one, fails and lists the fields that exist.
 
 - Part fields: `path id preferred_mpn manufacturer package footprint kind fn value verified
   approved intent` and every rating in the part record (`vin_max`, or `vout.max` for a nested one).
-  `verified` is `yes` or `no` (`true` and `false` also work) and only library parts have it.
-  `approved` is `yes`, `no` or `changed`.
+  `verified` is `yes` or `no`, and only library parts have it. `approved` is `yes`, `no` or
+  `changed`, so `approved != yes` finds everything still to sign off. Both also take `true` and
+  `false`, for `yes` and `no`.
 - Net fields: `name pins` (pin count) and every net attribute (`voltage`, `source`, ...).
 - REF and NAME may omit the instance path when unambiguous (`U1` for `PWR/U1`).
 

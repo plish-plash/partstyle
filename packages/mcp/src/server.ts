@@ -328,7 +328,7 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "part_put",
     {
       description:
-        "Create or update a part record (YAML; see guide parts). Capture the whole datasheet, in free-form sections where no field fits. Leave provenance.verified_by null. To remove a record, ask the person to delete its file.",
+        "Create or update a part record (YAML; see guide parts). Capture the whole datasheet, in free-form sections where no field fits. Leave provenance.verified_by null. Records stay in the library whether or not a design uses them.",
       inputSchema: {
         record: z.string().describe("The full YAML record"),
         scope: z

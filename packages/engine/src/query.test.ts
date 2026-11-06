@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Netlist } from "./netlist/elaborate.js";
+import { type Approvals, partSnapshot } from "./approvals.js";
+import type { FlatPart, Netlist } from "./netlist/elaborate.js";
 import { describePart, searchParts } from "./parts/search.js";
 import { loadProject } from "./project/load.js";
 import { runQuery } from "./query.js";
@@ -87,12 +88,27 @@ describe("runQuery", () => {
     expect(runQuery(generics, "nets where voltage ~ 5V").text).toBe("no matching nets");
   });
 
-  it("takes true and false for verified", () => {
+  it("takes true and false for verified and approved", () => {
     const yes = q("parts where verified = no").text;
     expect(yes).toMatch(/^\d+ parts?\n/);
     expect(q("parts where verified = FALSE").text).toBe(yes);
     expect(q("parts where verified = true").text).toBe(q("parts where verified = yes").text);
     expect(q("parts where verified != true").text).toBe(yes);
+
+    const [current, stale] = netlist.parts as [FlatPart, FlatPart];
+    const approvals: Approvals = new Map([
+      [current.path, { snapshot: partSnapshot(current), by: "person", at: "" }],
+      [stale.path, { snapshot: "changed since", by: "person", at: "" }],
+    ]);
+    const approved = (expr: string) => runQuery(netlist, `parts where ${expr}`, approvals).text;
+    expect(approved("approved = TRUE")).toBe(approved("approved = yes"));
+    expect(approved("approved = yes")).toMatch(/^1 part\n/);
+    expect(approved("approved = false")).toBe(approved("approved = no"));
+    // Not approved as it stands, but not "no": it was approved before it changed.
+    expect(approved("approved = changed")).toMatch(/^1 part\n/);
+    const total = netlist.parts.length;
+    expect(approved("approved = false")).toMatch(new RegExp(`^${total - 2} parts\\n`));
+    expect(approved("approved != true")).toMatch(new RegExp(`^${total - 1} parts\\n`));
   });
 
   it("lists unconnected pins, including ones that may stay open", () => {
