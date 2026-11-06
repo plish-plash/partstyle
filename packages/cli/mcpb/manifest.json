@@ -33,6 +33,7 @@
     }
   },
   "tools": [],
+  "prompts_generated": true,
   "compatibility": {
     "platforms": ["darwin", "win32"],
     "runtimes": { "node": ">=22.0.0" }

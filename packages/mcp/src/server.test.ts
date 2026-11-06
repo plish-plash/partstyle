@@ -124,6 +124,13 @@ describe("MCP server", () => {
     expect(text).toBe(findPrompt("ingest-part")?.render({ part: "TPS7A02" }));
   });
 
+  it("tells Claude Desktop the server generates its prompts", async () => {
+    // Otherwise Desktop blocks each prompts/get, or compares it with a fixed template in the
+    // manifest, which can't match the text an argument changes.
+    const manifest = JSON.parse(await readFile(repo("packages/cli/mcpb/manifest.json"), "utf8"));
+    expect(manifest.prompts_generated).toBe(true);
+  });
+
   it("flags failures as tool errors", async () => {
     expect(await call("query", { expr: "part U99" })).toEqual({
       text: "no part 'U99'",
