@@ -6,3 +6,5 @@ coverage/
 packages/cli/standalone/
 # Local viewer and history state of projects in this repo (examples, fixtures)
 .partstyle/
+# Tester verdicts and notes: everyone judges the layouts for themselves
+layout/feedback/

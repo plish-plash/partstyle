@@ -1,5 +1,5 @@
 import type { CktFile } from "../ckt/ast.js";
-import { paperFor, papers } from "../drawing/layout.js";
+import { paperFor, papers } from "../drawing/paper.js";
 import { shapeOf } from "../drawing/plan.js";
 import type { Drawing } from "../drawing/prepare.js";
 import type { PlacedPower, PlacedText, PlacedUnit } from "../drawing/types.js";

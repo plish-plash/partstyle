@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks that every packages/*/package.json has the same version, a semantic version (the
+// Checks that every package under packages/ and layout/packages/ has the same version, a semantic version (the
 // Claude Desktop extension manifest requires one), and, given a tag, that the tag is that
 // version with a v in front. Prints the version. The release workflow runs it on the tag.
 //
@@ -8,17 +8,19 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const packages = fileURLToPath(new URL("../packages", import.meta.url));
 const versions = new Map();
-for (const name of readdirSync(packages)) {
-  const file = path.join(packages, name, "package.json");
-  let pkg;
-  try {
-    pkg = JSON.parse(readFileSync(file, "utf8"));
-  } catch {
-    continue;
+for (const root of ["packages", "layout/packages"]) {
+  const packages = fileURLToPath(new URL(`../${root}`, import.meta.url));
+  for (const name of readdirSync(packages)) {
+    const file = path.join(packages, name, "package.json");
+    let pkg;
+    try {
+      pkg = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      continue;
+    }
+    versions.set(`${root}/${name}/package.json`, pkg.version);
   }
-  versions.set(`packages/${name}/package.json`, pkg.version);
 }
 
 const fail = (message) => {

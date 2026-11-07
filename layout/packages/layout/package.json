@@ -1,0 +1,17 @@
+{
+  "name": "@partstyle/layout",
+  "version": "0.2.0",
+  "description": "Automatic layout for blocks of an electrical schematic",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

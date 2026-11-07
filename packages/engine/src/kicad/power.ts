@@ -101,7 +101,7 @@ function pinOf(def: SExpr[]): { number: string; angle: number } {
 
 const isPowerSymbol = (def: SExpr[]) => child(def, "power") !== undefined;
 
-const groundName = /^(A|D|P)?(GND|VSS|EARTH)/i;
+export const groundName = /^(A|D|P)?(GND|VSS|EARTH)/i;
 
 export interface PowerLibrary {
   /** The symbol for a net: KiCad's own when it has one of that name, else GND or VCC. */

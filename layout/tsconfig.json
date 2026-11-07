@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "paths": {
+      "@partstyle/layout": ["./packages/layout/src/index.ts"],
+      "@partstyle/layout-cases": ["./packages/cases/src/index.ts"]
+    }
+  },
+  "include": ["packages/layout/src", "packages/cases/src", "packages/tester/scripts"]
+}

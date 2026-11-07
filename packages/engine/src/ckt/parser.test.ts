@@ -106,36 +106,9 @@ waive U4.PD* erc.single-pin-net "spare GPIO"
     expect(issues.map((i) => i.message)).toEqual([message]);
   });
 
-  it("parses layout hints on parts and uses, and prints them back", () => {
-    const { ast, issues } = parse(
-      "block b\npart R1 res(1k) [2 r90] @ pull-up\npart J1 lib:X [flip 1]\nuse s as S [3 noflip]\npart R2 res(1k) []",
-    );
-    expect(issues).toEqual([]);
-    expect(ast.parts.map((p) => p.layout)).toEqual([
-      { stage: 2, rotation: 90 },
-      { stage: 1, flip: true },
-      {},
-    ]);
-    expect(ast.parts[0]?.intent).toBe("pull-up");
-    expect(ast.uses[0]?.layout).toEqual({ stage: 3, flip: false });
-    const printed = ast.parts.map((decl) => printStatement({ kind: "part", decl }));
-    expect(printed).toEqual([
-      "part R1 res(1k) [2 r90] @ pull-up",
-      "part J1 lib:X [1 flip]",
-      "part R2 res(1k)",
-    ]);
-    expect(printStatement({ kind: "use", decl: ast.uses[0] as UseDecl })).toBe(
-      "use s as S [3 noflip]",
-    );
-  });
-
-  it.each([
-    ["part R1 res(1k) [r45]", "unexpected 'r45' in layout"],
-    ["part R1 res(1k) [1 2]", "unexpected '2' in layout"],
-    ["part R1 res(1k) [1", "or ']', found end of line"],
-  ])("rejects layout %s", (line, message) => {
-    const { issues } = parse(`block b\n${line}`);
-    expect(issues.map((i) => i.message)).toEqual([expect.stringContaining(message)]);
+  it("refuses bracketed layout hints", () => {
+    const { issues } = parse("block b\npart R1 res(1k) [2 r90]");
+    expect(issues.map((i) => i.message)).toEqual([expect.stringContaining("unexpected '['")]);
   });
 
   it("requires block to come first", () => {

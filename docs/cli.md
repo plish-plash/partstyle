@@ -294,9 +294,8 @@ while the design has validation errors.
 | `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor |
 | `<name>.kicad_pro`    | written only if missing, so KiCad's own settings survive  |
 
-Each sheet is drawn as the viewer shows it: groups of parts placed left to right by stage,
-wires between neighbouring stages, labels for nets that reach further, and KiCad power symbols
-for power nets. The rules are in [layout.md](layout.md).
+Each sheet is drawn as the viewer shows it, with wires, labels and KiCad power symbols. The rules
+are in [layout.md](layout.md).
 
 Power symbol definitions are copied from KiCad's installed `power.kicad_sym` so they match the
 library exactly; without KiCad, built-in look-alikes with the same names are used.
@@ -425,14 +424,6 @@ moment of any change to the project's files or its part libraries.
   Issues and comments also appear as markers on the sheet.
 - **Comment:** attach a comment to the selected item; resolve it when done.
 - **Verify:** "Mark verified" sets `verified_by: human` in an AI-extracted part record.
-- **Arrange:** with a part or sheet selected, the Layout section moves its group a stage
-  earlier or later (`[` / `]`), rotates a two-terminal part (`R`), flips it (`F`: mirrors a
-  part, turns a two-terminal one half way), or returns it to automatic placement. Each edit
-  writes a layout hint into the .ckt and is logged as a change; the first stage edit on a
-  sheet also writes every group's current stage, so the rest stay put. While a part of the
-  sheet is selected, each stage's number shows at the top of its column (the selected part's
-  stage highlighted). See [layout.md](layout.md) for what stages,
-  groups and the defaults are.
 
 The server listens on 127.0.0.1 only, refuses requests addressed to other host names, and accepts
 writes only from its own page. Add `?live=0` to the URL for a static snapshot without the update
@@ -578,9 +569,8 @@ variants/buck/
   all or nothing. With `main` among them, a variant gets only the edits to blocks of its own:
   main's edit already reaches the rest. Changesets, pending patches, `diff --since last` and
   the export outputs (`bom.csv`, the locks, `kicad/`) are the variant's own, under
-  `variants/NAME/`; the locks fall back to main's, so shared parts keep their refdes. Layout
-  hints on a block the variant takes from main go to main's file. KiCad import works on main
-  only.
+  `variants/NAME/`; the locks fall back to main's, so shared parts keep their refdes. KiCad
+  import works on main only.
 - **Shared.** Parts, notes, comments and checkpoints.
 
 | Op                          | Does                                                                                                                                     |

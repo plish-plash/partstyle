@@ -24,7 +24,7 @@ const header = `# Parts signed off in the Partstyle viewer, versioned with the d
 # connections no longer match its snapshot shows as changed since approved.
 `;
 
-/** What an approval covers: the part's spec and the net on each pin, not its layout or intent. */
+/** What an approval covers: the part's spec and the net on each pin, not its intent. */
 export function partSnapshot(part: FlatPart): string {
   const pins = part.pins.map((p) => `${p.number}=${p.net ?? "-"}`).join(" ");
   return `${printSpec(part.spec)}: ${pins}`;

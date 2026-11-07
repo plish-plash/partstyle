@@ -46,6 +46,10 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
 
 ## Layout
 
+- `layout/`: the layout engine (`@partstyle/layout`), its test circuits and a visual tester, with
+  its own [CLAUDE.md](layout/CLAUDE.md) for tuning the rules. The engine is generic and imports
+  nothing from Partstyle: anything specific to Partstyle or KiCad goes in `drawing/adapter.ts`.
+
 - `packages/engine`: pure core in `src/index.ts` (no fs; must stay browser-safe for the viewer);
   node-only code is behind `src/node.ts` (`@partstyle/engine/node`).
   - Part records: `parts/schema.ts` `readPartRecord` refuses only what the engine needs (id,
@@ -81,20 +85,10 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     renumbered by pin name), `kicad/power.ts` power
     symbols, `kicad/symbols.ts` generated fallbacks. `project/kicad.ts` (node) finds kicad-cli
     and the stock libraries, indexes symbol names, checks footprint pads and parses ERC.
-  - Drawing (shared by the viewer and KiCad export, pure, one deterministic pass: no trial
-    layouts): `drawing/plan.ts` decides per net power symbol / wire / label; `drawing/nodes.ts`
-    collects units and child sheets in their default orientation (`orient.ts`, or a stored
-    `[rN]`); `groups.ts` attaches two-terminal parts to hosts (satellite, shunt, series chain);
-    `flow.ts` derives stages and default flips; `cell.ts` lays out one group in its own
-    coordinates, pins on the 2.54 mm grid; `pack.ts` packs groups into rows of stage slots on
-    the smallest paper (a slot's groups side by side while they fit its width, else stacked),
-    lowering each to line up with what it connects to; `route.ts` is an A*
-    maze router on the 2.54 mm grid (a connection crossing 3+ wires, or detouring between
-    groups, is left for labels); `layout.ts` ties them together (wire nets in consecutive slots
-    of a row, label the rest). Layout hints (`[2 r90 flip]` on part
-    and use lines) are parsed into `LayoutHint`; `Workspace.setLayout` writes them for the
-    viewer. `drawing/wires.ts` splits, merges and adds junctions; `drawing/connectivity.ts`
-    proves the geometry matches the netlist; `drawing/prepare.ts` is the entry point.
+  - Drawing (shared by the viewer and KiCad export, pure and deterministic): `drawing/plan.ts`
+    decides which nets get power symbols and where PWR_FLAGs go; `drawing/adapter.ts` translates
+    each block to `@partstyle/layout` and back; `drawing/connectivity.ts` proves the geometry
+    matches the netlist; `drawing/prepare.ts` is the entry point.
     `kicad/schematic.ts` only serializes it.
   - KiCad import: `kicad/import.ts` (pure: netlist reading, sheets → blocks and ports, part
     matching, draft records, re-import carry-over) and `project/kicad-import.ts` (node: runs

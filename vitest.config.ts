@@ -4,6 +4,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@partstyle/layout-cases": fileURLToPath(
+        new URL("./layout/packages/cases/src/index.ts", import.meta.url),
+      ),
+      "@partstyle/layout": fileURLToPath(
+        new URL("./layout/packages/layout/src/index.ts", import.meta.url),
+      ),
       "@partstyle/engine/node": fileURLToPath(
         new URL("./packages/engine/src/node.ts", import.meta.url),
       ),
@@ -17,7 +23,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/*/src/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "layout/packages/*/src/**/*.test.ts"],
     setupFiles: ["./vitest.setup.ts"],
     // Some tests run kicad-cli, the layout and an HTTP server for real.
     testTimeout: 30_000,

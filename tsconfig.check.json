@@ -4,13 +4,22 @@
     "composite": false,
     "noEmit": true,
     "paths": {
+      "@partstyle/layout": ["./layout/packages/layout/src/index.ts"],
+      "@partstyle/layout-cases": ["./layout/packages/cases/src/index.ts"],
       "@partstyle/engine": ["./packages/engine/src/index.ts"],
       "@partstyle/engine/node": ["./packages/engine/src/node.ts"],
       "@partstyle/server": ["./packages/server/src/index.ts"],
       "@partstyle/mcp": ["./packages/mcp/src/serve.ts"]
     }
   },
-  "include": ["packages/*/src", "vitest.config.ts", "vitest.setup.ts"],
+  "include": [
+    "packages/*/src",
+    "layout/packages/layout/src",
+    "layout/packages/cases/src",
+    "layout/packages/tester/scripts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ],
   // The Svelte viewer is checked by svelte-check (pnpm --filter @partstyle/viewer check).
   "exclude": ["packages/viewer"]
 }

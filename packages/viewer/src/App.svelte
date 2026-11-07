@@ -35,27 +35,6 @@ $effect(() => {
   document.title = model ? `${model.project} — Partstyle` : "Partstyle viewer";
 });
 
-/** How the selected part or child sheet of the sheet shown is drawn, if one is selected. */
-const layoutTarget = $derived.by(() => {
-  const s = selection[0];
-  if (s === undefined || !current || !s.startsWith(prefix)) return undefined;
-  const rest = s.slice(prefix.length);
-  const ref = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-  if (ref.includes("/") || ref.includes(".")) return undefined;
-  return current.layout.hints.find((h) => h.ref === ref);
-});
-let layoutMessage = $state("");
-/** Edits the layout of the selected part; the files change and the live update redraws. */
-async function layout(op: api.LayoutOp) {
-  if (!current || !layoutTarget || preview) return;
-  try {
-    const r = await api.setLayout(current.block, layoutTarget.ref, op, variant);
-    layoutMessage = r.ok ? "" : r.text;
-    if (!live) void refresh();
-  } catch (e) {
-    layoutMessage = String(e);
-  }
-}
 const partPaths = $derived(Object.keys(model?.parts ?? {}));
 const isApproved = (p: string) => model?.parts[p]?.approval?.status === "approved";
 const approvedCount = $derived(partPaths.filter(isApproved).length);
@@ -70,7 +49,6 @@ function approveSelected() {
   const paths = selection.filter((s) => model?.parts[s] && !isApproved(s));
   if (paths.length > 0) void api.approve(paths, false, variant);
 }
-const shortcuts: Record<string, api.LayoutOp> = { r: "rotate", f: "flip", "[": "earlier", "]": "later" };
 function key(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
@@ -78,12 +56,6 @@ function key(e: KeyboardEvent) {
   if (e.key.toLowerCase() === "a") {
     e.preventDefault();
     approveSelected();
-    return;
-  }
-  const op = shortcuts[e.key.toLowerCase()];
-  if (op && layoutTarget) {
-    e.preventDefault();
-    void layout(op);
   }
 }
 
@@ -278,9 +250,6 @@ function showChange(c: { block: string; kind: string; key: string }) {
           {model}
           {selection}
           onselect={select}
-          layout={preview ? undefined : layoutTarget}
-          onlayout={(op) => void layout(op)}
-          {layoutMessage}
         />
         <IssueList
           issues={model.issues}

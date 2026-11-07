@@ -12,8 +12,6 @@ export {
 export { embedVersion, partstyleVersion } from "./project/version.js";
 export {
   embedReferences,
-  type LayoutOp,
-  layoutOps,
   readGuide,
   Workspace,
 } from "./project/workspace.js";

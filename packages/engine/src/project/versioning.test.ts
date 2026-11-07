@@ -200,13 +200,6 @@ describe("versioning", () => {
         /^viewing variant buck .*\nselected in the viewer:\n {2}PWR\/R91 /,
       );
 
-      // A hint on a block buck takes from main is main's: it does not copy the block.
-      expect((await buck.setLayout("sensor_afe", "R4", "rotate")).ok).toBe(true);
-      expect(await readFile(path.join(project, "circuit/sensor_afe.ckt"), "utf8")).toContain(
-        "part R4 res(100k, 1%, 0603) [r90]",
-      );
-      expect(await has(own("buck", "circuit/sensor_afe.ckt"))).toBe(false);
-
       const changes = (await buck.changes()).text;
       expect(changes).toMatch(/^C1 apply /m);
       expect((await buck.revert("C2")).ok).toBe(true);

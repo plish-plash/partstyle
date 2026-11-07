@@ -53,20 +53,6 @@ export function statementsOf(ast: CktFile): Statement[] {
   ];
 }
 
-/**
- * A replacement part or use keeps the layout hint of the statement it replaces unless it gives
- * one (`[]` clears it): an edit to a value must not undo the human's layout.
- */
-function keepLayout(s: Statement, old: Statement): Statement {
-  if (s.kind === "part" && old.kind === "part" && s.decl.layout === undefined) {
-    return old.decl.layout ? { kind: "part", decl: { ...s.decl, layout: old.decl.layout } } : s;
-  }
-  if (s.kind === "use" && old.kind === "use" && s.decl.layout === undefined) {
-    return old.decl.layout ? { kind: "use", decl: { ...s.decl, layout: old.decl.layout } } : s;
-  }
-  return s;
-}
-
 const removableKinds = new Set<string>(["port", "part", "use", "net", "nc", "waive"]);
 const reservedNameChars = /[./]/;
 
@@ -155,7 +141,7 @@ class FileEdit {
       throw new PatchError(`${s.kind} ${keyOf(s)} is declared more than once; remove one first`);
     }
     const old = existing[0] as Statement;
-    this.rewrite(new Map([[old.decl.location.line, printStatement(keepLayout(s, old))]]));
+    this.rewrite(new Map([[old.decl.location.line, printStatement(s)]]));
   }
 
   /** Removes a statement, and pinrefs/port bindings that pointed at it. Returns follow-on notes. */

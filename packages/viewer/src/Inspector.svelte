@@ -1,18 +1,13 @@
 <script lang="ts">
-import type { PlacedHint, ViewerModel } from "@partstyle/engine";
+import type { ViewerModel } from "@partstyle/engine";
 import * as api from "./api";
 
 interface Props {
   model: ViewerModel;
   selection: string[];
   onselect: (subjects: string[], additive: boolean) => void;
-  /** How the selected part or sheet is drawn on the sheet shown, when it can be edited. */
-  layout?: PlacedHint | undefined;
-  onlayout?: (op: api.LayoutOp) => void;
-  layoutMessage?: string;
 }
-let { model, selection, onselect, layout, onlayout, layoutMessage = "" }: Props = $props();
-const storedAny = $derived(layout ? Object.keys(layout.stored).length > 0 : false);
+let { model, selection, onselect }: Props = $props();
 
 const subject = $derived(selection[0]);
 const part = $derived(subject ? model.parts[subject] : undefined);
@@ -173,27 +168,6 @@ async function verify(id: string) {
   {:else}
     <h2>{subject}</h2>
     <p class="muted">No longer in the design.</p>
-  {/if}
-
-  {#if layout && onlayout}
-    <h3>Layout</h3>
-    <p class="layout-state">
-      stage {layout.stage}{layout.stored.stage === undefined ? " (auto)" : ""}
-      · {layout.turnable ? `turned ${layout.rotation}°` : layout.flip ? "flipped" : "not flipped"}{layout.stored.rotation === undefined && layout.stored.flip === undefined ? " (auto)" : ""}
-      {#if layout.group !== layout.ref}· drawn with {layout.group}{/if}
-    </p>
-    <div class="layout-buttons">
-      <button title="Move to the stage before (shortcut [)" onclick={() => onlayout("earlier")}>◀ Stage</button>
-      <button title="Move to the stage after (shortcut ])" onclick={() => onlayout("later")}>Stage ▶</button>
-      {#if layout.turnable}
-        <button title="Turn a quarter turn (shortcut R)" onclick={() => onlayout("rotate")}>Rotate</button>
-      {/if}
-      <button title="Mirror left to right; a two-terminal part turns half way (shortcut F)" onclick={() => onlayout("flip")}>Flip</button>
-      {#if storedAny}
-        <button title="Forget this part's layout and place it automatically" onclick={() => onlayout("reset")}>Auto</button>
-      {/if}
-    </div>
-    {#if layoutMessage}<p class="message">{layoutMessage}</p>{/if}
   {/if}
 
   {#if subject}

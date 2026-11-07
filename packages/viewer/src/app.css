@@ -303,28 +303,6 @@ textarea {
   font-size: 0.85rem;
 }
 
-.layout-state {
-  margin: 0.2rem 0 0.4rem;
-}
-
-.layout-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-/* Stage numbers over each stage's column, while a part of the sheet is selected. */
-.stage-tag {
-  fill: var(--ui-muted);
-  font-size: 1.6px;
-  opacity: 0.8;
-}
-
-.stage-tag.mine {
-  fill: var(--sheet);
-  font-weight: 600;
-}
-
 /* Sheet drawing, in mm. */
 svg text {
   font-family: "KiCad Font", "Segoe UI", sans-serif;

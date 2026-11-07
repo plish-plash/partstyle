@@ -128,19 +128,6 @@ describe("viewer server", () => {
     expect((await fetch(new URL("api/model?variant=nope", viewer.url))).status).toBe(404);
   });
 
-  it("edits a part's layout and refuses unknown edits", async () => {
-    const r = (await (
-      await post("api/layout", { block: "sensor_afe", ref: "R4", op: "rotate" })
-    ).json()) as { ok: boolean };
-    expect(r.ok).toBe(true);
-    expect(await readFile(path.join(project, "circuit/sensor_afe.ckt"), "utf8")).toContain(
-      "part R4 res(100k, 1%, 0603) [r90]",
-    );
-    expect((await post("api/layout", { block: "sensor_afe", ref: "R4", op: "nudge" })).status).toBe(
-      400,
-    );
-  });
-
   it("sets the review mode for the project", async () => {
     const mode = async () =>
       (

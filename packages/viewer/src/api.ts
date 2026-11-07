@@ -55,12 +55,6 @@ export const verifyPart = (id: string) => post<{ ok: boolean; text: string }>("a
 export const approve = (parts: string[], undo: boolean, variant?: string) =>
   post<Result>("api/approve", { parts, undo, variant });
 
-/** A layout edit to a part or child sheet: see `Workspace.setLayout`. */
-export type LayoutOp = "rotate" | "flip" | "earlier" | "later" | "reset";
-
-export const setLayout = (block: string, ref: string, op: LayoutOp, variant?: string) =>
-  post<Result>("api/layout", { block, ref, op, variant });
-
 /**
  * Calls `onChange` whenever the project's files change, and `onProject` with the name when the
  * server switches to another project; returns an unsubscribe function.

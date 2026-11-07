@@ -1,6 +1,6 @@
 import type { CktFile, PortKind } from "../ckt/ast.js";
 import { type SchSymbol, symbolKey } from "../kicad/libsym.js";
-import type { PowerLibrary, PowerSymbol } from "../kicad/power.js";
+import { groundName, type PowerLibrary, type PowerSymbol } from "../kicad/power.js";
 import type { FlatNet, FlatPart, Netlist } from "../netlist/elaborate.js";
 
 /** One placement of a block in the hierarchy, in depth-first page order. */
@@ -17,9 +17,8 @@ export interface Instance {
 
 /** How one block-local net is drawn. */
 export type NetPlan =
-  | { kind: "power"; name: string; symbol: PowerSymbol }
-  | { kind: "wire"; port?: { name: string; kind: PortKind } }
-  | { kind: "label"; text: string; shape?: string };
+  | { kind: "power"; name: string; symbol: PowerSymbol; ground: boolean }
+  | { kind: "signal"; port?: { name: string; kind: PortKind } };
 
 export interface DrawingPlan {
   instances: Instance[];
@@ -45,9 +44,6 @@ export const shapeOf: Record<PortKind, string> = {
   ground: "passive",
 };
 
-/** Nets with at most this many connection points in one sheet are routed as wires. */
-export const MAX_WIRED_ITEMS = 6;
-
 const bare = (name: string) => name.slice(name.lastIndexOf("/") + 1);
 
 /** Nets drawn with power symbols: anything with power pins or passing through a power/ground port. */
@@ -56,8 +52,8 @@ const isPowerNet = (n: FlatNet) =>
   n.portKinds.some((k) => k === "ground" || k === "power_in" || k === "power_out");
 
 /**
- * Decides, for every block, how each net is drawn, independent of geometry: power symbols for
- * rails, wires for small nets, labels otherwise; and where PWR_FLAGs go.
+ * Decides, for every block, which nets are drawn with power symbols and where PWR_FLAGs go,
+ * independent of geometry. Layout decides whether the rest are wires or labels.
  */
 export function planDrawing(input: {
   blocks: CktFile[];
@@ -114,15 +110,7 @@ export function planDrawing(input: {
     return globalCache.get(key);
   };
 
-  const partsByPath = new Map(input.netlist.parts.map((p) => [p.path, p]));
   const symbolOf = (part: FlatPart) => input.symbols.get(symbolKey(part));
-
-  /** A child port is drawn without a sheet pin when its net is a global power net. */
-  const portIsGlobal = (childBlock: string, port: string): boolean => {
-    const child = blocks.get(childBlock);
-    const net = child?.nets.find((n) => n.port === port);
-    return net !== undefined && globalNameOf(childBlock, net.name) !== undefined;
-  };
 
   const plans = new Map<string, NetPlan>();
   const planFor = (blockName: string, localNet: string): NetPlan => {
@@ -137,34 +125,10 @@ export function planDrawing(input: {
     const global = globalNameOf(blockName, localNet);
     const flat = flatByAlias.get((instancesOf(blockName)[0]?.prefix ?? "") + localNet);
     if (global !== undefined) {
-      const ground = flat?.portKinds.includes("ground") ?? false;
-      plan = { kind: "power", name: global, symbol: input.power.forNet(global, ground) };
+      const ground = (flat?.portKinds.includes("ground") ?? false) || groundName.test(global);
+      plan = { kind: "power", name: global, symbol: input.power.forNet(global, ground), ground };
     } else {
-      // Count what this sheet connects: visible pins, sheet pins of child instances, and the
-      // hierarchical label if the net is a port.
-      const first = instancesOf(blockName)[0];
-      let items = port ? 1 : 0;
-      for (const ref of decl?.pins ?? []) {
-        const part = first && partsByPath.get(first.prefix + ref.target);
-        if (part) {
-          const byNumber = part.pins.filter((p) => p.number === ref.pin);
-          const matched =
-            byNumber.length > 0
-              ? byNumber.length
-              : part.pins.filter((p) => p.name === ref.pin).length;
-          items += matched;
-        } else {
-          const use = block.uses.find((u) => u.instance === ref.target);
-          if (use && !portIsGlobal(use.block, ref.pin)) items += 1;
-        }
-      }
-      if (items >= 2 && items <= MAX_WIRED_ITEMS) {
-        plan = { kind: "wire", ...(port && { port: { name: port.name, kind: port.kind } }) };
-      } else if (port) {
-        plan = { kind: "label", text: port.name, shape: shapeOf[port.kind] };
-      } else {
-        plan = { kind: "label", text: localNet };
-      }
+      plan = { kind: "signal", ...(port && { port: { name: port.name, kind: port.kind } }) };
     }
     plans.set(key, plan);
     return plan;

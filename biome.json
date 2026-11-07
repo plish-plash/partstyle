@@ -7,7 +7,13 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/*.svelte", "!**/.claude/commands"]
+    "includes": [
+      "**",
+      "!**/*.svelte",
+      "!**/.claude/commands",
+      "!layout/baselines",
+      "!layout/presets"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -34,5 +40,17 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["layout/packages/tester/src/**/*.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    }
+  ]
 }

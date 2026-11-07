@@ -104,7 +104,7 @@ lacks become draft part records to complete.
 | [docs/ckt-grammar.md](docs/ckt-grammar.md)   | The `.ckt` language and patches                                      |
 | [docs/issues.md](docs/issues.md)             | Every issue code                                                     |
 | [docs/part-records.md](docs/part-records.md) | The part record format                                               |
-| [docs/layout.md](docs/layout.md)             | How sheets are laid out, and how to steer the layout                 |
+| [docs/layout.md](docs/layout.md)             | How sheets are laid out                                              |
 | [docs/design.md](docs/design.md)             | Design rationale and architecture                                    |
 
 ## Development

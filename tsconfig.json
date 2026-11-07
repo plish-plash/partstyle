@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "layout/packages/layout" },
     { "path": "packages/engine" },
     { "path": "packages/server" },
     { "path": "packages/mcp" },

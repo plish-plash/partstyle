@@ -137,15 +137,6 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
     onselect([subject], e.shiftKey);
   };
 
-  /** Each group's extent and stage, shown while a part of this sheet is selected. */
-  /** One label per stage, centred over its column, while a part of this sheet is selected. */
-  const stageTags = $derived.by(() => {
-    const local = selection.flatMap((s) => (s.startsWith(prefix) ? [s.slice(prefix.length).replace(/\/$/, "")] : []));
-    const mine = new Set(layout.hints.filter((h) => local.includes(h.ref)).map((h) => h.stage));
-    if (mine.size === 0) return [];
-    return layout.stages.map((s) => ({ ...s, mine: mine.has(s.stage) }));
-  });
-
   /** Label text runs away from its connection point. */
   const labelJustify = (angle: number) => (angle === 180 || angle === 270 ? ["right"] : ["left"]);
 </script>
@@ -314,10 +305,6 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
         >
       {/each}
     </g>
-  {/each}
-
-  {#each stageTags as t, i (i)}
-    <text x={t.x + t.w / 2} y={t.top - 3} text-anchor="middle" class="stage-tag" class:mine={t.mine}>stage {t.stage}</text>
   {/each}
 
   {#each markers as m, i (i)}

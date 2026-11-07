@@ -1,6 +1,6 @@
 import type { NetDecl, PartDecl, Statement, StatementKind } from "../ckt/ast.js";
 import { parseCkt } from "../ckt/parser.js";
-import { printLayout, printPinRef, printSpec, printStatement } from "../ckt/print.js";
+import { printPinRef, printSpec, printStatement } from "../ckt/print.js";
 import { keyOf, statementsOf } from "../patch.js";
 import type { TextFile } from "../project/source.js";
 
@@ -19,8 +19,6 @@ export interface StatementChange {
   /** Printed statement(s); waivers sharing a subject are joined by newlines. */
   before?: string;
   after?: string;
-  /** Only the layout hint of a part or use changed: presentation, not circuit. */
-  layout?: true;
 }
 
 export type ChangeOp = "+" | "-" | "~";
@@ -33,8 +31,6 @@ interface Entry {
   printed: string;
   /** For comparison: net pins sorted, since their order means nothing. */
   canonical: string;
-  /** The same without its layout hint. */
-  circuit: string;
 }
 
 const canonical = (s: Statement): string =>
@@ -47,14 +43,6 @@ const canonical = (s: Statement): string =>
         },
       })
     : printStatement(s);
-
-const withoutLayout = (s: Statement): Statement => {
-  if (s.kind === "part" || s.kind === "use") {
-    const { layout: _, ...decl } = s.decl;
-    return { ...s, decl } as Statement;
-  }
-  return s;
-};
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -75,13 +63,11 @@ function index(files: TextFile[]): Map<string, Entry> {
               file: f.file,
               printed: `${prev.printed}\n${printStatement(s)}`,
               canonical: [prev.canonical, canonical(s)].sort().join("\n"),
-              circuit: [prev.canonical, canonical(s)].sort().join("\n"),
             }
           : {
               file: f.file,
               printed: printStatement(s),
               canonical: canonical(s),
-              circuit: canonical(withoutLayout(s)),
             };
       out.set(id, entry);
     }
@@ -108,7 +94,6 @@ export function diffCircuits(before: TextFile[], after: TextFile[]): StatementCh
       key,
       ...(x && { before: x.printed }),
       ...(y && { after: y.printed }),
-      ...(x && y && x.circuit === y.circuit && { layout: true as const }),
     });
   }
   return changes.sort(
@@ -130,13 +115,6 @@ export function describeChange(c: StatementChange): string {
   const op = opOf(c);
   if (op === "+") return `+ ${(c.after as string).split("\n").join("; ")}`;
   if (op === "-") return `- ${c.kind} ${c.key}`;
-  if (c.layout) {
-    const hint = (printed: string) => {
-      const { parts, uses } = parsed(printed);
-      return printLayout(parts[0]?.layout ?? uses[0]?.layout).trim() || "auto";
-    };
-    return `~ ${c.kind} ${c.key} layout ${hint(c.after as string)} (was ${hint(c.before as string)})`;
-  }
   if (c.kind === "net") {
     const x = netOf(c.before as string);
     const y = netOf(c.after as string);
@@ -155,7 +133,7 @@ export function describeChange(c: StatementChange): string {
     // Name only what changed: the spec, the intent, or both.
     const x = parsed(c.before as string).parts[0];
     const y = parsed(c.after as string).parts[0];
-    if (x && y && printLayout(x.layout) === printLayout(y.layout)) {
+    if (x && y) {
       const spec = (p: PartDecl) => printSpec(p.spec);
       const intent = (p: PartDecl) => (p.intent === undefined ? "(no intent)" : `@ ${p.intent}`);
       if (x.intent === y.intent) return `~ part ${c.key} ${spec(y)} (was ${spec(x)})`;
@@ -186,14 +164,10 @@ export function formatChanges(changes: StatementChange[], ids?: string[]): strin
       continue;
     }
     lines.push(`${block}:`);
-    // Without ids to revert by, layout edits are one line: the AI only needs to know they happened.
-    const folded = ids ? [] : mine.filter((c) => c.layout);
     for (const c of mine) {
-      if (folded.includes(c)) continue;
       const id = ids ? `${ids[changes.indexOf(c)]} ` : "";
       lines.push(`  ${id}${describeChange(c)}`);
     }
-    if (folded.length > 0) lines.push(`  layout edited: ${folded.map((c) => c.key).join(" ")}`);
   }
   return lines;
 }

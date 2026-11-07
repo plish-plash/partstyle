@@ -1,0 +1,25 @@
+{
+  "name": "@partstyle/layout-tools",
+  "version": "0.2.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @partstyle/layout-tester dev",
+    "score": "tsx packages/tester/scripts/score.ts",
+    "dump": "tsx packages/tester/scripts/dump.ts",
+    "notes": "tsx packages/tester/scripts/notes.ts",
+    "test": "pnpm -w test layout/packages",
+    "typecheck": "tsc -p tsconfig.json && pnpm --filter @partstyle/layout-tester check",
+    "lint": "pnpm -w exec biome check layout",
+    "format": "pnpm -w exec biome check --write layout",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@partstyle/layout": "workspace:*",
+    "@partstyle/layout-cases": "workspace:*",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.19.0",
+    "typescript": "^7.0.2"
+  }
+}

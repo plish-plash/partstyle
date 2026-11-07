@@ -41,23 +41,6 @@ waive SUBJECT CODE "reason"                       # suppress a warning
   is a refdes, pinref or net, relative to the block, where `*` matches anything (`U4.PD*`), and
   CODE is the issue code. Waivers are the person's decision. Unused waivers are reported.
 
-## Layout hints
-
-`part R4 res(4.7k) [2 r90]`, `part J2 lib:X [1 flip]`, `use filter as F1 [3]`: how the human
-arranged the drawing in the viewer. Each item is optional; whatever is left out is chosen
-automatically. They change only the drawing, never the circuit.
-
-- **Stage** (`1`, `2`, ...): position in the signal chain. A sheet is drawn as groups (a part with
-  the passives that ride along with it: decoupling, shunts, series parts) placed left to right
-  by stage, wrapping onto new rows. Groups with the same stage share a column: side by side
-  while they fit its width, else stacked. A stage on a passive
-  gives it a group of its own.
-- **`r0` `r90` `r180` `r270`**: rotation of a two-terminal part (R, C, L, F, FB, D, LED).
-- **`flip` / `noflip`**: mirror anything else left to right, or keep it as the library draws it.
-
-Keep hints when editing a statement: `= part R4 res(30.9k)` without brackets keeps R4's hint, and
-`[]` clears it. A diff reports layout-only edits as one line per block.
-
 ## Hierarchy
 
 ```

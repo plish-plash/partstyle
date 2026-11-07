@@ -419,14 +419,11 @@ describe("approvals", () => {
     expect(await q(w, "parts where approved = changed")).toMatch(/^1 part\nC1 /);
   });
 
-  it("ignores layout and intent, and doesn't touch a part already approved", async () => {
+  it("ignores intent, and doesn't touch a part already approved", async () => {
     const { w, dir } = await fresh("sign-off-layout");
     await w.approve("R1", { by: "person" });
     const main = path.join(dir, "circuit/main.ckt");
-    await writeFile(
-      main,
-      (await readFile(main, "utf8")).replace("res(1k)", "res(1k) [2 r90] @ pull-up"),
-    );
+    await writeFile(main, (await readFile(main, "utf8")).replace("res(1k)", "res(1k) @ pull-up"));
     expect(await q(w, "parts where approved = yes")).toMatch(/^1 part\nR1 /);
     await w.approve("all", { by: "ai" });
     expect(await readFile(path.join(dir, "approvals.yaml"), "utf8")).toMatch(

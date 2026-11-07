@@ -13,9 +13,8 @@ import { symbolForGeneric, symbolForRecord } from "../kicad/symbols.js";
 import type { FlatPart, Netlist } from "../netlist/elaborate.js";
 import { type ProjectConfig, TOP_BLOCK } from "../project/config.js";
 import type { ValidationResult } from "../validate.js";
+import { layoutSheet } from "./adapter.js";
 import { checkConnectivity } from "./connectivity.js";
-import { layoutSheet } from "./layout.js";
-import { turnable } from "./orient.js";
 import { type DrawingPlan, planDrawing } from "./plan.js";
 import type { SheetLayout } from "./types.js";
 
@@ -176,23 +175,6 @@ export async function prepareDrawing(
   const sheets = new Map<string, SheetLayout>();
   for (const block of result.blocks) {
     if (plan.instancesOf(block.block.name).length === 0) continue;
-    for (const p of block.parts) {
-      const bad =
-        p.layout?.rotation !== undefined && !turnable.test(p.ref)
-          ? `${p.ref} is not a two-terminal part, so it cannot be turned (flip it instead); r${p.layout.rotation} is ignored`
-          : p.layout?.flip !== undefined && turnable.test(p.ref)
-            ? `${p.ref} is a two-terminal part, so it turns rather than flips (r180 reverses it); ${p.layout.flip ? "flip" : "noflip"} is ignored`
-            : undefined;
-      if (bad) {
-        issues.push({
-          code: "layout.bad-hint",
-          severity: "warning",
-          message: bad,
-          location: p.location,
-          subjects: [p.ref],
-        });
-      }
-    }
     const sheet = layoutSheet(block, plan, netlist, blocks);
     sheets.set(block.block.name, sheet);
     for (const problem of checkConnectivity(sheet)) {

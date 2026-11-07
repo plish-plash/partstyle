@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ViewerModel } from "@partstyle/engine";
-import { type LayoutOp, layoutOps, type Workspace } from "@partstyle/engine/node";
+import type { Workspace } from "@partstyle/engine/node";
 
 export interface ViewerServer {
   url: string;
@@ -101,7 +101,7 @@ const str = (v: unknown, name: string, max = 2000): string => {
 /**
  * Serves the viewer for one project at a time on 127.0.0.1: the built web app, the drawing
  * model, live change events, and the few writes the viewer makes (focus, comments, part
- * verification, approvals, layout edits, review actions). Tries successive ports when the default is taken (several projects can be
+ * verification, approvals, review actions). Tries successive ports when the default is taken (several projects can be
  * viewed at once).
  */
 export async function startViewer(
@@ -202,21 +202,6 @@ export async function startViewer(
       const w = await target(typeof body.variant === "string" ? body.variant : undefined);
       if (url.pathname === "/api/revert") {
         send(200, await w.revert(str(body.id, "id", 40)));
-        return;
-      }
-      if (url.pathname === "/api/layout") {
-        const op = body.op;
-        if (typeof op !== "string" || !(layoutOps as readonly string[]).includes(op)) {
-          throw new HttpError(400, "bad op");
-        }
-        send(
-          200,
-          await w.setLayout(
-            str(body.block, "block", 200),
-            str(body.ref, "ref", 200),
-            op as LayoutOp,
-          ),
-        );
         return;
       }
       if (url.pathname === "/api/approve") {
