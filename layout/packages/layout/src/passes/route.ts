@@ -386,10 +386,9 @@ class Router {
     return out;
   }
 
-  /** Checks a group of known wires and commits them, or leaves them for the search. */
-  commitFixed(group: Wire[]): boolean {
-    const name = group[0]?.net as string;
-    const net = this.id(name);
+  /** Whether a group of known wires can be drawn exactly as given. */
+  canFix(group: Wire[]): boolean {
+    const net = this.id(group[0]?.net as string);
     for (const w of group) {
       const [dx, dy] = [Math.sign(w.b.x - w.a.x), Math.sign(w.b.y - w.a.y)];
       const d = dx === 1 ? 0 : dx === -1 ? 2 : dy === 1 ? 3 : 1;
@@ -409,6 +408,14 @@ class Router {
         i += step;
       }
     }
+    return true;
+  }
+
+  /** Checks a group of known wires and commits them, or leaves them for the search. */
+  commitFixed(group: Wire[]): boolean {
+    if (!this.canFix(group)) return false;
+    const name = group[0]?.net as string;
+    const net = this.id(name);
     for (const w of group) {
       const [dx, dy] = [Math.sign(w.b.x - w.a.x), Math.sign(w.b.y - w.a.y)];
       const d = dx === 1 ? 0 : dx === -1 ? 2 : dy === 1 ? 3 : 1;
@@ -705,7 +712,7 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
             continue;
           }
         }
-        const label = placeLabel(net, piece, req, labels, r.all());
+        const label = placeLabel(net, piece, req, labels, r);
         if (!label) continue;
         labels.push(label.label);
         if (label.stub) {
@@ -757,7 +764,7 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
     const pin = req.pins.find((p) => p.at.x === at.x && p.at.y === at.y && p.net !== undefined);
     if (!pin) continue;
     const net = pin.net as string;
-    const label = placeLabel(net, [pin], req, labels, r.all());
+    const label = placeLabel(net, [pin], req, labels, r);
     if (!label) continue;
     labels.push(label.label);
     if (label.stub) {
@@ -858,17 +865,23 @@ function labelHits(r: Rect, req: RouteRequest, labels: NetLabel[], wires: Wire[]
   });
 }
 
+/**
+ * Finds a label's spot, on the shortest stub that can actually be drawn: one that runs into
+ * something would leave the router to take the long way round, so the label sits on the pin
+ * instead, even if its text then overlaps something.
+ */
 function placeLabel(
   net: string,
   piece: PlacedPin[],
   req: RouteRequest,
   labels: NetLabel[],
-  wires: Wire[],
+  r: Router,
 ): { label: NetLabel; stub?: Wire[] } | undefined {
   const leader = piece[0];
   if (!leader) return undefined;
   const boxFor = (at: Pt, d: Direction) => labelBox(net, at, d);
-  const hit = (r: Rect) => labelHits(r, req, labels, wires);
+  const wires = r.all();
+  const hit = (box: Rect) => labelHits(box, req, labels, wires);
   // A pin on a part's top or bottom takes a short step out, then runs sideways past the part.
   if (leader.outward === 90 || leader.outward === 270) {
     const body = req.bodies.find(
@@ -888,14 +901,12 @@ function placeLabel(
           const at = { x: side === 1 ? body.x + body.w + 1 : body.x - 1, y };
           const way: Direction = side === 1 ? 0 : 180;
           const box = boxFor(at, way);
-          if (hit(box)) continue;
-          return {
-            label: { net, text: net, kind: "local", at, outward: way, box },
-            stub: [
-              { net, a: leader.at, b: { x: leader.at.x, y } },
-              { net, a: { x: leader.at.x, y }, b: at },
-            ],
-          };
+          const stub = [
+            { net, a: leader.at, b: { x: leader.at.x, y } },
+            { net, a: { x: leader.at.x, y }, b: at },
+          ];
+          if (hit(box) || !r.canFix(stub)) continue;
+          return { label: { net, text: net, kind: "local", at, outward: way, box }, stub };
         }
       }
     }
@@ -904,11 +915,9 @@ function placeLabel(
   for (let k = 1; k <= 12; k++) {
     const at = { x: leader.at.x + step.x * k, y: leader.at.y + step.y * k };
     const box = boxFor(at, leader.outward);
-    if (!hit(box)) {
-      return {
-        label: { net, text: net, kind: "local", at, outward: leader.outward, box },
-        stub: [{ net, a: leader.at, b: at }],
-      };
+    const stub = [{ net, a: leader.at, b: at }];
+    if (!hit(box) && r.canFix(stub)) {
+      return { label: { net, text: net, kind: "local", at, outward: leader.outward, box }, stub };
     }
   }
   // Nowhere clear: sit on the pin itself. The text may crowd its neighbours, but it connects.

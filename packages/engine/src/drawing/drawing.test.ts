@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
+import { preferenceGroups } from "@partstyle/layout";
 import { beforeAll, describe, expect, it } from "vitest";
 import { applyPatch } from "../patch.js";
+import type { ProjectConfig } from "../project/config.js";
 import { loadProject } from "../project/load.js";
 import type { ProjectSource } from "../project/source.js";
 import { type ValidationResult, validateProject } from "../validate.js";
@@ -268,6 +270,46 @@ describe("prepareDrawing", () => {
       ].join("\n"),
     );
     expect(checkConnectivity(sheetOf(d, "chain"))).toEqual([]);
+  });
+
+  it("dots only where three or more things meet", () => {
+    const key = (p: { x: number; y: number }) => `${p.x},${p.y}`;
+    for (const sheet of drawing.sheets.values()) {
+      for (const l of sheet.labels) {
+        const ends = sheet.wires.filter((w) => key(w.a) === key(l.at) || key(w.b) === key(l.at));
+        if (ends.length === 1) {
+          expect(sheet.junctions.map((j) => key(j.at))).not.toContain(key(l.at));
+        }
+      }
+      for (const f of sheet.power.filter((p) => p.flag)) {
+        const at = key(f.at);
+        const things =
+          sheet.wires.filter((w) => key(w.a) === at || key(w.b) === at).length +
+          sheet.power.filter((p) => key(p.at) === at).length;
+        if (things >= 3) expect(sheet.junctions.map((j) => key(j.at))).toContain(at);
+      }
+    }
+  });
+
+  it("follows the project's layout preferences and stays connected at their limits", async () => {
+    const draw = (layout: Record<string, Record<string, number | string>>) =>
+      prepareDrawing(
+        { ...result, config: { ...(result.config as ProjectConfig), layout } },
+        { annotation: "", bom: "" },
+      );
+    const spread = await draw({ "pack-groups": { gap: 12 }, "shunt-hang": { spacing: 10 } });
+    expect(spread.sheets).not.toEqual(drawing.sheets);
+    expect(spread.issues.filter((i) => i.code.startsWith("layout."))).toEqual([]);
+    for (const group of preferenceGroups()) {
+      for (const p of group.params) {
+        const ends = p.type === "number" ? [p.min, p.max] : p.type === "enum" ? p.options : [];
+        for (const value of ends) {
+          const d = await draw({ [group.rule]: { [p.key]: value } });
+          const name = `${group.rule}.${p.key}=${value}`;
+          expect([name, d.issues.filter((i) => i.code.startsWith("layout."))]).toEqual([name, []]);
+        }
+      }
+    }
   });
 
   it("keeps wires out of every part", () => {

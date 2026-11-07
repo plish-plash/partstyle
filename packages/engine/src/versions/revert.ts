@@ -1,5 +1,4 @@
 import { parseCkt } from "../ckt/parser.js";
-import { printStatement } from "../ckt/print.js";
 import type { TextFile } from "../project/source.js";
 import { diffCircuits, opOf, type StatementChange } from "./diff.js";
 

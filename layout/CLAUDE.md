@@ -40,6 +40,9 @@ Hot reload keeps the previous layouts, so the user can compare without doing any
   connectors.
 - Every behaviour the user might want to adjust is a rule in `packages/layout/src/rules.ts`, with
   a plain-language description. The tester generates its controls from that list.
+- A parameter with a `preference` sentence appears in Partstyle's Layout tab. Only visual
+  preferences qualify: spacing, sizes, weights and the like, never an on/off switch or a number of
+  passes. `pnpm test` checks that each one changes at least one case.
 - `layoutBlock` must produce no hard failures for any rule setting or declaration order;
   `pnpm test` enforces this for every case. `pnpm score --orders 20` shows how much order matters.
   Add a test circuit to `packages/cases/src/cases.ts` when a new failure shape appears.

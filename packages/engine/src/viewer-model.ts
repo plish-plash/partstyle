@@ -1,3 +1,4 @@
+import { type PreferenceGroup, type Preferences, preferenceGroups } from "@partstyle/layout";
 import { type Approval, type Approvals, approvalStatus } from "./approvals.js";
 import type { StatementKind } from "./ckt/ast.js";
 import { printSpec } from "./ckt/print.js";
@@ -147,6 +148,17 @@ export interface VersionState {
 }
 
 /** Everything the viewer shows, as one JSON document. */
+/** The layout preferences people can adjust, and the values set for this design. */
+export interface LayoutControls {
+  groups: PreferenceGroup[];
+  values: Preferences;
+}
+
+export const layoutControls = (values: Preferences = {}): LayoutControls => ({
+  groups: preferenceGroups(),
+  values,
+});
+
 export interface ViewerModel {
   project: string;
   top: string;
@@ -160,6 +172,7 @@ export interface ViewerModel {
   nets: Record<string, { pins: string[]; attrs: Record<string, string>; aliases: string[] }>;
   comments: Comment[];
   focus: Focus;
+  layout: LayoutControls;
   /** Review and versioning state; the server adds it fresh to every model it sends. */
   versions?: VersionState;
   /** The variant shown, when not the main line. */
@@ -271,6 +284,7 @@ export function buildViewerModel(
   const { errors, warnings } = countIssues(result);
   return {
     project: drawing.config.name,
+    layout: layoutControls(drawing.config.layout),
     top: TOP_BLOCK,
     summary: { errors, warnings, waived: result.waived },
     issues: [...result.issues, ...drawing.issues],

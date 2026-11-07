@@ -1,4 +1,15 @@
-import { fingerprint, layoutBlock, measure, RULES, type RuleOverrides } from "@partstyle/layout";
+import {
+  fingerprint,
+  layoutBlock,
+  measure,
+  type ParamDef,
+  type Preferences,
+  preferenceGroups,
+  preferenceOverrides,
+  preferenceProblem,
+  RULES,
+  type RuleOverrides,
+} from "@partstyle/layout";
 import { describe, expect, it } from "vitest";
 import { shuffleInput } from "./builder.js";
 import { CASES } from "./cases.js";
@@ -51,6 +62,33 @@ describe.each(CASES.map((c) => [c.id, c] as const))("%s", (_id, c) => {
     for (const net of c.input.nets.filter((n) => n.flagged)) {
       expect(result.markers.filter((m) => m.net === net.name)).toHaveLength(1);
     }
+  });
+
+  it("dots exactly the points where three or more things meet", () => {
+    const key = (net: string, p: { x: number; y: number }) => `${net}@${p.x},${p.y}`;
+    const arms = new Map<string, Set<string>>();
+    for (const w of result.wires) {
+      const dx = Math.sign(w.b.x - w.a.x);
+      const dy = Math.sign(w.b.y - w.a.y);
+      const steps = Math.abs(w.b.x - w.a.x) + Math.abs(w.b.y - w.a.y);
+      for (let i = 0; i < steps; i++) {
+        const p = { x: w.a.x + dx * i, y: w.a.y + dy * i };
+        const q = { x: p.x + dx, y: p.y + dy };
+        arms.set(key(w.net, p), (arms.get(key(w.net, p)) ?? new Set()).add(key("", q)));
+        arms.set(key(w.net, q), (arms.get(key(w.net, q)) ?? new Set()).add(key("", p)));
+      }
+    }
+    const counts = new Map([...arms].map(([k, set]) => [k, set.size]));
+    for (const { net, at } of [
+      ...result.parts.flatMap((p) => p.pins),
+      ...result.power,
+      ...result.markers,
+      ...result.labels,
+    ]) {
+      if (net !== undefined) counts.set(key(net, at), (counts.get(key(net, at)) ?? 0) + 1);
+    }
+    const expected = [...counts].filter(([, n]) => n >= 3).map(([k]) => k);
+    expect(result.junctions.map((j) => key(j.net, j.at)).sort()).toEqual(expected.sort());
   });
 
   it("gives the same drawing every time", () => {
@@ -174,6 +212,83 @@ describe("every rule", () => {
   it.each(RULES.map((r) => r.id))("%s changes at least one case when turned off", (id) => {
     const changed = CASES.filter((c) => drawn(c, {}) !== drawn(c, { [id]: { enabled: false } }));
     expect(changed.length).toBeGreaterThan(0);
+  });
+});
+
+describe("preferences", () => {
+  const params = preferenceGroups().flatMap((g) => g.params.map((p) => [g.rule, p] as const));
+  const set = (entries: (readonly [string, string, number | string])[]): RuleOverrides => {
+    const prefs: Preferences = {};
+    for (const [rule, key, value] of entries) prefs[rule] = { ...prefs[rule], [key]: value };
+    return preferenceOverrides(prefs);
+  };
+  const ends = (p: ParamDef): (number | string)[] =>
+    p.type === "number" ? [p.min, p.max] : p.type === "enum" ? p.options : [];
+
+  it.each(params.map(([rule, p]) => [`${rule}.${p.key}`, rule, p] as const))(
+    "%s changes at least one case",
+    (_name, rule, p) => {
+      const changed = CASES.filter((c) =>
+        ends(p).some(
+          (v) =>
+            fingerprint(layoutBlock(c.input, set([[rule, p.key, v]]))) !==
+            fingerprint(layoutBlock(c.input)),
+        ),
+      );
+      expect(changed.length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([0, 1])("keeps every case intact with all of them at one extreme (%i)", (end) => {
+    const overrides = set(
+      params.map(([rule, p]) => [rule, p.key, ends(p)[end] as number | string]),
+    );
+    for (const c of CASES) {
+      const { metrics, issues } = measure(c.input, layoutBlock(c.input, overrides));
+      expect(metrics.hardFailures, `${c.id}: ${issues.map((i) => i.message).join("; ")}`).toBe(0);
+    }
+  });
+
+  it("refuses anything that is not a preference, or out of range", () => {
+    expect(preferenceProblem("label-fallback", "detourLimit", 40)).toBeUndefined();
+    expect(preferenceProblem("decoupling-near-pin", "side", "below")).toBeUndefined();
+    expect(preferenceProblem("label-fallback", "detourLimit", 81)).toContain("from 4 to 80");
+    expect(preferenceProblem("shunt-hang", "spacing", 4.5)).toContain("steps of 1");
+    expect(preferenceProblem("decoupling-near-pin", "side", "left")).toContain("one of");
+    expect(preferenceProblem("route-costs", "ripupPasses", 2)).toContain("not a layout");
+    expect(preferenceProblem("min-crossings", "sweeps", 2)).toContain("not a layout");
+    expect(preferenceProblem("chain-rows", "endStyle", "inline")).toContain("not a layout");
+  });
+});
+
+describe("labels", () => {
+  // A low limit turns as many nets as possible into labels.
+  const overrides = { "label-fallback": { params: { crossingLimit: 1, detourLimit: 4 } } };
+
+  it.each(CASES.map((c) => [c.id, c] as const))("%s keeps label stubs short", (_id, c) => {
+    const r = layoutBlock(c.input, overrides);
+    const key = (p: { x: number; y: number }) => `${p.x},${p.y}`;
+    const stops = new Set(r.junctions.map((j) => key(j.at)));
+    for (const part of r.parts) for (const p of part.pins) stops.add(key(p.at));
+    for (const label of r.labels.filter((l) => l.kind === "local")) {
+      // Walk back along the stub to the pin or wire it leaves: at most one corner.
+      let at = label.at;
+      let from: { x: number; y: number } | undefined;
+      let segments = 0;
+      while (!stops.has(key(at))) {
+        const next = r.wires.find(
+          (w) =>
+            w.net === label.net &&
+            (key(w.a) === key(at) || key(w.b) === key(at)) &&
+            (from === undefined || (key(w.a) !== key(from) && key(w.b) !== key(from))),
+        );
+        if (!next) break;
+        segments++;
+        from = at;
+        at = key(next.a) === key(at) ? next.b : next.a;
+      }
+      expect([label.text, segments <= 2]).toEqual([label.text, true]);
+    }
   });
 });
 

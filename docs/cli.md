@@ -63,6 +63,7 @@ partstyle init boards/thermo --name thermo
 | `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                           |
 | `sourcing.distributors` | distributors to use, in order: `lcsc`, `digikey`, `mouser`. `bom export` prefers them, and the viewer links only to them |
 | `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                                                          |
+| `layout`                | visual layout preferences, set from the viewer's Layout tab (see [layout.md](layout.md#preferences))                     |
 
 `external_interfaces` lists every connection to the outside world, the power input included:
 what the person says the board will face at each connector. Hazards are for the AI and design

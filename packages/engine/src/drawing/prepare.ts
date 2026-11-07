@@ -175,7 +175,7 @@ export async function prepareDrawing(
   const sheets = new Map<string, SheetLayout>();
   for (const block of result.blocks) {
     if (plan.instancesOf(block.block.name).length === 0) continue;
-    const sheet = layoutSheet(block, plan, netlist, blocks);
+    const sheet = layoutSheet(block, plan, netlist, blocks, config.layout);
     sheets.set(block.block.name, sheet);
     for (const problem of checkConnectivity(sheet)) {
       issues.push({

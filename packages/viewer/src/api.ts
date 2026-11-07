@@ -27,6 +27,16 @@ export async function fetchModel(view: View = {}): Promise<ViewerModel> {
 
 type Result = { ok: boolean; text: string };
 
+export const setLayoutPreference = (
+  rule: string,
+  key: string,
+  value: number | string,
+  variant?: string,
+) => post<Result>("api/layout", { rule, key, value, variant });
+
+export const resetLayoutPreferences = (variant?: string) =>
+  post<Result>("api/layout", { reset: true, variant });
+
 export const revert = (id: string, variant?: string) => post<Result>("api/revert", { id, variant });
 
 export const checkpoint = (message: string, variant?: string) =>

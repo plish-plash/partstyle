@@ -144,6 +144,28 @@ describe("viewer server", () => {
     expect((await post("api/review-mode", { mode: "sometimes" })).status).toBe(400);
   });
 
+  it("redraws with layout preferences straight away, and refuses bad ones", async () => {
+    const model = async () =>
+      (await (await fetch(new URL("api/model", viewer.url))).json()) as {
+        layout: { groups: { rule: string }[]; values: Record<string, Record<string, unknown>> };
+        sheets: { block: string; layout: unknown }[];
+      };
+    const before = await model();
+    expect(before.layout.groups.length).toBeGreaterThan(0);
+    const set = { rule: "pack-groups", key: "gap", value: 12 };
+    expect((await post("api/layout", set)).status).toBe(200);
+    const after = await model();
+    expect(after.layout.values).toEqual({ "pack-groups": { gap: 12 } });
+    expect(after.sheets).not.toEqual(before.sheets);
+
+    const bad = await post("api/layout", { ...set, value: 99 });
+    expect(((await bad.json()) as { ok: boolean }).ok).toBe(false);
+    expect((await post("api/layout", { ...set, value: true })).status).toBe(400);
+
+    expect((await post("api/layout", { reset: true })).status).toBe(200);
+    expect((await model()).layout.values).toEqual({});
+  });
+
   it("switches to another project, telling open pages", async () => {
     const other = new Workspace(path.join(tmp, "other"));
     await other.init({ name: "other" });

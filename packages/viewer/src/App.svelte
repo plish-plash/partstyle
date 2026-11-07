@@ -5,6 +5,7 @@ import * as api from "./api";
 import Changes from "./Changes.svelte";
 import Inspector from "./Inspector.svelte";
 import IssueList from "./IssueList.svelte";
+import LayoutPanel from "./LayoutPanel.svelte";
 import Sheet from "./Sheet.svelte";
 
 const params = new URLSearchParams(location.search);
@@ -17,7 +18,9 @@ let restored = false;
 /** The variant shown (?variant=NAME), and a pending patch drawn as if accepted. */
 let variant = $state<string | undefined>(params.get("variant") ?? undefined);
 let preview = $state<string | undefined>();
-let tab = $state<"inspect" | "changes">(params.get("tab") === "changes" ? "changes" : "inspect");
+type Tab = "inspect" | "changes" | "layout";
+const startTab = params.get("tab");
+let tab = $state<Tab>(startTab === "changes" || startTab === "layout" ? startTab : "inspect");
 const changeCount = $derived(
   (model?.versions?.changesets.length ?? 0) + (model?.versions?.pending.length ?? 0),
 );
@@ -244,6 +247,7 @@ function showChange(c: { block: string; kind: string; key: string }) {
         <button class:active={tab === "changes"} onclick={() => (tab = "changes")}>
           Changes{changeCount > 0 ? ` (${changeCount})` : ""}
         </button>
+        <button class:active={tab === "layout"} onclick={() => (tab = "layout")}>Layout</button>
       </div>
       {#if tab === "inspect"}
         <Inspector
@@ -257,6 +261,8 @@ function showChange(c: { block: string; kind: string; key: string }) {
           comments={model.comments}
           onshow={show}
         />
+      {:else if tab === "layout"}
+        <LayoutPanel controls={model.layout} {variant} ondone={refresh} />
       {:else if model.versions}
         <Changes
           versions={model.versions}

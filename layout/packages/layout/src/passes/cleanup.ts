@@ -8,14 +8,15 @@ interface Edge {
 
 /**
  * Rebuilds a net's wires as maximal straight runs broken at junctions, pins and corners, and adds
- * a junction wherever three or more connections meet.
+ * a junction wherever three or more things meet. `connections` lists, per net, every pin, power
+ * symbol, marker and label; each counts once, and so does each wire leaving the point.
  */
 export function normalizeWires(
   wires: Wire[],
-  pinPoints: Map<string, Pt[]>,
-  symbolPoints: Map<string, Pt[]>,
+  connections: Map<string, Pt[]>,
 ): { wires: Wire[]; junctions: Junction[] } {
   const byNet = new Map<string, Wire[]>();
+  for (const net of connections.keys()) byNet.set(net, []);
   for (const w of wires) {
     const list = byNet.get(w.net) ?? [];
     list.push(w);
@@ -52,13 +53,17 @@ export function normalizeWires(
       }
     }
 
-    const pins = new Set((pinPoints.get(net) ?? []).map(pointKey));
-    const symbols = new Set((symbolPoints.get(net) ?? []).map(pointKey));
+    const touching = new Map<string, number>();
+    for (const p of connections.get(net) ?? []) {
+      const key = pointKey(p);
+      points.set(key, p);
+      touching.set(key, (touching.get(key) ?? 0) + 1);
+    }
     const stops = new Set<string>();
-    for (const [key, ns] of adj) {
-      const extra = (pins.has(key) ? 1 : 0) + (symbols.has(key) ? 1 : 0);
-      const degree = ns.size + extra;
-      if (degree >= 3) {
+    for (const key of new Set([...adj.keys(), ...touching.keys()])) {
+      const ns = adj.get(key) ?? new Set<string>();
+      const extra = touching.get(key) ?? 0;
+      if (ns.size + extra >= 3) {
         junctions.push({ net, at: points.get(key) as Pt });
         stops.add(key);
       }

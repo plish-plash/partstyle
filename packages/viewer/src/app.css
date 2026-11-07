@@ -647,3 +647,31 @@ svg [role="button"]:focus {
 .marker.comment circle {
   fill: var(--comment);
 }
+
+.layout-panel .pref {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 0.5rem;
+  margin: 0.45rem 0 0.7rem;
+}
+
+.layout-panel .pref input,
+.layout-panel .pref p {
+  grid-column: 1 / -1;
+}
+
+.layout-panel .pref input {
+  width: 100%;
+  margin: 0.15rem 0;
+}
+
+.layout-panel .pref p {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.layout-panel .pref.changed label,
+.layout-panel .pref.changed output {
+  font-weight: 600;
+}

@@ -1,6 +1,6 @@
 export type ParamValue = number | boolean | string;
 
-export type ParamDef =
+export type ParamDef = (
   | {
       key: string;
       label: string;
@@ -11,7 +11,14 @@ export type ParamDef =
       default: number;
     }
   | { key: string; label: string; type: "boolean"; default: boolean }
-  | { key: string; label: string; type: "enum"; options: string[]; default: string };
+  | { key: string; label: string; type: "enum"; options: string[]; default: string }
+) & {
+  /**
+   * Marks a parameter as a visual preference that end users may adjust, as a sentence explaining
+   * it to them. Leave it out of anything that turns behaviour on or off or sets a number of passes.
+   */
+  preference?: string;
+};
 
 export interface RuleDef {
   id: string;
@@ -72,6 +79,7 @@ export const RULES: RuleDef[] = [
         max: 60,
         step: 1,
         default: 30,
+        preference: "How far a part may move up or down to straighten its wires.",
       },
     ],
   },
@@ -91,6 +99,7 @@ export const RULES: RuleDef[] = [
         max: 10,
         step: 1,
         default: 5,
+        preference: "The distance between neighbouring parts hanging from a wire.",
       },
       { key: "pairStacks", label: "Stack up/down pairs", type: "boolean", default: true },
     ],
@@ -110,7 +119,16 @@ export const RULES: RuleDef[] = [
         options: ["hang", "inline"],
         default: "hang",
       },
-      { key: "rowPitch", label: "Row pitch", type: "number", min: 3, max: 10, step: 1, default: 4 },
+      {
+        key: "rowPitch",
+        label: "Row pitch",
+        type: "number",
+        min: 3,
+        max: 10,
+        step: 1,
+        default: 4,
+        preference: "The smallest distance between neighbouring rows of wires.",
+      },
     ],
   },
   {
@@ -138,8 +156,18 @@ export const RULES: RuleDef[] = [
         max: 3,
         step: 0.1,
         default: 1.4,
+        preference: "The shape separate groups of parts pack into. Higher is wider.",
       },
-      { key: "gap", label: "Gap", type: "number", min: 2, max: 12, step: 1, default: 5 },
+      {
+        key: "gap",
+        label: "Gap",
+        type: "number",
+        min: 2,
+        max: 12,
+        step: 1,
+        default: 5,
+        preference: "The space between separate groups of parts.",
+      },
     ],
   },
   {
@@ -150,8 +178,24 @@ export const RULES: RuleDef[] = [
     group: "Placement",
     enabled: true,
     params: [
-      { key: "side", label: "Side", type: "enum", options: ["above", "below"], default: "above" },
-      { key: "spacing", label: "Spacing", type: "number", min: 3, max: 10, step: 1, default: 5 },
+      {
+        key: "side",
+        label: "Side",
+        type: "enum",
+        options: ["above", "below"],
+        default: "above",
+        preference: "Which side of the part they serve decoupling capacitors prefer.",
+      },
+      {
+        key: "spacing",
+        label: "Spacing",
+        type: "number",
+        min: 3,
+        max: 10,
+        step: 1,
+        default: 5,
+        preference: "The distance between decoupling capacitors.",
+      },
     ],
   },
   {
@@ -191,7 +235,16 @@ export const RULES: RuleDef[] = [
     group: "Power",
     enabled: true,
     params: [
-      { key: "gap", label: "Gap past part", type: "number", min: 0, max: 6, step: 1, default: 1 },
+      {
+        key: "gap",
+        label: "Gap past part",
+        type: "number",
+        min: 0,
+        max: 6,
+        step: 1,
+        default: 1,
+        preference: "How far past a part the power symbol of a side pin sits.",
+      },
     ],
   },
   {
@@ -202,8 +255,26 @@ export const RULES: RuleDef[] = [
     group: "Wiring",
     enabled: true,
     params: [
-      { key: "bend", label: "Bend", type: "number", min: 0, max: 30, step: 1, default: 4 },
-      { key: "crossing", label: "Crossing", type: "number", min: 0, max: 60, step: 1, default: 8 },
+      {
+        key: "bend",
+        label: "Bend",
+        type: "number",
+        min: 0,
+        max: 30,
+        step: 1,
+        default: 4,
+        preference: "How strongly wires avoid corners.",
+      },
+      {
+        key: "crossing",
+        label: "Crossing",
+        type: "number",
+        min: 0,
+        max: 60,
+        step: 1,
+        default: 8,
+        preference: "How strongly wires avoid crossing. Higher values allow longer routes.",
+      },
       {
         key: "fork",
         label: "Fork off corner",
@@ -212,6 +283,7 @@ export const RULES: RuleDef[] = [
         max: 12,
         step: 1,
         default: 3,
+        preference: "How strongly a branch starts at a corner rather than partway along a wire.",
       },
       {
         key: "clearance",
@@ -221,6 +293,7 @@ export const RULES: RuleDef[] = [
         max: 10,
         step: 1,
         default: 1,
+        preference: "How strongly wires keep away from parts.",
       },
       {
         key: "ripupPasses",
@@ -249,6 +322,7 @@ export const RULES: RuleDef[] = [
         max: 12,
         step: 1,
         default: 3,
+        preference: "How many wires a net may cross before it is drawn with labels.",
       },
       {
         key: "detourLimit",
@@ -257,7 +331,8 @@ export const RULES: RuleDef[] = [
         min: 4,
         max: 80,
         step: 2,
-        default: 24,
+        default: 20,
+        preference: "How far out of its way a net may run before it is drawn with labels.",
       },
     ],
   },
@@ -319,6 +394,48 @@ export function diffRules(config: RuleConfig): RuleOverrides {
   }
   return out;
 }
+
+/** Saved preferences: values by rule id, then parameter key. */
+export type Preferences = Record<string, Record<string, number | string>>;
+
+export interface PreferenceGroup {
+  rule: string;
+  title: string;
+  params: ParamDef[];
+}
+
+/** The parameters end users may adjust, by rule. */
+export function preferenceGroups(): PreferenceGroup[] {
+  return RULES.flatMap((r) => {
+    const params = r.params.filter((p) => p.preference !== undefined);
+    return params.length > 0 ? [{ rule: r.id, title: r.title, params }] : [];
+  });
+}
+
+/** Why a preference cannot be set to this value, if it cannot. */
+export function preferenceProblem(rule: string, key: string, value: unknown): string | undefined {
+  const param = preferenceGroups()
+    .find((g) => g.rule === rule)
+    ?.params.find((p) => p.key === key);
+  if (!param) return "is not a layout preference";
+  if (param.type === "enum") {
+    return param.options.includes(value as string)
+      ? undefined
+      : `must be one of ${param.options.join(", ")}`;
+  }
+  if (param.type === "number") {
+    const n = typeof value === "number" ? value : Number.NaN;
+    const steps = (n - param.min) / param.step;
+    return n >= param.min && n <= param.max && Math.abs(steps - Math.round(steps)) < 1e-9
+      ? undefined
+      : `must be from ${param.min} to ${param.max} in steps of ${param.step}`;
+  }
+  return "is not a layout preference";
+}
+
+/** Saved preferences as rule overrides, for `layoutBlock`. */
+export const preferenceOverrides = (prefs: Preferences): RuleOverrides =>
+  Object.fromEntries(Object.entries(prefs).map(([rule, params]) => [rule, { params }]));
 
 export class Rules {
   constructor(readonly config: RuleConfig) {}

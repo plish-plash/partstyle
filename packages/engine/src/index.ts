@@ -83,6 +83,7 @@ export { planRevert, type RevertPlan } from "./versions/revert.js";
 export {
   buildViewerModel,
   type ChangeItem,
+  type LayoutControls,
   type PartInfo,
   type VersionState,
   type ViewerModel,

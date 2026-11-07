@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { defaultRules, preferenceProblem } from "@partstyle/layout";
 import { isMap, parseDocument, parse as parseYaml } from "yaml";
 import {
   APPROVALS_FILE,
@@ -56,6 +57,7 @@ import {
 import { planRevert, type RevertPlan } from "../versions/revert.js";
 import {
   buildViewerModel,
+  layoutControls,
   type VariantSummary,
   type VersionState,
   type ViewerModel,
@@ -425,6 +427,46 @@ export class Workspace {
         }
       }
       return { ok: true, text: lines.join("\n") };
+    });
+  }
+
+  /**
+   * Sets one layout preference in the project file, keeping its comments. A value matching what
+   * would apply anyway (main's on a variant, otherwise the default) is removed instead.
+   */
+  setLayoutPreference(rule: string, key: string, value: number | string): Promise<TextResult> {
+    return this.guard(async () => {
+      const problem = preferenceProblem(rule, key, value);
+      if (problem) return fail(`${rule}.${key} ${problem}`);
+      if (this.variantName !== undefined) await this.requireVariant();
+      const main = parseProjectConfig(await this.readOptional(PROJECT_FILE), PROJECT_FILE).config;
+      const inherited =
+        (this.variantName === undefined ? undefined : main?.layout[rule]?.[key]) ??
+        defaultRules()[rule]?.params[key];
+      const doc = parseDocument(await this.readOptional(this.ownFile(PROJECT_FILE)));
+      if (value === inherited) {
+        if (!doc.hasIn(["layout", rule, key]))
+          return { ok: true, text: `${rule}.${key} unchanged` };
+        doc.deleteIn(["layout", rule, key]);
+        for (const at of [["layout", rule], ["layout"]]) {
+          const map = doc.getIn(at, true);
+          if (isMap(map) && map.items.length === 0) doc.deleteIn(at);
+        }
+      } else {
+        doc.setIn(["layout", rule, key], value);
+      }
+      return this.writeDoc(PROJECT_FILE, doc.toString(UNCHANGED_STYLE));
+    });
+  }
+
+  /** Clears the layout preferences: back to the defaults, or to main's on a variant. */
+  resetLayoutPreferences(): Promise<TextResult> {
+    return this.guard(async () => {
+      if (this.variantName !== undefined) await this.requireVariant();
+      const doc = parseDocument(await this.readOptional(this.ownFile(PROJECT_FILE)));
+      if (!doc.hasIn(["layout"])) return { ok: true, text: "no layout preferences to reset" };
+      doc.deleteIn(["layout"]);
+      return this.writeDoc(PROJECT_FILE, doc.toString(UNCHANGED_STYLE));
     });
   }
 
@@ -1250,6 +1292,7 @@ export class Workspace {
       symbols: {},
       parts: {},
       nets: {},
+      layout: layoutControls(result.config?.layout),
       ...review,
     };
     if (!result.netlist || !result.config) return empty;
@@ -1764,6 +1807,8 @@ function applyOverrides(mainText: string, overridesText: string): string {
   if (isMapping(over)) for (const [k, v] of Object.entries(over)) walk([k], v);
   return doc.toString();
 }
+/** Writes a parsed YAML document back without restyling the lines nobody changed. */
+const UNCHANGED_STYLE = { flowCollectionPadding: false, lineWidth: 0 };
 const VIEWER_FILE = ".partstyle/viewer.json";
 const IMPORT_NOTES = "notes/kicad-import.md";
 

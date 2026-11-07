@@ -233,6 +233,69 @@ describe("Workspace.writeDoc", () => {
   });
 });
 
+describe("layout preferences", () => {
+  const file = "partstyle-project.yaml";
+
+  it("saves only what differs from the default, keeping the file's comments", async () => {
+    await writeFile(path.join(project, file), `# keep me\n${await read(file)}`);
+    const before = await read(file);
+    expect((await ws.setLayoutPreference("label-fallback", "detourLimit", 16)).ok).toBe(true);
+    expect(await read(file)).toContain("# keep me");
+    expect(await read(file)).toContain("detourLimit: 16");
+    expect((await ws.viewerModel()).layout.values).toEqual({
+      "label-fallback": { detourLimit: 16 },
+    });
+    expect((await ws.setLayoutPreference("label-fallback", "detourLimit", 20)).ok).toBe(true);
+    expect(await read(file)).toBe(before);
+  });
+
+  it("has nothing to do when a value is set to what already applies", async () => {
+    const before = await read(file);
+    expect((await ws.setLayoutPreference("decoupling-near-pin", "side", "above")).ok).toBe(true);
+    expect(await read(file)).toBe(before);
+  });
+
+  it("refuses rule switches, passes and values out of range", async () => {
+    const before = await read(file);
+    for (const [rule, key, value] of [
+      ["route-costs", "ripupPasses", 2],
+      ["chain-rows", "endStyle", "inline"],
+      ["label-fallback", "detourLimit", 1000],
+    ] as const) {
+      expect((await ws.setLayoutPreference(rule, key, value)).ok).toBe(false);
+    }
+    expect(await read(file)).toBe(before);
+    const hand = `${before}layout:\n  route-costs:\n    ripupPasses: 2\n`;
+    const written = await ws.writeDoc(file, hand);
+    expect(written.text).toMatch(/not written: .*layout\.route-costs\.ripupPasses/);
+  });
+
+  it("resets to the defaults", async () => {
+    const before = await read(file);
+    await ws.setLayoutPreference("decoupling-near-pin", "side", "below");
+    expect((await ws.resetLayoutPreferences()).ok).toBe(true);
+    expect(await read(file)).toBe(before);
+    expect((await ws.resetLayoutPreferences()).text).toContain("no layout preferences");
+  });
+
+  it("overrides main's on a variant, and falls back to them", async () => {
+    await ws.setLayoutPreference("pack-groups", "gap", 8);
+    await ws.variant("create", "alt");
+    const alt = await ws.variantWorkspace("alt");
+    if (!alt) throw new Error("no variant");
+    await alt.setLayoutPreference("pack-groups", "aspect", 2);
+    const both = { "pack-groups": { gap: 8, aspect: 2 } };
+    expect((await alt.viewerModel()).layout.values).toEqual(both);
+    expect((await ws.viewerModel()).layout.values).toEqual({ "pack-groups": { gap: 8 } });
+    // Main's value, set on the variant, stops being an override; the default then is one.
+    await alt.setLayoutPreference("pack-groups", "gap", 5);
+    expect((await alt.viewerModel()).layout.values["pack-groups"]?.gap).toBe(5);
+    await alt.setLayoutPreference("pack-groups", "gap", 8);
+    await alt.resetLayoutPreferences();
+    expect((await alt.viewerModel()).layout.values).toEqual({ "pack-groups": { gap: 8 } });
+  });
+});
+
 describe("review mode", () => {
   it("is the person's switch, kept in .partstyle/", async () => {
     expect(await ws.reviewMode()).toBe("auto");

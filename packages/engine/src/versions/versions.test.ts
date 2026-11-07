@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyPatch } from "../patch.js";
 import type { ProjectSource, TextFile } from "../project/source.js";
-import { describeChange, diffCircuits, formatChanges, opOf, type StatementChange } from "./diff.js";
+import { describeChange, diffCircuits, formatChanges, opOf } from "./diff.js";
 import { planRevert } from "./revert.js";
 
 const power = `block power "rails"

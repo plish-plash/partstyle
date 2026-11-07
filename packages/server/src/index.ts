@@ -200,6 +200,20 @@ export async function startViewer(
       }
       // Review actions; each may name the variant it applies to.
       const w = await target(typeof body.variant === "string" ? body.variant : undefined);
+      if (url.pathname === "/api/layout") {
+        // The reply must show the change: the watcher only catches up a moment later.
+        const { value } = body;
+        if (body.reset === true) {
+          send(200, await w.resetLayoutPreferences());
+        } else if (typeof value === "number" || typeof value === "string") {
+          const key = str(body.key, "key", 100);
+          send(200, await w.setLayoutPreference(str(body.rule, "rule", 100), key, value));
+        } else {
+          throw new HttpError(400, "value must be a number or a string");
+        }
+        models.clear();
+        return;
+      }
       if (url.pathname === "/api/revert") {
         send(200, await w.revert(str(body.id, "id", 40)));
         return;

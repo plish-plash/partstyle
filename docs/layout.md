@@ -59,6 +59,8 @@ line up on stems of different lengths. A grid router connects whatever the rows 
   stub so that the wire stays straight.
 - **Ports** that are not power nets become sheet pins on the parent's sheet symbol. In the child
   sheet, the row ends in a hierarchical label, right beside the part where it fits.
+- **Junction dots** mark every point where three or more things meet: pins, wires, power symbols
+  and labels each count.
 - **Unconnected pins** get no-connect flags.
 - **PWR_FLAG** (`power:PWR_FLAG`) is added to every net drawn with power symbols or feeding
   `power_in` pins that has no `power_out` pin, i.e. power from outside the design (a
@@ -71,6 +73,23 @@ A part lying down has its reference over its value above it, or below it if that
 standing up has them to its right, or to its left. A large IC has them in the middle of its body.
 Other ICs, connectors and child sheets have them over the top left corner. KiCad's font is wider
 than the viewer's, so text may sit slightly differently in the KiCad export.
+
+## Preferences
+
+The Layout tab in the viewer's sidebar adjusts the spacing and the wire routing weights, and which
+side decoupling prefers. These apply to the whole design, and the KiCad export follows them.
+They are saved in the project file, leaving out anything still at its default:
+
+```yaml
+layout:
+  label-fallback:
+    detourLimit: 16
+  decoupling-near-pin:
+    side: below
+```
+
+A variant's project file can override them like any other setting. Rules themselves cannot be
+turned off here: the full set of rules is only for tuning the engine, in the tester.
 
 ## Checks
 

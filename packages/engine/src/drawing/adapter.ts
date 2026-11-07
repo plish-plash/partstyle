@@ -9,6 +9,8 @@ import {
   layoutBlock,
   type PartKind,
   type PinType,
+  type Preferences,
+  preferenceOverrides,
   type Rotation,
   type TextField,
 } from "@partstyle/layout";
@@ -314,12 +316,6 @@ function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan):
   const dx = MARGIN - Math.floor(result.bounds.x);
   const dy = MARGIN - Math.floor(result.bounds.y);
   const toMm = (p: GridPt): Pt => ({ x: round((p.x + dx) * GRID), y: round((p.y + dy) * GRID) });
-  const boxMm = (r: Rect): Rect => ({
-    x: round((r.x + dx) * GRID),
-    y: round((r.y + dy) * GRID),
-    w: round(r.w * GRID),
-    h: round(r.h * GRID),
-  });
 
   const units: PlacedUnit[] = [];
   const sheets: PlacedSheet[] = [];
@@ -459,7 +455,9 @@ export function layoutSheet(
   plan: DrawingPlan,
   netlist: Netlist,
   blocks: Map<string, CktFile>,
+  preferences: Preferences,
 ): SheetLayout {
   const translation = toLayoutInput(block, plan, netlist, blocks);
-  return toSheetLayout(layoutBlock(translation.input), translation, plan);
+  const result = layoutBlock(translation.input, preferenceOverrides(preferences));
+  return toSheetLayout(result, translation, plan);
 }

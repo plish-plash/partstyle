@@ -10,6 +10,7 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
 
 <script lang="ts">
   import type { Comment, Issue, PartInfo, SymbolGraphics, ViewerSheet } from "@partstyle/engine";
+  import { untrack } from "svelte";
   import { direction, textProps } from "./geometry";
   import SymbolView from "./SymbolView.svelte";
 
@@ -97,8 +98,10 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
   // Pan and zoom by editing the viewBox; fit the sheet whenever it changes.
   let view = $state({ x: 0, y: 0, w: 297, h: 210 });
   let svg: SVGSVGElement | undefined = $state();
+  const fit = $derived(`${sheet.block} ${layout.width} ${layout.height}`);
   $effect(() => {
-    view = { x: 0, y: 0, w: Math.max(layout.width, 60), h: Math.max(layout.height, 40) };
+    void fit;
+    view = untrack(() => ({ x: 0, y: 0, w: Math.max(layout.width, 60), h: Math.max(layout.height, 40) }));
   });
   function toView(e: { clientX: number; clientY: number }) {
     const r = svg?.getBoundingClientRect();
@@ -153,25 +156,6 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
 >
   <rect x="0" y="0" width={layout.width} height={layout.height} class="paper" />
 
-  {#each layout.wires as w, i (i)}
-    <line
-      x1={w.a.x}
-      y1={w.a.y}
-      x2={w.b.x}
-      y2={w.b.y}
-      class={`wire ${changeOf("net", w.net) ?? ""}`}
-      class:hot={selectedNets.has(flatNet(w.net))}
-      role="button"
-      tabindex="-1"
-      aria-label={`net ${flatNet(w.net)}`}
-      onclick={pick(flatNet(w.net))}
-      onkeydown={() => {}}
-    />
-  {/each}
-  {#each layout.junctions as j, i (i)}
-    <circle cx={j.at.x} cy={j.at.y} r="0.5" class="junction" class:hot={selectedNets.has(flatNet(j.net))} />
-  {/each}
-
   {#each layout.units as u (`${u.ref}:${u.unit}`)}
     {@const path = partPath(u.ref)}
     {@const info = parts[path]}
@@ -214,20 +198,6 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
         >
       {/if}
     </g>
-    {#each u.pins as p (p.number)}
-      <circle
-        cx={p.at.x}
-        cy={p.at.y}
-        r="0.7"
-        class="pin-hit"
-        class:hot={selected.has(`${path}.${info?.pins.find((q) => q.number === p.number)?.name ?? p.number}`)}
-        role="button"
-        tabindex="-1"
-        aria-label={`pin ${p.number}`}
-        onclick={pick(`${path}.${info?.pins.find((q) => q.number === p.number)?.name ?? p.number}`)}
-        onkeydown={() => {}}
-      />
-    {/each}
   {/each}
 
   {#each layout.power as p, i (i)}
@@ -305,6 +275,44 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
         >
       {/each}
     </g>
+  {/each}
+
+  {#each layout.wires as w, i (i)}
+    <line
+      x1={w.a.x}
+      y1={w.a.y}
+      x2={w.b.x}
+      y2={w.b.y}
+      class={`wire ${changeOf("net", w.net) ?? ""}`}
+      class:hot={selectedNets.has(flatNet(w.net))}
+      role="button"
+      tabindex="-1"
+      aria-label={`net ${flatNet(w.net)}`}
+      onclick={pick(flatNet(w.net))}
+      onkeydown={() => {}}
+    />
+  {/each}
+  {#each layout.junctions as j, i (i)}
+    <circle cx={j.at.x} cy={j.at.y} r="0.5" class="junction" class:hot={selectedNets.has(flatNet(j.net))} />
+  {/each}
+
+  {#each layout.units as u (`${u.ref}:${u.unit}`)}
+    {@const path = partPath(u.ref)}
+    {@const info = parts[path]}
+    {#each u.pins as p (p.number)}
+      <circle
+        cx={p.at.x}
+        cy={p.at.y}
+        r="0.7"
+        class="pin-hit"
+        class:hot={selected.has(`${path}.${info?.pins.find((q) => q.number === p.number)?.name ?? p.number}`)}
+        role="button"
+        tabindex="-1"
+        aria-label={`pin ${p.number}`}
+        onclick={pick(`${path}.${info?.pins.find((q) => q.number === p.number)?.name ?? p.number}`)}
+        onkeydown={() => {}}
+      />
+    {/each}
   {/each}
 
   {#each markers as m, i (i)}

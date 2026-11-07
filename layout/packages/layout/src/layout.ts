@@ -273,25 +273,15 @@ export function layoutBlock(input: LayoutInput, overrides: RuleOverrides = {}): 
   const routed = route(ctx, req, (n) => an.railWires.has(n));
   for (const l of routed.labels) labels.push(l);
 
-  const pinPoints = new Map<string, Pt[]>();
-  for (const p of pins.values()) {
-    if (p.net === undefined) continue;
-    const list = pinPoints.get(p.net) ?? [];
-    list.push(p.at);
-    pinPoints.set(p.net, list);
+  // A port is drawn only as its label, so its internal pin is left out.
+  const connections = new Map<string, Pt[]>();
+  for (const { net, at } of [...placed.flatMap((p) => p.pins), ...power, ...markers, ...labels]) {
+    if (net === undefined) continue;
+    const list = connections.get(net) ?? [];
+    list.push(at);
+    connections.set(net, list);
   }
-  const symbolPoints = new Map<string, Pt[]>();
-  for (const s of power) {
-    const list = symbolPoints.get(s.net) ?? [];
-    list.push(s.at);
-    symbolPoints.set(s.net, list);
-  }
-  for (const l of labels) {
-    const list = symbolPoints.get(l.net) ?? [];
-    list.push(l.at);
-    symbolPoints.set(l.net, list);
-  }
-  const clean = normalizeWires(routed.wires, pinPoints, symbolPoints);
+  const clean = normalizeWires(routed.wires, connections);
   placeText(
     placed,
     clean.wires,

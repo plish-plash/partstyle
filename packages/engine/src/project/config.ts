@@ -1,3 +1,4 @@
+import { type Preferences, preferenceProblem } from "@partstyle/layout";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { Issue } from "../diagnostics.js";
@@ -30,6 +31,18 @@ export const ProjectConfigSchema = z.looseObject({
       cap_derating: z.number().min(1).default(1.5),
     })
     .default({ cap_derating: 1.5 }),
+  /** Visual layout preferences: values by rule, then setting. */
+  layout: z
+    .record(z.string(), z.record(z.string(), z.union([z.number(), z.string()])))
+    .default({})
+    .superRefine((prefs: Preferences, ctx) => {
+      for (const [rule, params] of Object.entries(prefs)) {
+        for (const [key, value] of Object.entries(params)) {
+          const problem = preferenceProblem(rule, key, value);
+          if (problem) ctx.addIssue({ code: "custom", message: problem, path: [rule, key] });
+        }
+      }
+    }),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

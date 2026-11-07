@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UseDecl } from "./ast.js";
 import { parseCkt } from "./parser.js";
-import { printStatement } from "./print.js";
 
 const parse = (text: string) => parseCkt(text, "circuit/t.ckt");
 
