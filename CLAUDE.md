@@ -79,7 +79,7 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   `mcpInstructions` in `project/skeleton.ts`, sharing the conventions with the project
   CLAUDE.md template; keep the two workflows in step. Every MCP tool has a CLI
   command with identical output; add both together (see [docs/claude-code.md](docs/claude-code.md)).
-  - KiCad hand-off: `bom.ts` (generic → MPN resolution, bom.lock), `kicad/` (S-expressions,
+  - KiCad hand-off: `bom.ts` (BOM rows, candidates for generics), `kicad/` (S-expressions,
     annotation, schematic and netlist writers; pure). Symbols: `kicad/libsym.ts` matches and
     vets KiCad library symbols (flattening, units, pin compatibility, `adaptedSymbol`'s copies
     renumbered by pin name), `kicad/power.ts` power

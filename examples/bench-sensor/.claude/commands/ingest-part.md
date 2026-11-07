@@ -12,7 +12,9 @@ Create the part record for the part.
    in sections of your own where no field fits.
    - Identity: the part's name without ordering codes as the id, a one-line summary with key
      ratings and package, the orderable part as preferred_mpn, package and a KiCad footprint.
-     Set kicad_symbol for discretes and anything else KiCad doesn't name.
+     Set kicad_symbol for discretes and anything else KiCad doesn't name. A passive, LED or diode
+     also gets generic, what it offers (`cap(100n, 50V, X7R, 10%, 0603)`): it then draws like that
+     generic, and the BOM offers it as a candidate.
    - pins: every pad by number, with the datasheet name and type. Give supply and input pins
      vmax, and unused where the datasheet says a pin may float or must be connected.
    - ratings, temp_c, requirements (with a check where one fits), notes, and characteristics,

@@ -6,7 +6,7 @@ One statement per line. `#` starts a comment. Nothing has coordinates.
 block NAME "description"                          # first statement; one block per file
 port  NAME : KIND                                 # KIND: power_in power_out ground input output bidir passive
 part  REF lib:ID           [[layout]] [@ intent]  # a record from the part library
-part  REF FN(arg, ...)     [[layout]] [@ intent]  # generic, resolved to an MPN at BOM time
+part  REF FN(arg, ...)     [[layout]] [@ intent]  # generic: a part not chosen yet
 net   NAME : PINREF... [-> port NAME] [{key: value, ...}] [@ intent]
 use   BLOCK as INST        [[layout]] [@ intent]  # instantiate another block
 nc    REF.PIN                         [@ intent]  # a part pin left open on purpose
@@ -27,9 +27,9 @@ waive SUBJECT CODE "reason"                       # suppress a warning
   (kind) have pins K (1), A (2). Further arguments, in any order, are recognized by form:
   voltage `16V`, current `1A`, power `0.1W`, tolerance `1%`, dielectric `X7R`/`C0G`, package
   `0603`/`SOD-123`. Values use SI prefixes: `330n`, `4.7k`, `10uF`. A chip package (`0603`)
-  gives the part a footprint even before it resolves to an MPN.
-- **Polarized capacitors**: `cap(100u, 25V, polarized)` has pins `+` (1) and `-` (2). It resolves
-  only to a polarized library part, which gives it its footprint.
+  gives the part a footprint even before a real part replaces it.
+- **Polarized capacitors**: `cap(100u, 25V, polarized)` has pins `+` (1) and `-` (2). It has no
+  footprint until a polarized library part replaces it.
 - **Footprints with nothing to buy**: `fp(Library:Footprint, [pins])`, for test points and solder
   jumpers. Pins are numbered, default 1, up to 3:
   `part TP1 fp(TestPoint:TestPoint_Pad_D1.5mm)`,

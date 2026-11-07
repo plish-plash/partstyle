@@ -70,11 +70,18 @@ thermal: { theta_ja: 107C/W }
 | `temp_c`        | `[min, max]`, the operating range of this grade; checked against the project       |
 | `requirements`  | What the datasheet asks of the circuit: text, or a check (below)                   |
 | `notes`         | Gotchas a designer would otherwise miss                                            |
-| `generic`       | For a concrete passive: the generic it satisfies, `cap(100n, 50V, X7R, 10%, 0603)` |
-| `sourcing`      | `lcsc`, `digikey`, `mouser`: distributor part numbers; `lifecycle`                 |
+| `generic`       | For a passive, LED or diode: the generic it satisfies (below)                      |
+| `sourcing`      | `lcsc`, `digikey`, `mouser`: distributor part numbers; `lifecycle`; `in_inventory` |
 | `provenance`    | `datasheet` (a URL), `extracted_by` (`ai`), `verified_by: null`                    |
 
-Leave `verified_by: null`: only a person verifies a record.
+Leave `verified_by: null`: only a person verifies a record. `in_inventory: true` says the person
+has the part already, so leave it out unless they say so.
+
+**`generic`.** What the part offers, in the generic's form: `cap(100n, 50V, X7R, 10%, 0603)`,
+`res(10k, 1%, 0.1W, 0603)`, `led(green, 0603)`, `diode(schottky, SOD-123)`. The part draws like that
+generic, with KiCad's `Device:C` and the like unless `kicad_symbol` says otherwise, a resistor,
+capacitor or inductor shows its value rather than its MPN, capacitor ratings are checked from it,
+and the BOM export offers the part for generics it satisfies.
 
 **Identity.** A record is the electrical part, not an order code. Its `id` is the part's name
 without ordering suffixes (reel, RoHS, packing), which belong in `preferred_mpn`. A part in another
@@ -108,8 +115,8 @@ it can't read stays as text, with a warning.
 reported as a warning for the person to review, and the record is still written. Mounting pads
 named `MP` are PCB detail, so leave them out of `pins`.
 
-**Symbols.** KiCad symbols are found by id and MPN. A part KiCad doesn't name needs `kicad_symbol`,
-or it is drawn as a box. Generic symbols work for any pinout, as pins pair up by name, so name your
+**Symbols.** KiCad symbols come from `generic`, or are found by id and MPN. A part KiCad doesn't
+name needs `kicad_symbol`, or it is drawn as a box. Generic symbols work for any pinout, as pins pair up by name, so name your
 pins the same way:
 
 | Part        | `kicad_symbol`                                                    | Pin names     |

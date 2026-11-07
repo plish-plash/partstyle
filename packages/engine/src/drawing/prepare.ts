@@ -1,4 +1,4 @@
-import { type BomEntry, type BomResult, resolveBom } from "../bom.js";
+import { type BomEntry, buildBom } from "../bom.js";
 import type { Issue } from "../diagnostics.js";
 import { type Annotation, annotate, parseAnnotationLock } from "../kicad/annotate.js";
 import {
@@ -9,7 +9,7 @@ import {
   symbolKey,
 } from "../kicad/libsym.js";
 import { type PowerLibrary, powerLibrary, type SymbolLib } from "../kicad/power.js";
-import { symbolForGeneric, symbolForRecord } from "../kicad/symbols.js";
+import { symbolForGeneric, symbolForRecord, symbolForRecordGeneric } from "../kicad/symbols.js";
 import type { FlatPart, Netlist } from "../netlist/elaborate.js";
 import { type ProjectConfig, TOP_BLOCK } from "../project/config.js";
 import type { ValidationResult } from "../validate.js";
@@ -50,7 +50,7 @@ export interface Drawing {
   netlist: Netlist;
   annotation: Annotation;
   renumbered: [path: string, ref: string][];
-  bom: BomResult;
+  bom: BomEntry[];
   bomByPath: Map<string, BomEntry>;
   /** The symbol drawn for each part type, by `symbolKey`. */
   symbols: Map<string, SchSymbol>;
@@ -74,6 +74,7 @@ function chooseSymbols(
   for (const p of parts) byKey.set(symbolKey(p), [...(byKey.get(symbolKey(p)) ?? []), p]);
 
   const chosen = new Map<string, SchSymbol>();
+  const generated = new Map<string, SchSymbol>();
   const choices: SymbolChoice[] = [];
   const issues: Issue[] = [];
   for (const [key, group] of byKey) {
@@ -105,10 +106,12 @@ function chooseSymbols(
       const part = group[0] as FlatPart;
       const g =
         part.spec.kind === "lib"
-          ? part.record && symbolForRecord(part.record)
+          ? part.record && (symbolForRecordGeneric(part.record) ?? symbolForRecord(part.record))
           : symbolForGeneric(part.spec.fn, part.spec.args);
       if (!g) continue;
-      pick = generatedSymbol(g);
+      // Part types can share a generated symbol: `partstyle:cap` for generics and real capacitors.
+      pick = generated.get(g.name) ?? generatedSymbol(g);
+      generated.set(g.name, pick);
     }
     chosen.set(key, pick);
     choices.push({
@@ -123,14 +126,13 @@ function chooseSymbols(
 }
 
 /**
- * Prepares a validated design for drawing: stable refdes, BOM resolution, a symbol per part
- * type, how each net is drawn, and a layout of every sheet. Throws if the design did not
+ * Prepares a validated design for drawing: stable refdes, BOM entries, a symbol per part type, how each net is drawn, and a layout of every sheet. Throws if the design did not
  * elaborate. A connectivity mismatch in a laid-out sheet is reported as a `layout.connectivity`
  * error: it is a layout bug, never a design problem.
  */
 export async function prepareDrawing(
   result: ValidationResult,
-  locks: { annotation: string; bom: string },
+  annotationLock: string,
   libraries: KicadLibraries = {},
 ): Promise<Drawing> {
   const { config, netlist } = result;
@@ -138,13 +140,13 @@ export async function prepareDrawing(
 
   const { table: annotation, renumbered } = annotate(
     netlist.parts.map((p) => p.path),
-    parseAnnotationLock(locks.annotation),
+    parseAnnotationLock(annotationLock),
   );
-  const bom = resolveBom(netlist, result.library, locks.bom, config.sourcing.distributors);
-  const bomByPath = new Map<string, BomEntry>(bom.entries.map((e) => [e.part.path, e]));
+  const bom = buildBom(netlist);
+  const bomByPath = new Map<string, BomEntry>(bom.map((e) => [e.part.path, e]));
 
-  const issues: Issue[] = [...bom.issues];
-  for (const e of bom.entries) {
+  const issues: Issue[] = [];
+  for (const e of bom) {
     if (e.footprint === undefined) {
       issues.push({
         code: "kicad.no-footprint",

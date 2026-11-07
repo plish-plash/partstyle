@@ -45,7 +45,7 @@ commands:
   part put [FILE|-] [--scope global|project]  add or update a part record
   kicad export [--no-check]                write kicad/ and verify it with kicad-cli
   kicad import PATH [--replace]            import a KiCad project (creates the project if needed)
-  bom export                               resolve generics, write bom.lock and bom.csv
+  bom export                               write bom.csv, list generics to replace
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
   mcp [--project DIR | --projects-dir DIR] [--viewer-port N] [--no-viewer]
                                            run the MCP server on stdio (first argument only)

@@ -1,14 +1,17 @@
 ---
-description: Resolve the BOM, write PCB and firmware notes, and export to KiCad
+description: Assign real parts, write PCB and firmware notes, and export to KiCad
 ---
 
 Prepare this design for PCB layout in KiCad.
 
 1. validate: no errors. Explain each remaining warning to the person, and list any part not yet
    approved (query parts where approved != yes).
-2. bom_export: for each unresolved generic, propose a library record
-   (ingest_part) or confirm it can stay generic for the assembler to choose. List any part with
-   no preferred MPN for the person.
+2. bom_export lists each generic not yet replaced with a real part. For each, propose a part to
+   the person: a listed candidate or a part_search result, parts in inventory first, or a new
+   record (ingest_part) if none fits. Apply the ones they agree to with
+   `= part REF lib:ID [layout] @ intent`, keeping the line's layout and intent, since = replaces
+   the whole statement. A generic stays only if they confirm it (the assembler chooses). Then
+   bom_export again, and list any part with no preferred MPN for the person.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
    (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,

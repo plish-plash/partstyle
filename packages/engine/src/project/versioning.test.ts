@@ -217,7 +217,7 @@ describe("versioning", () => {
       await ws.setReviewMode("auto");
 
       expect((await buck.bomExport()).text).toMatch(/^wrote variants\/buck\/bom\.csv: /);
-      expect(await has(own("buck", "bom.lock"))).toBe(true);
+      expect(await has(own("buck", "bom.csv"))).toBe(true);
     });
 
     it("drop a block identical to main's, and adopt and remove whole", async () => {

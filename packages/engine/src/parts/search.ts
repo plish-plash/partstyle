@@ -7,8 +7,9 @@ export type PartTier = "summary" | "pins" | "full";
 function summaryLine(e: LibraryEntry): string {
   const r = e.record;
   const verified = r.provenance.verified_by ? "" : " [unverified]";
+  const inventory = r.sourcing?.in_inventory ? " [in inventory]" : "";
   const maker = [r.manufacturer, r.preferred_mpn].filter(Boolean).join(" ");
-  return `${r.id}: ${maker ? `${maker}, ` : ""}${r.summary}${verified}`;
+  return `${r.id}: ${maker ? `${maker}, ` : ""}${r.summary}${verified}${inventory}`;
 }
 
 /** Every word of the query must appear in the record; its id and MPN rank first. */

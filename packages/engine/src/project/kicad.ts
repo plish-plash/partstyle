@@ -16,6 +16,7 @@ import {
 import { parseSymbolLib, type SymbolLib } from "../kicad/power.js";
 import { children, readSExpr } from "../kicad/sexpr.js";
 import type { FlatPart } from "../netlist/elaborate.js";
+import { splitGenericText } from "../parts/generic.js";
 import type { LibraryEntry } from "../parts/library.js";
 
 const run = promisify(execFile);
@@ -165,8 +166,9 @@ export class KicadSymbolLibraries {
   }
 
   /**
-   * KiCad symbols to try for each part type: the record's `kicad_symbol`, else matches on its
-   * MPN; for generics, the Device library's R, C, L, LED and diode symbols.
+   * KiCad symbols to try for each part type: the record's `kicad_symbol`, else the symbol of the
+   * generic it satisfies, then matches on its MPN; for generics, the Device library's R, C, L, LED
+   * and diode symbols.
    */
   async candidates(parts: FlatPart[]): Promise<Map<string, SymbolCandidate[]>> {
     const out = new Map<string, SymbolCandidate[]>();
@@ -180,10 +182,15 @@ export class KicadSymbolLibraries {
       } else if (part.record?.kicad_symbol) {
         ids = [{ libId: part.record.kicad_symbol, explicit: true }];
       } else if (part.record) {
-        ids = rankSymbolMatches(part.record, await this.index()).map((m) => ({
-          libId: `${m.lib}:${m.name}`,
-          explicit: false,
-        }));
+        const satisfied = part.record.generic ? splitGenericText(part.record.generic) : undefined;
+        const generic = satisfied && genericSymbolId(satisfied.fn, satisfied.args);
+        ids = [
+          ...(generic ? [{ libId: generic, explicit: false }] : []),
+          ...rankSymbolMatches(part.record, await this.index()).map((m) => ({
+            libId: `${m.lib}:${m.name}`,
+            explicit: false,
+          })),
+        ];
       }
       const list: SymbolCandidate[] = [];
       for (const { libId, explicit } of ids) {

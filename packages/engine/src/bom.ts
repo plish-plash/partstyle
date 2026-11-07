@@ -1,5 +1,4 @@
 import { printSpec } from "./ckt/print.js";
-import type { Issue } from "./diagnostics.js";
 import type { FlatPart, Netlist } from "./netlist/elaborate.js";
 import {
   genericFootprint,
@@ -9,45 +8,62 @@ import {
   satisfies,
 } from "./parts/generic.js";
 import type { PartLibrary } from "./parts/library.js";
-import { type PartRecord, partName } from "./parts/schema.js";
+import { distributorLink } from "./parts/links.js";
+import { type PartRecord, partValue } from "./parts/schema.js";
 import type { Distributor } from "./project/config.js";
 
-/** One placed part with what it resolved to. */
+/**
+ * `library`: a part with a record. `unresolved`: a generic, with no part chosen yet. `board`: a
+ * footprint with nothing to buy, such as a test point.
+ */
+export type BomStatus = "library" | "unresolved" | "board";
+
+/** One placed part. */
 export interface BomEntry {
   part: FlatPart;
   /** `lib:L7805CV` or `cap(100n, 16V, X7R, 0603)`. */
   spec: string;
-  /** The library record: the part's own, or the one a generic resolved to. */
+  /** The part's library record. */
   record?: PartRecord;
-  /** `board`: a footprint with nothing to buy, such as a test point. */
-  status: "library" | "resolved" | "unresolved" | "board";
+  status: BomStatus;
   footprint?: string;
   /** KiCad Value field. */
   value: string;
 }
 
-export interface BomResult {
-  entries: BomEntry[];
-  /** New bom.lock text. */
-  lock: string;
-  /** Lock lines added, changed or dropped, for the reply. */
-  changes: string[];
-  issues: Issue[];
-}
-
-const lockHeader = `# Partstyle bom.lock: how generic parts resolved to library parts (MPNs).
-# Kept until the part's spec changes or the record no longer fits; delete a line to re-resolve.
-`;
-
-function parseBomLock(text: string): Map<string, { spec: string; id: string }> {
-  const lock = new Map<string, { spec: string; id: string }>();
-  for (const line of text.split(/\r?\n/)) {
-    const m = /^(\S+)\s+(.*?)\s+->\s+(\S+)\s*$/.exec(line);
-    if (m && !line.startsWith("#")) {
-      lock.set(m[1] as string, { spec: m[2] as string, id: m[3] as string });
+/**
+ * Describes every part as the design has it. A generic stays unresolved until the design names a
+ * real part in its place: nothing here chooses one (see `bomCandidates`).
+ */
+export function buildBom(netlist: Netlist): BomEntry[] {
+  return netlist.parts.flatMap((part): BomEntry[] => {
+    const spec = printSpec(part.spec);
+    if (part.spec.kind === "lib") {
+      const r = part.record;
+      return [
+        {
+          part,
+          spec,
+          status: "library",
+          value: r ? partValue(r) : part.spec.id,
+          ...(r && { record: r }),
+          ...(r?.footprint && { footprint: r.footprint }),
+        },
+      ];
     }
-  }
-  return lock;
+    const need = parseGenericSpec(part.spec.fn, part.spec.args);
+    if (!need) return []; // unknown generic: already an elaboration error
+    const footprint = genericFootprint(need);
+    return [
+      {
+        part,
+        spec,
+        status: need.fn === "fp" ? "board" : "unresolved",
+        value: genericValue(part.spec.fn, part.spec.args),
+        ...(footprint !== undefined && { footprint }),
+      },
+    ];
+  });
 }
 
 /** Lower is better: index of the first preferred distributor that stocks the part. */
@@ -57,117 +73,43 @@ function sourcingRank(record: PartRecord, preferred: readonly Distributor[]): nu
 }
 
 /**
- * Resolves every generic part to a library record whose `generic` spec satisfies it, preferring
- * records stocked by the preferred distributors (in order), then the lowest voltage rating that
- * fits, then id. Earlier resolutions in bom.lock are kept while they still fit.
+ * Library records whose `generic` field satisfies a generic part, best first: parts in inventory,
+ * then those the preferred distributors stock (in order), then the lowest voltage rating that
+ * fits, then id. Suggestions for the person: the design only changes when a part replaces it.
  */
-export function resolveBom(
-  netlist: Netlist,
+export function bomCandidates(
+  entry: BomEntry,
   library: PartLibrary,
-  lockText: string,
   preferred: readonly Distributor[],
-): BomResult {
-  const previous = parseBomLock(lockText);
+): PartRecord[] {
+  const { spec } = entry.part;
+  const need = spec.kind === "generic" ? parseGenericSpec(spec.fn, spec.args) : undefined;
+  if (!need) return [];
   const offers = [...library.values()].flatMap((e) => {
-    const spec = e.record.generic === undefined ? undefined : parseGenericText(e.record.generic);
-    return spec ? [{ record: e.record, spec }] : [];
+    const offer = e.record.generic === undefined ? undefined : parseGenericText(e.record.generic);
+    return offer && satisfies(offer, need) ? [{ record: e.record, offer }] : [];
   });
-
-  const entries: BomEntry[] = [];
-  const issues: Issue[] = [];
-  const lockLines: [string, string, string][] = [];
-  const changes: string[] = [];
-
-  for (const part of netlist.parts) {
-    const spec = printSpec(part.spec);
-    if (part.spec.kind === "lib") {
-      const r = part.record;
-      entries.push({
-        part,
-        spec,
-        status: "library",
-        value: r ? partName(r) : part.spec.id,
-        ...(r && { record: r }),
-        ...(r?.footprint && { footprint: r.footprint }),
-      });
-      continue;
-    }
-
-    const need = parseGenericSpec(part.spec.fn, part.spec.args);
-    const value = genericValue(part.spec.fn, part.spec.args);
-    if (!need) continue; // unknown generic: already an elaboration error
-    if (need.fn === "fp") {
-      const footprint = genericFootprint(need);
-      entries.push({ part, spec, status: "board", value, ...(footprint && { footprint }) });
-      continue;
-    }
-    const fits = offers.filter((o) => satisfies(o.spec, need));
-    const locked = previous.get(part.path);
-    let chosen = locked?.spec === spec ? fits.find((o) => o.record.id === locked.id) : undefined;
-    if (!chosen) {
-      chosen = [...fits].sort(
-        (a, b) =>
-          sourcingRank(a.record, preferred) - sourcingRank(b.record, preferred) ||
-          (a.spec.voltage ?? 0) - (b.spec.voltage ?? 0) ||
-          a.record.id.localeCompare(b.record.id),
-      )[0];
-    }
-
-    if (chosen) {
-      lockLines.push([part.path, spec, chosen.record.id]);
-      if (locked?.id !== chosen.record.id || locked.spec !== spec) {
-        changes.push(`${part.path} ${spec} -> ${chosen.record.id}`);
-      }
-      entries.push({
-        part,
-        spec,
-        record: chosen.record,
-        status: "resolved",
-        ...(chosen.record.footprint && { footprint: chosen.record.footprint }),
-        value,
-      });
-    } else {
-      if (locked) changes.push(`${part.path} ${spec}: dropped ${locked.id}, nothing fits`);
-      const footprint = genericFootprint(need);
-      issues.push({
-        code: "bom.unresolved",
-        severity: "warning",
-        message: `${part.path} ${spec}: no library part satisfies it${
-          footprint ? "" : " and it names no chip package, so it has no footprint"
-        }; add a record with generic: ${spec}`,
-        location: part.location,
-        subjects: [part.path],
-      });
-      entries.push({
-        part,
-        spec,
-        status: "unresolved",
-        value,
-        ...(footprint !== undefined && { footprint }),
-      });
-    }
-  }
-
-  for (const [path] of previous) {
-    if (!netlist.parts.some((p) => p.path === path)) changes.push(`${path}: removed from design`);
-  }
-  const width = Math.max(0, ...lockLines.map(([p]) => p.length));
-  const specWidth = Math.max(0, ...lockLines.map(([, s]) => s.length));
-  const lock =
-    lockHeader +
-    lockLines
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([p, s, id]) => `${p.padEnd(width)}  ${s.padEnd(specWidth)}  -> ${id}`)
-      .join("\n") +
-    (lockLines.length > 0 ? "\n" : "");
-  return { entries, lock, changes, issues };
+  const inventoryRank = (r: PartRecord) => (r.sourcing?.in_inventory ? 0 : 1);
+  return offers
+    .sort(
+      (a, b) =>
+        inventoryRank(a.record) - inventoryRank(b.record) ||
+        sourcingRank(a.record, preferred) - sourcingRank(b.record, preferred) ||
+        (a.offer.voltage ?? 0) - (b.offer.voltage ?? 0) ||
+        a.record.id.localeCompare(b.record.id),
+    )
+    .map((o) => o.record);
 }
 
 function csvField(s: string): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** Grouped BOM: one row per distinct part, references sorted naturally. */
+/**
+ * Grouped BOM: one row per distinct part, references sorted naturally. Unresolved generics are
+ * listed with what they have, and every row links to a search at each distributor, as the viewer
+ * does.
+ */
 export function formatBomCsv(
   entries: BomEntry[],
   refOf: (path: string) => string,
@@ -188,6 +130,7 @@ export function formatBomCsv(
     "Manufacturer",
     "MPN",
     "Footprint",
+    "In inventory",
     ...preferred,
     "Notes",
   ];
@@ -210,10 +153,36 @@ export function formatBomCsv(
       r?.manufacturer ?? "",
       r?.preferred_mpn ?? "",
       e.footprint ?? "",
-      ...preferred.map((d) => r?.sourcing?.[d] ?? ""),
+      r?.sourcing?.in_inventory ? "yes" : "",
+      ...preferred.map((d) => distributorLink(d, e.part.spec, r).url),
       notes.join("; "),
     ];
   });
   rows.sort((a, b) => natural(a[0] as string, b[0] as string));
   return `${[header, ...rows].map((row) => row.map(csvField).join(",")).join("\n")}\n`;
+}
+
+/** How many candidates the reply names for each spec. */
+const CANDIDATES_SHOWN = 3;
+
+/** The unresolved generics, a line per spec with the parts that could replace them. */
+export function unresolvedLines(
+  entries: BomEntry[],
+  library: PartLibrary,
+  preferred: readonly Distributor[],
+): string[] {
+  const bySpec = new Map<string, BomEntry[]>();
+  for (const e of entries) {
+    if (e.status === "unresolved") bySpec.set(e.spec, [...(bySpec.get(e.spec) ?? []), e]);
+  }
+  return [...bySpec].map(([spec, group]) => {
+    const fits = bomCandidates(group[0] as BomEntry, library, preferred);
+    const shown = fits.slice(0, CANDIDATES_SHOWN).map((r) => {
+      return `lib:${r.id}${r.sourcing?.in_inventory ? " [in inventory]" : ""}`;
+    });
+    const more = fits.length > shown.length ? ` +${fits.length - shown.length} more` : "";
+    return `${spec} x${group.length} (${group.map((e) => e.part.path).join(", ")}): ${
+      shown.length > 0 ? `${shown.join(", ")}${more}` : "no library part fits"
+    }`;
+  });
 }

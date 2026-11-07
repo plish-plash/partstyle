@@ -19,7 +19,7 @@ export const queryUsage = `queries:
   unconnected                   every pin on no net, marking those left open by nc
 COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path id preferred_mpn
 manufacturer package footprint kind fn value intent, approved (yes, no or changed: changed since
-approval), verified (yes/no, library parts), or any rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
+approval), verified and in_inventory (yes/no, library parts), or any rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
 and NAME may omit the instance path when unambiguous (U1 for PWR/U1).`;
 
 /** Fields any design may use; ratings and attributes exist only if something in it has them. */
@@ -35,6 +35,7 @@ const partBaseFields = [
   "package",
   "footprint",
   "verified",
+  "in_inventory",
   "approved",
 ];
 const netBaseFields = ["name", "pins", "voltage", "source"];
@@ -116,6 +117,7 @@ function partFields(part: FlatPart, approvals: Approvals): Record<string, string
       package: r.package,
       footprint: r.footprint,
       verified: r.provenance.verified_by ? "yes" : "no",
+      in_inventory: r.sourcing?.in_inventory ? "yes" : "no",
     });
     addRatings(fields, r.ratings ?? {}, "");
   }

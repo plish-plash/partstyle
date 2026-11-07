@@ -46,6 +46,11 @@ const designReview: PromptDef = {
    - Parts: unverified or draft records, lifecycle, rating margins, temperature range and
      packages against the project file's environment and assembly method.
    - Manufacture and test: test points, programming and debug access, connector polarity.
+   - BOM consolidation: fewer distinct parts to buy. The same value at different voltages,
+     tolerances, dielectrics or packages where the better part serves all of them; close values
+     where the exact one doesn't matter (pull-ups, LED resistors, decoupling); two parts doing one
+     job. Prefer parts in inventory (query parts where in_inventory = yes) and parts already in the
+     design. A suggestion must keep every rating and the \`@ intent\` it replaces.
 3. Write the findings to notes/review.md, one line each, most severe first:
    \`- [critical|major|minor|note] SUBJECT: finding -> suggestion\`
 4. Summarise for the person and ask which fixes to make.`,
@@ -70,7 +75,9 @@ const ingestPart: PromptDef = {
    in sections of your own where no field fits.
    - Identity: the part's name without ordering codes as the id, a one-line summary with key
      ratings and package, the orderable part as preferred_mpn, package and a KiCad footprint.
-     Set kicad_symbol for discretes and anything else KiCad doesn't name.
+     Set kicad_symbol for discretes and anything else KiCad doesn't name. A passive, LED or diode
+     also gets generic, what it offers (\`cap(100n, 50V, X7R, 10%, 0603)\`): it then draws like that
+     generic, and the BOM offers it as a candidate.
    - pins: every pad by number, with the datasheet name and type. Give supply and input pins
      vmax, and unused where the datasheet says a pin may float or must be connected.
    - ratings, temp_c, requirements (with a check where one fits), notes, and characteristics,
@@ -84,15 +91,18 @@ const ingestPart: PromptDef = {
 
 const handoff: PromptDef = {
   name: "handoff",
-  description: "Resolve the BOM, write PCB and firmware notes, and export to KiCad",
+  description: "Assign real parts, write PCB and firmware notes, and export to KiCad",
   args: [],
   render: () => `Prepare this design for PCB layout in KiCad.
 
 1. validate: no errors. Explain each remaining warning to the person, and list any part not yet
    approved (query parts where approved != yes).
-2. bom_export: for each unresolved generic, propose a library record
-   (ingest_part) or confirm it can stay generic for the assembler to choose. List any part with
-   no preferred MPN for the person.
+2. bom_export lists each generic not yet replaced with a real part. For each, propose a part to
+   the person: a listed candidate or a part_search result, parts in inventory first, or a new
+   record (ingest_part) if none fits. Apply the ones they agree to with
+   \`= part REF lib:ID [layout] @ intent\`, keeping the line's layout and intent, since = replaces
+   the whole statement. A generic stays only if they confirm it (the assembler chooses). Then
+   bom_export again, and list any part with no preferred MPN for the person.
 3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
    (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,

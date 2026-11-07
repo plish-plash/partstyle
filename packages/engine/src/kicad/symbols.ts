@@ -1,4 +1,4 @@
-import { genericPins, parseGenericSpec } from "../parts/generic.js";
+import { genericPins, parseGenericSpec, splitGenericText } from "../parts/generic.js";
 import { type PartRecord, type PinType, partName } from "../parts/schema.js";
 import { type SExpr, sym, yesNo } from "./sexpr.js";
 
@@ -258,6 +258,24 @@ function refPrefixFor(record: PartRecord): string {
   if (names.includes("K") && names.includes("A")) return "D";
   if (Object.values(record.pins).every((p) => p.type === "passive")) return "J";
   return "U";
+}
+
+/**
+ * The generated generic symbol for a record that names its `generic`, so a real capacitor looks
+ * like a capacitor without KiCad's libraries. Undefined when its pads don't line up with the
+ * symbol's: pin 1 of a diode is K here, and the polarity of a part must not be drawn backwards.
+ */
+export function symbolForRecordGeneric(record: PartRecord): GeneratedSymbol | undefined {
+  const generic = record.generic === undefined ? undefined : splitGenericText(record.generic);
+  if (!generic) return undefined;
+  const pins = genericPins(generic.fn, generic.args);
+  const fits =
+    pins.length === Object.keys(record.pins).length &&
+    pins.every((p) => {
+      const pad = record.pins[p.number];
+      return pad !== undefined && (p.name === p.number || p.name === pad.name);
+    });
+  return fits ? symbolForGeneric(generic.fn, generic.args) : undefined;
 }
 
 /** Symbols for generic parts: two-terminal passives drawn vertically, diodes horizontally. */

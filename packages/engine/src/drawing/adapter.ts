@@ -18,7 +18,7 @@ import type { CktFile, PortKind } from "../ckt/ast.js";
 import { powerRotation, powerValueAt } from "../kicad/power.js";
 import { type FlatPart, isOpenByDesign, type Netlist } from "../netlist/elaborate.js";
 import { genericValue } from "../parts/generic.js";
-import { partName } from "../parts/schema.js";
+import { partValue } from "../parts/schema.js";
 import { type DrawingPlan, type NetPlan, shapeOf } from "./plan.js";
 import type {
   PlacedLabel,
@@ -42,11 +42,11 @@ const MARGIN = 6;
 const textWidth = (s: string) => s.length * CHAR;
 const round = (v: number) => Number(v.toFixed(4));
 
-/** The Value text a part shows (as `resolveBom` derives it). */
+/** The Value text a part shows (as `buildBom` derives it). */
 const valueText = (part: FlatPart) =>
   part.spec.kind === "lib"
     ? part.record
-      ? partName(part.record)
+      ? partValue(part.record)
       : part.spec.id
     : genericValue(part.spec.fn, part.spec.args);
 

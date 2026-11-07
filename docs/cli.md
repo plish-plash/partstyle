@@ -39,8 +39,8 @@ overwritten.
 | `CLAUDE.md`              | instructions for Claude Code: workflow and procedures              |
 | `.claude/commands/`      | Claude Code slash commands for the procedures (see `guide`)        |
 
-Later commands add `annotation.lock` and `bom.lock` (commit both), `bom.csv`, and the
-generated KiCad project in `kicad/`.
+Later commands add `annotation.lock` (commit it), `bom.csv`, and the generated KiCad project in
+`kicad/`.
 
 If `CLAUDE.md` already exists, the instructions go to `CLAUDE.partstyle.md`; add the line
 `@CLAUDE.partstyle.md` to your `CLAUDE.md` to load them.
@@ -53,17 +53,17 @@ partstyle init boards/thermo --name thermo
 
 `partstyle-project.yaml` marks a folder as a Partstyle project. It is plain YAML:
 
-| Key                     | Meaning                                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `partstyle_version`     | the Partstyle version that created the project (written by `init`)                                                       |
-| `name`                  | the project's name (required)                                                                                            |
-| `description`           | one or two sentences; `overview` leads with it                                                                           |
-| `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes                                               |
-| `assembly`, others      | free-form context for people and design review                                                                           |
-| `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                           |
-| `sourcing.distributors` | distributors to use, in order: `lcsc`, `digikey`, `mouser`. `bom export` prefers them, and the viewer links only to them |
-| `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                                                          |
-| `layout`                | visual layout preferences, set from the viewer's Layout tab (see [layout.md](layout.md#preferences))                     |
+| Key                     | Meaning                                                                                                                      |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `partstyle_version`     | the Partstyle version that created the project (written by `init`)                                                           |
+| `name`                  | the project's name (required)                                                                                                |
+| `description`           | one or two sentences; `overview` leads with it                                                                               |
+| `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes                                                   |
+| `assembly`, others      | free-form context for people and design review                                                                               |
+| `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                               |
+| `sourcing.distributors` | distributors to use, in order: `lcsc`, `digikey`, `mouser`. The BOM has a link column for each, and the viewer links to them |
+| `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                                                              |
+| `layout`                | visual layout preferences, set from the viewer's Layout tab (see [layout.md](layout.md#preferences))                         |
 
 `external_interfaces` lists every connection to the outside world, the power input included:
 what the person says the board will face at each connector. Hazards are for the AI and design
@@ -127,8 +127,8 @@ missing the field never matches. A field no part or net in the design could have
 misspelt one, fails and lists the fields that exist.
 
 - Part fields: `path id preferred_mpn manufacturer package footprint kind fn value verified
-  approved intent` and every rating in the part record (`vin_max`, or `vout.max` for a nested one).
-  `verified` is `yes` or `no`, and only library parts have it. `approved` is `yes`, `no` or
+  in_inventory approved intent` and every rating in the part record (`vin_max`, or `vout.max` for a
+  nested one). `verified` and `in_inventory` are `yes` or `no`, and only library parts have them. `approved` is `yes`, `no` or
   `changed`, so `approved != yes` finds everything still to sign off. Both also take `true` and
   `false`, for `yes` and `no`.
 - Net fields: `name pins` (pin count) and every net attribute (`voltage`, `source`, ...).
@@ -244,8 +244,13 @@ also shows up a misspelt field. When KiCad's footprint libraries are found, a fo
 not in them or whose pads differ from the pin table is a `warning:` line too. Pads named `MP` are
 mounting points and need no pin.
 
-A record for a concrete passive can carry `generic: cap(100n, 50V, X7R, 10%, 0603)`, the
-generic it satisfies, so `bom export` and `kicad export` can resolve generics to it.
+A record for a concrete passive, LED or diode can carry `generic: cap(100n, 50V, X7R, 10%, 0603)`,
+the generic it satisfies. The part is then drawn with that generic's symbol, a resistor, capacitor
+or inductor shows its value, and `bom export` offers it as a candidate for generics it satisfies.
+
+`sourcing: { in_inventory: true }` marks a part the person already has. The viewer's part inspector
+sets it. `bom export` shows it and ranks those parts first, and `part search` and `part get` tag them
+`[in inventory]`.
 
 Fields the checks read (see `validate`): `vmax` on a pin (its absolute maximum relative to
 ground), `temp_c: [min, max]`, and requirements with a check:
@@ -266,25 +271,28 @@ requirements:
 
 ### `bom export`
 
-Resolves every generic part to a library record whose `generic` field meets each constraint:
-same value, voltage/current/power at least as high, tolerance at least as tight, same
-dielectric and package when given. Among matches it prefers parts stocked by the preferred
-distributors in the project file (`sourcing.distributors`, in order), then the lowest voltage
-rating, then id. Writes:
+Writes `bom.csv` for the design as it stands: one row per distinct part with references, quantity,
+value, spec, manufacturer, MPN, footprint, whether it is in inventory, a link column per distributor
+in the project file (`sourcing.distributors`, in order), and notes (unresolved generics, unverified
+records). The links are the viewer's: a search by the distributor's part number where the record
+has one, else by MPN, or by spec for a generic.
 
-- `bom.lock`: how each generic resolved. A choice is kept until the part's spec changes or the
-  record stops fitting; delete a line to re-resolve it.
-- `bom.csv`: one row per distinct part with references, quantity, value, spec, manufacturer,
-  MPN, footprint, a part-number column per preferred distributor, and notes (unresolved
-  generics, unverified records).
+A generic is a part not chosen yet, so nothing replaces it automatically: choosing a part is a step
+of preparing the BOM, done by replacing the statement in the circuit
+(`= part C1 lib:CL10B104KB8NNNC @ decoupling`). The BOM can be exported at any stage: an unresolved
+generic has a row with what it has, and keeps a footprint derived from its package when it is a chip
+size (`0603` → `R_0603_1608Metric`). `fp(...)` parts have nothing to buy and stay out of the BOM.
 
-Unresolved generics are reported as `bom.unresolved` warnings and keep a footprint derived from
-their package when it is a chip size (`0603` → `R_0603_1608Metric`).
+The reply lists the unresolved generics by spec, with up to three library records that could replace
+each: those whose `generic` field meets every constraint (same value, voltage/current/power at least
+as high, tolerance at least as tight, same dielectric and package when given). Parts in inventory
+come first, then parts stocked by the project's distributors in order, then the lowest voltage
+rating, then id.
 
 ### `kicad export [--no-check]`
 
-Writes a KiCad 10 project to `kicad/` and updates `annotation.lock` and `bom.lock`. Refuses
-while the design has validation errors.
+Writes a KiCad 10 project to `kicad/` and updates `annotation.lock`. Refuses while the design has
+validation errors. Generics are exported as they are, with their derived footprints.
 
 | File                  | Contents                                                  |
 | --------------------- | --------------------------------------------------------- |
@@ -307,7 +315,10 @@ library exactly; without KiCad, built-in look-alikes with the same names are use
    `D_Schottky`, `D_Zener`, `D_TVS` for `diode(schottky|zener|tvs)`).
 2. A part record's `kicad_symbol: Lib:Name` is used when set. Use it for parts KiCad does not
    name, such as connectors (`Connector_Generic:Conn_01x03`) and transistors (`Device:Q_NPN`).
-3. Otherwise the libraries are searched by the record's id and preferred MPN: an exact name, a
+3. A record with a `generic` field tries that generic's symbol, so a real capacitor draws as
+   `Device:C`. Without KiCad's libraries it gets the generated symbol of that generic, when its
+   pads line up with the symbol's.
+4. Otherwise the libraries are searched by the record's id and preferred MPN: an exact name, a
    KiCad wildcard name (`MCP6002-xSN` for `MCP6002-I/SN`, `MCP1700x-330xxTT` for
    `MCP1700T-3302E/TT`), the longest name that is a prefix of the MPN followed by a letter
    (`L7805` for `L7805CV`), or the shortest name the id is a prefix of.
@@ -425,6 +436,8 @@ moment of any change to the project's files or its part libraries.
   Issues and comments also appear as markers on the sheet.
 - **Comment:** attach a comment to the selected item; resolve it when done.
 - **Verify:** "Mark verified" sets `verified_by: human` in an AI-extracted part record.
+- **Inventory:** the "In inventory" checkbox on a part sets `sourcing.in_inventory` in its record,
+  so it applies to every part using that record.
 
 The server listens on 127.0.0.1 only, refuses requests addressed to other host names, and accepts
 writes only from its own page. Add `?live=0` to the URL for a static snapshot without the update
@@ -569,7 +582,7 @@ variants/buck/
   takes `--variant` several times (`main` is the main circuit) and applies the patch to each,
   all or nothing. With `main` among them, a variant gets only the edits to blocks of its own:
   main's edit already reaches the rest. Changesets, pending patches, `diff --since last` and
-  the export outputs (`bom.csv`, the locks, `kicad/`) are the variant's own, under
+  the export outputs (`bom.csv`, `annotation.lock`, `kicad/`) are the variant's own, under
   `variants/NAME/`; the locks fall back to main's, so shared parts keep their refdes. KiCad
   import works on main only.
 - **Shared.** Parts, notes, comments and checkpoints.

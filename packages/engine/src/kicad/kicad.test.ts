@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { resolveBom } from "../bom.js";
 import type { Netlist } from "../netlist/elaborate.js";
 import { parseGenericSpec, parseGenericText, satisfies } from "../parts/generic.js";
 import { loadProject } from "../project/load.js";
@@ -161,14 +160,14 @@ describe("power symbols", () => {
 
 describe("exportKicad", () => {
   it("writes a netlist that reads back as the same connectivity", async () => {
-    const x = await exportKicad(result, { annotation: "", bom: "" });
+    const x = await exportKicad(result, "");
     const parsed = parseKicadNetlist(x.files.get(x.netlistFile) as string);
     expect(parsed.refs.size).toBe(30);
     expect(compareNetlists(result.netlist as Netlist, x.annotation, parsed)).toEqual([]);
   });
 
   it("detects a netlist that differs", async () => {
-    const x = await exportKicad(result, { annotation: "", bom: "" });
+    const x = await exportKicad(result, "");
     const parsed = parseKicadNetlist(x.files.get(x.netlistFile) as string);
     const gnd = parsed.nets.find((n) => n.name === "GND");
     gnd?.nodes.pop();
@@ -179,20 +178,20 @@ describe("exportKicad", () => {
   });
 
   it("is deterministic", async () => {
-    const a = await exportKicad(result, { annotation: "", bom: "" });
-    const b = await exportKicad(result, { annotation: "", bom: "" });
+    const a = await exportKicad(result, "");
+    const b = await exportKicad(result, "");
     expect([...a.files]).toEqual([...b.files]);
   });
 
   it("flags only nets fed from outside: the 12 V input and ground", async () => {
-    const x = await exportKicad(result, { annotation: "", bom: "" });
+    const x = await exportKicad(result, "");
     expect(x.schematic.powerFlags).toBe(2);
     expect(x.files.get("power.kicad_sch")).toContain('(lib_id "power:PWR_FLAG")');
     expect(x.files.get("partstyle.kicad_sym")).not.toContain("PWR_FLAG");
   });
 
   it("draws power nets with power symbols and keeps them off sheet pins", async () => {
-    const x = await exportKicad(result, { annotation: "", bom: "" });
+    const x = await exportKicad(result, "");
     const power = x.files.get("power.kicad_sch") as string;
     expect(power).toContain('(lib_id "power:GND")');
     expect(power).not.toMatch(/\(hierarchical_label "(GND|\+5V|\+3V3)"/);
@@ -228,38 +227,9 @@ net AIN2 : B.AIN`;
         c.file === "circuit/main.ckt" ? { ...c, text: main } : c,
       ),
     });
-    const x = await exportKicad(r, { annotation: "", bom: "" });
+    const x = await exportKicad(r, "");
     const afe = x.files.get("sensor_afe.kicad_sch") as string;
     expect(afe).toMatch(/\(hierarchical_label "\+5V"/);
     expect(afe).toContain('(lib_id "power:GND")');
-  });
-});
-
-describe("resolveBom", () => {
-  it("prefers parts stocked by the preferred distributors, then keeps the choice locked", () => {
-    const lib = new Map(result.library);
-    const base = lib.get("CL10B104KB8NNNC");
-    if (!base) throw new Error("seed record missing");
-    lib.set("ZZ100N", {
-      ...base,
-      record: { ...base.record, id: "ZZ100N", sourcing: { lcsc: "C0000", lifecycle: "active" } },
-    });
-    const netlist = result.netlist as Netlist;
-    const pick = (lock: string, preferred: ("lcsc" | "digikey")[]) =>
-      resolveBom(netlist, lib, lock, preferred).entries.find((e) => e.part.path === "PWR/C2")
-        ?.record?.id;
-
-    expect(pick("", [])).toBe("CL10B104KB8NNNC");
-    expect(pick("", ["lcsc"])).toBe("ZZ100N");
-    const locked = resolveBom(netlist, lib, "", []).lock;
-    expect(pick(locked, ["lcsc"])).toBe("CL10B104KB8NNNC");
-  });
-
-  it("re-resolves when the spec changes and reports parts removed from the design", () => {
-    const netlist = result.netlist as Netlist;
-    const lock = "PWR/C2  cap(100n, 6V)  -> CL10B104KB8NNNC\nGONE/R1  res(1k)  -> RC0603FR-071KL\n";
-    const r = resolveBom(netlist, result.library, lock, []);
-    expect(r.changes).toContain("PWR/C2 cap(100n, 16V, X7R, 0603) -> CL10B104KB8NNNC");
-    expect(r.changes).toContain("GONE/R1: removed from design");
   });
 });

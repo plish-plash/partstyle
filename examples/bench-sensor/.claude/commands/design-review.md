@@ -22,6 +22,11 @@ Review this Partstyle design. Report findings; do not change the circuit until t
    - Parts: unverified or draft records, lifecycle, rating margins, temperature range and
      packages against the project file's environment and assembly method.
    - Manufacture and test: test points, programming and debug access, connector polarity.
+   - BOM consolidation: fewer distinct parts to buy. The same value at different voltages,
+     tolerances, dielectrics or packages where the better part serves all of them; close values
+     where the exact one doesn't matter (pull-ups, LED resistors, decoupling); two parts doing one
+     job. Prefer parts in inventory (query parts where in_inventory = yes) and parts already in the
+     design. A suggestion must keep every rating and the `@ intent` it replaces.
 3. Write the findings to notes/review.md, one line each, most severe first:
    `- [critical|major|minor|note] SUBJECT: finding -> suggestion`
 4. Summarise for the person and ask which fixes to make.

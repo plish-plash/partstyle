@@ -94,6 +94,30 @@ describe("Workspace review", () => {
     expect((await ws.verifyPart("NOPE")).ok).toBe(false);
   });
 
+  it("sets a record's inventory flag in place, keeping its comments and style", async () => {
+    const file = path.join(tmp, "library/L7805CV.yaml");
+    const original = await readFile(file, "utf8");
+    await writeFile(file, `# keep this comment\n${original}`);
+    const on = await ws.setInInventory("L7805CV", true);
+    expect(on.text).toBe("marked L7805CV in inventory in ../../library/L7805CV.yaml");
+    const text = await readFile(file, "utf8");
+    expect(text).toContain("# keep this comment");
+    expect(text).toMatch(/sourcing: \{.*in_inventory: true/);
+    expect((await ws.viewerModel()).parts["PWR/U1"]?.record?.inInventory).toBe(true);
+
+    await ws.setInInventory("L7805CV", false);
+    expect(await readFile(file, "utf8")).toBe(`# keep this comment\n${original}`);
+    expect((await ws.viewerModel()).parts["PWR/U1"]?.record?.inInventory).toBe(false);
+    expect((await ws.setInInventory("NOPE", true)).ok).toBe(false);
+  });
+
+  it("creates sourcing when setting the flag on a record without it", async () => {
+    const file = path.join(tmp, "library/L7805CV.yaml");
+    await writeFile(file, (await readFile(file, "utf8")).replace(/^sourcing:.*\n/m, ""));
+    await ws.setInInventory("L7805CV", true);
+    expect((await ws.viewerModel()).parts["PWR/U1"]?.record?.inInventory).toBe(true);
+  });
+
   it("builds a viewer model with sheets, symbols, parts and review state", async () => {
     await writeFile(
       path.join(project, "comments.yaml"),
@@ -111,7 +135,9 @@ describe("Workspace review", () => {
       for (const u of s.layout.units) expect(m.symbols[u.libId]).toBeDefined();
     }
     expect(m.comments).toHaveLength(1);
-    expect(m.issues.map((i) => i.code)).toContain("bom.unresolved");
+    // A generic with no part chosen yet is a normal state of designing, not an issue.
+    expect(m.parts["PWR/C3"]?.bom.status).toBe("unresolved");
+    expect(m.issues.map((i) => i.code)).not.toContain("bom.unresolved");
   });
 
   it("still returns issues for a design that does not elaborate", async () => {

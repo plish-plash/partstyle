@@ -198,6 +198,10 @@ export async function startViewer(
         send(200, await ws.verifyPart(str(body.id, "id", 200)));
         return;
       }
+      if (url.pathname === "/api/inventory") {
+        send(200, await ws.setInInventory(str(body.id, "id", 200), body.inInventory === true));
+        return;
+      }
       // Review actions; each may name the variant it applies to.
       const w = await target(typeof body.variant === "string" ? body.variant : undefined);
       if (url.pathname === "/api/layout") {

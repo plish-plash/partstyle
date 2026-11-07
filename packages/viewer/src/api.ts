@@ -60,6 +60,8 @@ export const resolveComment = (id: string) =>
   post<{ ok: boolean; text: string }>(`api/comments/${encodeURIComponent(id)}/resolve`, {});
 
 export const verifyPart = (id: string) => post<{ ok: boolean; text: string }>("api/verify", { id });
+export const setInInventory = (id: string, inInventory: boolean) =>
+  post<{ ok: boolean; text: string }>("api/inventory", { id, inInventory });
 
 /** Signs off parts by flat path, or with `undo` takes that back. */
 export const approve = (parts: string[], undo: boolean, variant?: string) =>

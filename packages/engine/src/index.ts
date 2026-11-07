@@ -1,5 +1,12 @@
 export * from "./approvals.js";
-export { type BomEntry, type BomResult, formatBomCsv, resolveBom } from "./bom.js";
+export {
+  type BomEntry,
+  type BomStatus,
+  bomCandidates,
+  buildBom,
+  formatBomCsv,
+  unresolvedLines,
+} from "./bom.js";
 export * from "./ckt/ast.js";
 export { type LexError, lexLine, type Token, type TokenKind } from "./ckt/lexer.js";
 export { parseCkt, parsePinRef, parseStatement } from "./ckt/parser.js";

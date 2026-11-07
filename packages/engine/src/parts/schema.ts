@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseQuantity } from "../units.js";
-import { parseGenericText } from "./generic.js";
+import { parseGenericText, passiveValue } from "./generic.js";
 
 export const pinTypes = [
   "input",
@@ -99,13 +99,18 @@ export interface PartRecord {
   temp_c?: [number, number];
   requirements?: Requirement[];
   notes?: string[];
-  /** For a concrete passive: the generic it satisfies, so cap()/res()/... resolve to it. */
+  /**
+   * For a concrete passive, LED or diode: the generic it satisfies. It is drawn and valued like
+   * that generic, and offered as a candidate for generics it satisfies.
+   */
   generic?: string;
   sourcing?: {
     lcsc?: string | null;
     digikey?: string | null;
     mouser?: string | null;
     lifecycle?: string;
+    /** The person has this part already. */
+    in_inventory?: boolean;
   };
   provenance: {
     datasheet?: { url?: string };
@@ -244,9 +249,7 @@ export function readPartRecord(data: unknown): RecordReading {
     if (generic !== undefined && parseGenericText(generic) !== undefined) {
       record.generic = generic;
     } else {
-      warnings.push(
-        "generic must be a spec such as cap(100n, 50V, X7R, 10%, 0603); generics will not resolve to this record",
-      );
+      warnings.push("generic must be a spec such as cap(100n, 50V, X7R, 10%, 0603); it is ignored");
     }
   }
 
@@ -278,11 +281,16 @@ export function readPartRecord(data: unknown): RecordReading {
     const digikey = code(s.digikey);
     const mouser = code(s.mouser);
     const lifecycle = text(s.lifecycle);
+    const inInventory = typeof s.in_inventory === "boolean" ? s.in_inventory : undefined;
+    if (s.in_inventory !== undefined && inInventory === undefined) {
+      warnings.push("sourcing.in_inventory must be true or false; it is ignored");
+    }
     record.sourcing = {
       ...(lcsc !== undefined && { lcsc }),
       ...(digikey !== undefined && { digikey }),
       ...(mouser !== undefined && { mouser }),
       ...(lifecycle !== undefined && { lifecycle }),
+      ...(inInventory !== undefined && { in_inventory: inInventory }),
     };
   }
   return { record, problems: [], warnings, notes };
@@ -305,3 +313,7 @@ export const isDraft = (r: PartRecord) => r.provenance.extracted_by === "kicad";
 
 /** What to call the part on a schematic or a BOM. */
 export const partName = (r: PartRecord) => r.preferred_mpn ?? r.id;
+
+/** A part's Value: `100n` for a concrete passive, as its generic shows, else its name. */
+export const partValue = (r: PartRecord) =>
+  (r.generic === undefined ? undefined : passiveValue(r.generic)) ?? partName(r);

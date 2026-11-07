@@ -20,13 +20,14 @@ import {
   parseApprovals,
   partSnapshot,
 } from "../approvals.js";
-import { formatBomCsv, resolveBom } from "../bom.js";
+import { type BomStatus, buildBom, formatBomCsv, unresolvedLines } from "../bom.js";
 import { compareIssues, formatIssue, issueDelta } from "../diagnostics.js";
 import { type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
 import { annotate, formatAnnotationLock, parseAnnotationLock } from "../kicad/annotate.js";
 import { exportKicad } from "../kicad/export.js";
 import { buildImport } from "../kicad/import.js";
 import { compareNetlists, parseKicadNetlist } from "../kicad/netlist.js";
+import { setInventoryFlag } from "../parts/inventory.js";
 import { parsePartRecord } from "../parts/library.js";
 import { isDraft } from "../parts/schema.js";
 import { describePart, type PartTier, searchParts } from "../parts/search.js";
@@ -326,16 +327,9 @@ export class Workspace {
     return this.variantName === undefined ? name : `${VARIANTS_DIR}/${this.variantName}/${name}`;
   }
 
-  /** A variant's own file, else main's: parts both share keep their refdes, choices and approvals. */
+  /** A variant's own file, else main's: parts both share keep their refdes and approvals. */
   private async lock(name: string): Promise<string> {
     return (await this.readOptional(this.ownFile(name))) || (await this.readOptional(name));
-  }
-
-  private async locks(): Promise<{ annotation: string; bom: string }> {
-    return {
-      annotation: await this.lock("annotation.lock"),
-      bom: await this.lock("bom.lock"),
-    };
   }
 
   /** Review comments and the viewer selection, read fresh (they are small and change often). */
@@ -840,7 +834,7 @@ export class Workspace {
 
   /**
    * Writes the KiCad project to kicad/ (schematic sheets, symbol library, netlist), updates
-   * annotation.lock and bom.lock, then, when kicad-cli is available, re-derives the netlist from
+   * annotation.lock, then, when kicad-cli is available, re-derives the netlist from
    * the written schematic to prove it matches the design and runs KiCad's ERC. Never touches
    * the .kicad_pcb, and writes the .kicad_pro only if it is missing.
    */
@@ -851,7 +845,11 @@ export class Workspace {
         return fail(`cannot export with ${issueSummary(result)}; fix the errors first (validate)`);
       }
       const { cli, footprints, symbols } = await this.kicad();
-      const x = await exportKicad(result, await this.locks(), await this.libraries(result));
+      const x = await exportKicad(
+        result,
+        await this.lock("annotation.lock"),
+        await this.libraries(result),
+      );
 
       const kicadDir = this.ownFile(KICAD_DIR);
       const dir = path.join(this.root, kicadDir);
@@ -877,7 +875,6 @@ export class Workspace {
         x.annotationLock,
         "utf8",
       );
-      await writeFile(path.join(this.root, this.ownFile("bom.lock")), x.bom.lock, "utf8");
 
       const sheets = x.schematic.instances.length;
       lines.unshift(
@@ -888,10 +885,7 @@ export class Workspace {
       const generated = x.symbols.filter((s) => s.generated);
       if (fromKicad.length > 0) {
         lines.push(
-          `KiCad symbols: ${fromKicad
-            .map((s) => s.libId)
-            .sort()
-            .join(", ")}`,
+          `KiCad symbols: ${[...new Set(fromKicad.map((s) => s.libId))].sort().join(", ")}`,
         );
       }
       for (const s of generated) {
@@ -909,21 +903,11 @@ export class Workspace {
       }
       for (const [p, r] of x.renumbered)
         lines.push(`annotation: ${p} -> ${r} (its refdes was taken)`);
-      lines.push(...summarizeLockChanges(x.bom.changes));
 
-      // Footprints the design check did not cover: resolved generics and unresolved chip parts.
+      // Footprints the design check did not cover: those derived from generics.
       if (footprints) {
-        const resolved = new Set(
-          x.bom.entries.flatMap((e) => (e.status === "resolved" && e.record ? [e.record.id] : [])),
-        );
-        const entries = [...resolved].flatMap((id) => {
-          const e = result.library.get(id);
-          return e ? [e] : [];
-        });
-        x.issues.push(...(await checkFootprints(entries, footprints)));
-        for (const e of x.bom.entries) {
-          if (e.status === "library" || e.status === "resolved") continue;
-          if (e.footprint === undefined) continue;
+        for (const e of x.bom) {
+          if (e.status === "library" || e.footprint === undefined) continue;
           if (!(await footprintPads(footprints, e.footprint))) {
             x.issues.push({
               code: "part.footprint-missing",
@@ -1248,6 +1232,19 @@ export class Workspace {
     });
   }
 
+  /** Sets whether the person has a part already (`sourcing.in_inventory`). */
+  setInInventory(id: string, inInventory: boolean): Promise<TextResult> {
+    return this.guard(async () => {
+      const { result } = await this.load();
+      const entry = result.library.get(id);
+      if (!entry) return fail(`no part '${id}' in the library`);
+      const file = path.resolve(this.root, entry.file);
+      await writeFile(file, setInventoryFlag(await readFile(file, "utf8"), inInventory), "utf8");
+      const state = inInventory ? "in inventory" : "not in inventory";
+      return { ok: true, text: `marked ${id} ${state} in ${entry.file}` };
+    });
+  }
+
   /**
    * Everything the viewer draws: the laid-out sheets, symbols, parts, nets, issues and review
    * state. A design that does not elaborate still gets its issues, with no sheets.
@@ -1299,7 +1296,7 @@ export class Workspace {
     try {
       const drawing = await prepareDrawing(
         result,
-        await this.locks(),
+        await this.lock("annotation.lock"),
         await this.libraries(result),
       );
       return buildViewerModel(drawing, result, review, await this.approvals());
@@ -1735,7 +1732,10 @@ export class Workspace {
     });
   }
 
-  /** Resolves generic parts against the library, writes bom.lock and a grouped bom.csv. */
+  /**
+   * Writes a grouped bom.csv of the design as it stands, and lists the generics still to be
+   * replaced with real parts, with the library parts that could replace them.
+   */
   bomExport(): Promise<TextResult> {
     return this.guard(async () => {
       const { result } = await this.load();
@@ -1746,30 +1746,22 @@ export class Workspace {
         parseAnnotationLock(await this.lock("annotation.lock")),
       );
       const preferred = result.config.sourcing.distributors;
-      const bom = resolveBom(
-        result.netlist,
-        result.library,
-        await this.lock("bom.lock"),
-        preferred,
-      );
-      const csv = formatBomCsv(bom.entries, (p) => table.get(p) ?? p, preferred);
+      const bom = buildBom(result.netlist);
+      const csv = formatBomCsv(bom, (p) => table.get(p) ?? p, preferred);
       const out = (name: string) => path.join(this.root, this.ownFile(name));
       await mkdir(this.own, { recursive: true });
       await writeFile(out("annotation.lock"), formatAnnotationLock(table), "utf8");
-      await writeFile(out("bom.lock"), bom.lock, "utf8");
       await writeFile(out("bom.csv"), csv, "utf8");
 
-      const count = (s: string) => bom.entries.filter((e) => e.status === s).length;
+      const count = (s: BomStatus) => bom.filter((e) => e.status === s).length;
+      const unresolved = unresolvedLines(bom, result.library, preferred);
       const lines = [
-        `wrote ${this.ownFile("bom.csv")}: ${csv.trimEnd().split("\n").length - 1} lines for ${bom.entries.length} parts ` +
-          `(${count("library")} library, ${count("resolved")} resolved generics, ${count("unresolved")} unresolved)`,
-        ...summarizeLockChanges(bom.changes),
-        ...bom.issues.map((i) => formatIssue(i)),
+        `wrote ${this.ownFile("bom.csv")}: ${csv.trimEnd().split("\n").length - 1} lines for ${bom.length} parts ` +
+          `(${count("library")} assigned, ${count("unresolved")} unresolved)`,
+        ...(unresolved.length > 0 ? ["unresolved:", ...unresolved.map((l) => `  ${l}`)] : []),
       ];
       if (preferred.length === 0) {
-        lines.push(
-          `note: no sourcing.distributors in ${PROJECT_FILE}; none were used to rank parts`,
-        );
+        lines.push(`note: no sourcing.distributors in ${PROJECT_FILE}, so no distributor columns`);
       }
       return { ok: true, text: lines.join("\n") };
     });
@@ -1811,10 +1803,3 @@ function applyOverrides(mainText: string, overridesText: string): string {
 const UNCHANGED_STYLE = { flowCollectionPadding: false, lineWidth: 0 };
 const VIEWER_FILE = ".partstyle/viewer.json";
 const IMPORT_NOTES = "notes/kicad-import.md";
-
-function summarizeLockChanges(changes: string[]): string[] {
-  if (changes.length === 0) return [];
-  const shown = changes.slice(0, 10).map((c) => `  ${c}`);
-  if (changes.length > 10) shown.push(`  ... ${changes.length - 10} more (see bom.lock)`);
-  return [`bom.lock: ${changes.length} change${changes.length === 1 ? "" : "s"}`, ...shown];
-}

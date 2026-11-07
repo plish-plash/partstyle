@@ -218,11 +218,7 @@ describe("export with KiCad symbols", () => {
         ],
       ],
     ]);
-    const x = await exportKicad(
-      result,
-      { annotation: "", bom: "" },
-      { symbolCandidates: candidates },
-    );
+    const x = await exportKicad(result, "", { symbolCandidates: candidates });
     expect(x.symbols.find((s) => s.key === "lib:MCP6002")).toMatchObject({
       libId: "L:MCP6002-xSN",
       generated: false,
@@ -251,11 +247,7 @@ describe("export with KiCad symbols", () => {
       ],
       ["lib:1N5819", [{ libId: "Diode:NOPE", explicit: false }]],
     ]);
-    const x = await exportKicad(
-      result,
-      { annotation: "", bom: "" },
-      { symbolCandidates: candidates },
-    );
+    const x = await exportKicad(result, "", { symbolCandidates: candidates });
     expect(x.symbols.find((s) => s.key === "lib:L7805CV")).toMatchObject({
       libId: "partstyle:L7805CV",
       generated: true,

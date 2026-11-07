@@ -11,7 +11,7 @@ The tool stores a circuit as compact, semantic text (parts, pins, nets, intent) 
 **Goals**
 
 - **AI-first editing** — the design is stored in a form an AI can read selectively and patch in small diffs; the human gets a live preview plus small connectivity edits.
-- **Part-centric** — every component resolves to a real part (or a constrained generic that resolves at BOM time); distilled datasheet facts live in a local library so they are read once.
+- **Part-centric** — every component resolves to a real part (or a constrained generic until one is chosen, which is a step of preparing the BOM); distilled datasheet facts live in a local library so they are read once.
 - **Environment context** — use case, operating environment and external connections are stored with the circuit and used in review.
 - **KiCad interoperability** — import existing schematics; export schematic, symbols, footprint assignments and netlist.
 - **Versioned** — checkpoints and parallel variants.
@@ -52,7 +52,6 @@ my-board/
     sensor_afe.ckt
   parts/                  # project-local part records (overrides global)
   parts.lock              # exact part-record versions/hashes used
-  bom.lock                # how generic parts were resolved to MPNs
   notes/
     design.md             # how the design works now
     decisions.md          # decisions made with the person; append-only
@@ -86,7 +85,7 @@ net GND     : J1.SLEEVE U1.GND C1.2 C2.2 C3.2 -> port GND
 
 - `@` attaches intent to a statement; it travels with the part through edits and is what makes review cheap later.
 - `{…}` net attributes (voltage range, signal kind, max current, impedance) feed the part-aware checks.
-- Generic parts like `cap(…)` are constraints, resolved to an MPN at BOM time and recorded in `bom.lock`.
+- Generic parts like `cap(…)` are constraints: a part not chosen yet. Preparing the BOM replaces each with a `lib:` part in the circuit; nothing chooses one automatically.
 - Hierarchy: `main.ckt` uses `use power as PWR` and joins `PWR.+5V` to other blocks' ports. Instance paths (`PWR/C1`) map to flat refdes on export via a stable annotation table.
 
 ### Part records
@@ -121,7 +120,7 @@ provenance:
 - **Symbols are generated** from the pin table (pins grouped by type and function), so there is no separate abstract symbol to keep in sync. A record may optionally map to a KiCad library symbol for export; generic ones like `Device:Q_NPN` pair up with its pins by name.
 - **Footprints are compared** with the pin table at record creation. A mismatch is a warning for the person to review, not a refusal; pads named MP are mounting points, a PCB detail.
 
-**Sourcing.** Part records hold per-distributor data (LCSC/JLCPCB, Digi-Key, Mouser). Each project names its preferred distributors in its project file, and BOM resolution and stock checks use only those.
+**Sourcing.** Part records hold per-distributor data (LCSC/JLCPCB, Digi-Key, Mouser). Each project names its distributors in its project file, and the BOM's links and part suggestions use only those. A record can also say the part is in the person's inventory, which the BOM shows and suggestions favour.
 
 ### The project file (partstyle-project.yaml)
 
@@ -197,7 +196,7 @@ Deliberately absent: anything with coordinates, wires, or label placement.
 
 ### Instructions and guides
 
-What the AI is told comes in two layers. The MCP instructions are always loaded, so they hold only the rules and where things go. `guide(topic)` holds everything read on demand: the references (`ckt`, `parts`, `issues`) and the repeatable procedures, `ingest-part` (datasheet to record), `design-review` (structured review against context and part requirements) and `handoff` (BOM resolution, PCB and firmware notes, export). The procedures are also MCP prompts for the person's menu, but a prompt can't be started by the AI, so `guide` is what lets it follow one when asked.
+What the AI is told comes in two layers. The MCP instructions are always loaded, so they hold only the rules and where things go. `guide(topic)` holds everything read on demand: the references (`ckt`, `parts`, `issues`) and the repeatable procedures, `ingest-part` (datasheet to record), `design-review` (structured review against context and part requirements) and `handoff` (assigning real parts, PCB and firmware notes, export). The procedures are also MCP prompts for the person's menu, but a prompt can't be started by the AI, so `guide` is what lets it follow one when asked.
 
 ## Human in the loop: the viewer
 
@@ -308,7 +307,7 @@ Each milestone ends with something usable on a real design; the order front-load
 
 1. **M0 — Format + engine.** .ckt grammar, part-record schema, parser, connectivity, structural ERC, CLI `validate`. _Exit:_ a hand-written 30-part design validates with useful errors.
 2. **M1 — Claude Code workflow + MCP server.** `overview`, `read_block`, `query`, `apply`, `validate` and part tools, as CLI commands and MCP tools, plus a short grammar reference for CLAUDE.md. _Exit:_ Claude Code builds and edits a design end to end through files and the CLI, with the same operations available over MCP; token use measured against the same task in KiCad + Konnect.
-3. **M2 — KiCad export + BOM.** Netlist, generated symbols, `.kicad_sch` with labels, round-trip check, BOM with generic resolution against preferred distributors. _Exit:_ an exported design opens in KiCad, passes ERC, and updates a PCB.
+3. **M2 — KiCad export + BOM.** Netlist, generated symbols, `.kicad_sch` with labels, round-trip check, BOM with distributor links and candidates for each generic. _Exit:_ an exported design opens in KiCad, passes ERC, and updates a PCB.
 4. **M3 — Viewer.** Auto-layout, live reload, issue pins, part cards, selection → `focus()`. _Exit:_ the human can follow and steer a session without opening files.
 5. **M4 — Review + versioning.** Changeset highlighting and revert, checkpoints, variants, semantic diff, optional accept-before-apply mode.
 6. **M5 — KiCad import.** Netlist-based import, MPN mapping, unresolved-parts worklist.

@@ -44,7 +44,7 @@ describe("kicadExport", () => {
       expect(r.ok).toBe(true);
       expect(r.text).toContain("round-trip: KiCad's netlist from the schematic matches the design");
       expect(r.text).toContain("KiCad ERC: 0 errors, 0 warnings");
-      expect(r.text).toContain("bom.unresolved PWR/C3 cap(10u, 16V, X7R, 0805)");
+      expect(r.text).not.toContain("bom.");
       // Every part type finds a stock KiCad symbol: by MPN, by kicad_symbol, or Device:*.
       expect(r.text).toContain("partstyle.kicad_sym (0 symbols)");
       expect(r.text).toContain(
@@ -89,7 +89,6 @@ describe("kicadExport", () => {
     await writeFile(path.join(tmp, pro), '{"edited": true}\n');
     const first = await snapshot("examples/bench-sensor/kicad");
     const again = await ws.kicadExport({ check: false });
-    expect(again.text).not.toContain("bom.lock:");
     expect(again.text).not.toContain("created");
     expect(await snapshot("examples/bench-sensor/kicad")).toEqual(first);
     expect(await read(pro)).toBe('{"edited": true}\n');
@@ -126,18 +125,34 @@ describe("kicadExport", () => {
 });
 
 describe("bomExport", () => {
-  it("writes a grouped bom.csv and bom.lock", async () => {
-    const r = await open("examples/bench-sensor").bomExport();
-    expect(r.text.split("\n")[0]).toBe(
-      "wrote bom.csv: 20 lines for 30 parts (10 library, 19 resolved generics, 1 unresolved)",
+  it("writes a grouped bom.csv with every generic unresolved, and links for all", async () => {
+    const ws = open("examples/bench-sensor");
+    const r = await ws.bomExport();
+    const lines = r.text.split("\n");
+    expect(lines[0]).toMatch(
+      /^wrote bom\.csv: \d+ lines for 30 parts \(10 assigned, 20 unresolved\)$/,
     );
+    expect(lines[1]).toBe("unresolved:");
+    expect(r.text).toContain("cap(330n, 50V, X7R, 0603) x1 (PWR/C1): lib:CL10B334KB8NNNC");
+    expect(r.text).toContain("cap(10u, 16V, X7R, 0805) x1 (PWR/C3): no library part fits");
+
     const csv = (await read("examples/bench-sensor/bom.csv")).split("\n");
-    expect(csv[0]).toBe("Refs,Qty,Value,Spec,Manufacturer,MPN,Footprint,lcsc,digikey,Notes");
-    expect(csv).toContain(
-      'C4 C5,2,1u,"cap(1u, 16V, X7R, 0603); cap(1u, 10V, X7R, 0603)",Samsung Electro-Mechanics,CL10B105KA8NNNC,Capacitor_SMD:C_0603_1608Metric,,,record unverified',
+    expect(csv[0]).toBe(
+      "Refs,Qty,Value,Spec,Manufacturer,MPN,Footprint,In inventory,lcsc,digikey,Notes",
     );
-    expect(await read("examples/bench-sensor/bom.lock")).toContain(
-      "PWR/C1   cap(330n, 50V, X7R, 0603)  -> CL10B334KB8NNNC",
-    );
+    const row = csv.find((l) => l.startsWith("C3,")) as string;
+    expect(row).toContain("cap(10u, 16V, X7R, 0805)");
+    expect(row).toContain("Capacitor_SMD:C_0805_2012Metric");
+    expect(row).toContain("unresolved generic");
+    // The viewer's own links, for a generic and for a library part.
+    const { parts } = await ws.viewerModel();
+    const search = (p: string) =>
+      (parts[p]?.links ?? []).filter((l) => /LCSC|DigiKey/.test(l.label)).map((l) => l.url);
+    expect(search("PWR/C3")).toHaveLength(2);
+    for (const url of search("PWR/C3")) expect(row).toContain(url);
+    const u1 = csv.find((l) => l.includes(",L7805CV,")) as string;
+    for (const url of search("PWR/U1")) expect(u1).toContain(url);
+
+    await expect(read("examples/bench-sensor/bom.lock")).rejects.toThrow();
   });
 });

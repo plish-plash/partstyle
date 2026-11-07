@@ -1,5 +1,6 @@
 import { type PreferenceGroup, type Preferences, preferenceGroups } from "@partstyle/layout";
 import { type Approval, type Approvals, approvalStatus } from "./approvals.js";
+import type { BomStatus } from "./bom.js";
 import type { StatementKind } from "./ckt/ast.js";
 import { printSpec } from "./ckt/print.js";
 import type { Issue } from "./diagnostics.js";
@@ -7,7 +8,8 @@ import { type SymbolGraphics, symbolGraphics } from "./drawing/graphics.js";
 import type { Drawing } from "./drawing/prepare.js";
 import type { SheetLayout } from "./drawing/types.js";
 import type { FlatPart } from "./netlist/elaborate.js";
-import { type PartRecord, type PinType, partName, requirementText } from "./parts/schema.js";
+import { distributorLink, searchTerm } from "./parts/links.js";
+import { type PartRecord, type PinType, requirementText } from "./parts/schema.js";
 import { type Distributor, TOP_BLOCK } from "./project/config.js";
 import type { Comment, Focus, ReviewMode } from "./review.js";
 import type { AppliedWaiver, ValidationResult } from "./validate.js";
@@ -29,13 +31,14 @@ export interface PartInfo {
     package: string;
     footprint: string;
     verified: boolean;
+    inInventory: boolean;
     ratings: Record<string, string>;
     requirements: string[];
     notes: string[];
     /** Where the record lives, relative to the project. */
     file: string;
   };
-  bom: { status: "library" | "resolved" | "unresolved" | "board"; footprint?: string };
+  bom: { status: BomStatus; footprint?: string };
   pins: { number: string; name: string; type: PinType; net?: string }[];
   /** The sign-off on this part, if any; `changed` when it has changed since. */
   approval?: Pick<Approval, "by" | "at"> & { status: "approved" | "changed" };
@@ -48,22 +51,9 @@ export interface PartLink {
   url: string;
 }
 
-const distributorSearches: Record<Distributor, { label: string; search: string }> = {
-  lcsc: { label: "LCSC", search: "https://www.lcsc.com/search?q=" },
-  digikey: { label: "DigiKey", search: "https://www.digikey.com/en/products/result?keywords=" },
-  mouser: { label: "Mouser", search: "https://www.mouser.com/c/?q=" },
-};
-
-const genericWords: Record<string, string> = {
-  res: "resistor",
-  cap: "capacitor",
-  ind: "inductor",
-};
-
 /**
  * Where to check a part: its datasheet, or a search for it, and a search at each of the project's
- * distributors, by the distributor's own part number where the record has one. An unresolved generic
- * searches by its spec.
+ * distributors. A generic searches by its spec.
  */
 function partLinks(
   part: FlatPart,
@@ -72,26 +62,15 @@ function partLinks(
 ): PartLink[] {
   const spec = part.spec;
   if (spec.kind === "generic" && spec.fn === "fp") return []; // nothing to buy
-  const term = r
-    ? partName(r)
-    : spec.kind === "lib"
-      ? spec.id
-      : `${genericWords[spec.fn] ?? spec.fn} ${spec.args.join(" ")}`;
   const sheet = r?.provenance.datasheet?.url;
-  const web = `https://www.google.com/search?q=${encodeURIComponent(`${term} datasheet`)}`;
+  const web = `https://www.google.com/search?q=${encodeURIComponent(`${searchTerm(spec, r)} datasheet`)}`;
   const datasheet =
     sheet && /^https?:\/\//i.test(sheet)
       ? [{ label: "Datasheet", url: sheet }]
       : r
         ? [{ label: "Find datasheet", url: web }]
         : [];
-  return [
-    ...datasheet,
-    ...distributors.map((s) => ({
-      label: distributorSearches[s].label,
-      url: distributorSearches[s].search + encodeURIComponent(r?.sourcing?.[s] || term),
-    })),
-  ];
+  return [...datasheet, ...distributors.map((d) => distributorLink(d, spec, r))];
 }
 
 export interface ViewerSheet {
@@ -242,6 +221,7 @@ export function buildViewerModel(
           package: r.package,
           footprint: r.footprint,
           verified: r.provenance.verified_by !== null,
+          inInventory: r.sourcing?.in_inventory === true,
           ratings: Object.fromEntries(
             Object.entries(r.ratings ?? {}).map(([k, v]) => [
               k,

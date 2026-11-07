@@ -1,4 +1,4 @@
-import type { BomResult } from "../bom.js";
+import type { BomEntry } from "../bom.js";
 import type { Issue } from "../diagnostics.js";
 import {
   type Drawing,
@@ -24,7 +24,7 @@ export interface KicadExport {
   annotation: Annotation;
   annotationLock: string;
   renumbered: [path: string, ref: string][];
-  bom: BomResult;
+  bom: BomEntry[];
   drawing: Drawing;
   schematic: SchematicOutput;
   symbols: SymbolChoice[];
@@ -34,10 +34,10 @@ export interface KicadExport {
 /** Turns a validated design into a KiCad project. Throws if the design did not elaborate. */
 export async function exportKicad(
   result: ValidationResult,
-  locks: { annotation: string; bom: string },
+  annotationLock: string,
   libraries: KicadLibraries = {},
 ): Promise<KicadExport> {
-  const drawing = await prepareDrawing(result, locks, libraries);
+  const drawing = await prepareDrawing(result, annotationLock, libraries);
   const project = drawing.config.name;
   const schematic = writeSchematics(drawing);
 

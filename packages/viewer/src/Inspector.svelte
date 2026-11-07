@@ -71,6 +71,16 @@ async function verify(id: string) {
     busy = false;
   }
 }
+async function setInInventory(id: string, inInventory: boolean) {
+  busy = true;
+  try {
+    message = (await api.setInInventory(id, inInventory)).text;
+  } catch (e) {
+    message = String(e);
+  } finally {
+    busy = false;
+  }
+}
 </script>
 
 <section class="inspector">
@@ -116,6 +126,18 @@ async function verify(id: string) {
           {/if}
           <small>{r.file}</small>
         </dd>
+        <dt>Inventory</dt>
+        <dd>
+          <label>
+            <input
+              type="checkbox"
+              checked={r.inInventory}
+              disabled={busy}
+              onchange={(e) => setInInventory(r.id, e.currentTarget.checked)}
+            />
+            In inventory
+          </label>
+        </dd>
       </dl>
       {#if Object.keys(r.ratings).length > 0}
         <h3>Ratings</h3>
@@ -126,7 +148,7 @@ async function verify(id: string) {
         <ul>{#each r.requirements as q (q)}<li>{q}</li>{/each}</ul>
       {/if}
     {:else}
-      <p class="warn">{part.bom.status === "unresolved" ? "Generic part, not resolved to an MPN yet" : ""}</p>
+      <p class="warn">{part.bom.status === "unresolved" ? "Generic part, no real part assigned yet" : ""}</p>
     {/if}
     <h3>Pins</h3>
     <table>

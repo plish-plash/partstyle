@@ -136,16 +136,16 @@ you add a part record.
 
 Export only when the person asks.
 
-- \`partstyle bom export\` resolves generics to library parts and writes \`bom.csv\`. A generic
-  stays unresolved until a library record's \`generic:\` field satisfies it, e.g.
-  \`generic: cap(100n, 50V, X7R, 10%, 0603)\` on a concrete 100 nF part.
+- \`partstyle bom export\` writes \`bom.csv\` and lists each generic not yet replaced with a real
+  part, with library parts that could replace it (a record's \`generic:\` field says what it
+  satisfies, e.g. \`generic: cap(100n, 50V, X7R, 10%, 0603)\`). Nothing replaces a generic
+  automatically: the person agrees each part, and \`/handoff\` has the steps.
 - \`partstyle kicad export\` writes \`kicad/\` and checks it with kicad-cli (netlist round trip and
   KiCad ERC). It draws parts with KiCad's own symbols, found by MPN; when it reports a
   generated symbol for a part KiCad has under another name (connectors, transistors, generic
   modules), set \`kicad_symbol: Library:Symbol\` in the part record. Never edit \`kicad/*.kicad_sch\`: change the .ckt files and export again. PCB layout
   happens in KiCad, and re-export never touches the PCB.
-- Keep \`annotation.lock\` and \`bom.lock\` under version control: they hold refdes and part
-  choices stable across exports.
+- Keep \`annotation.lock\` under version control: it holds refdes stable across exports.
 `;
 }
 
@@ -227,7 +227,7 @@ external_interfaces: []
 #        accepted: only ever plugged in at the bench
 
 sourcing:
-  # Distributors to use, in order: the BOM prefers them, and the viewer links to them.
+  # Distributors to use, in order: the BOM and the viewer link to them.
   distributors: [lcsc, digikey, mouser]
 checks:
   # A capacitor's rated voltage should be at least this many times the voltage across it.
@@ -245,7 +245,7 @@ checks:
     {
       file: ".gitignore",
       text: `# Local viewer state and KiCad's per-user files. Commit everything else, including
-# annotation.lock, bom.lock, comments.yaml and approvals.yaml.
+# annotation.lock, comments.yaml and approvals.yaml.
 .partstyle/
 kicad/*.kicad_prl
 kicad/*-backups/

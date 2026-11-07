@@ -29,7 +29,7 @@ const polarizedPins: GenericPin[] = [
   { number: "2", name: "-", type: "passive" },
 ];
 
-/** Built-in constraint parts, resolved to an MPN at BOM time. */
+/** Built-in constraint parts: a part not chosen yet, or (`fp`) a footprint with nothing to buy. */
 export const generics: Record<string, GenericDef> = {
   res: {
     pins: twoPin,
@@ -105,7 +105,7 @@ export interface GenericSpec {
   dielectric?: string;
   package?: string;
   polarized?: true;
-  /** Arguments that fit no category; they must match literally when resolving. */
+  /** Arguments that fit no category; they must match literally for a part to satisfy them. */
   other: string[];
 }
 
@@ -142,15 +142,28 @@ export function parseGenericSpec(fn: string, args: string[]): GenericSpec | unde
   return spec;
 }
 
-/** Parses the text form used in part records: `cap(100n, 50V, X7R, 10%, 0603)`. */
-export function parseGenericText(text: string): GenericSpec | undefined {
+/** Splits the text form used in part records: `cap(100n, 50V, X7R, 10%, 0603)`. */
+export function splitGenericText(text: string): { fn: string; args: string[] } | undefined {
   const m = /^\s*([a-z]+)\((.*)\)\s*$/.exec(text);
   if (!m) return undefined;
   const args = (m[2] as string)
     .split(",")
     .map((a) => a.trim())
     .filter(Boolean);
-  return parseGenericSpec(m[1] as string, args);
+  return { fn: m[1] as string, args };
+}
+
+/** Parses the text form used in part records. */
+export function parseGenericText(text: string): GenericSpec | undefined {
+  const split = splitGenericText(text);
+  return split && parseGenericSpec(split.fn, split.args);
+}
+
+/** The value a concrete resistor, capacitor or inductor shows; others are shown by name. */
+export function passiveValue(text: string): string | undefined {
+  const split = splitGenericText(text);
+  if (!split || generics[split.fn]?.valueUnit === undefined) return undefined;
+  return split.args[0];
 }
 
 const sameNumber = (a: number, b: number) => Math.abs(a - b) <= Math.abs(b) * 1e-6;
@@ -180,7 +193,7 @@ export function satisfies(offer: GenericSpec, need: GenericSpec): boolean {
   return need.other.every((o) => offered.has(o.toLowerCase()));
 }
 
-/** KiCad footprint for an unresolved generic chip part (`R_0603_1608Metric`), if its package says. */
+/** KiCad footprint for a generic chip part (`R_0603_1608Metric`), if its package says. */
 export function genericFootprint(spec: GenericSpec): string | undefined {
   if (spec.fn === "fp") return typeof spec.value === "string" ? spec.value : undefined;
   // A chip code doesn't describe a polarized capacitor's footprint: it needs a library record.
