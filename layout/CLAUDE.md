@@ -5,8 +5,9 @@ Automatic layout of single schematic blocks, developed against a visual tester. 
 place the two meet. See `README.md` for the structure and pipeline.
 
 Run these commands from this folder. A session started here does not load Partstyle's root
-`CLAUDE.md` (`claudeMdExcludes` in `.claude/settings.local.json`). Work that spans the adapter
-or the rest of Partstyle runs from the repo root instead.
+`CLAUDE.md` (`claudeMdExcludes` in `.claude/settings.json`, which needs the repo folder to be
+named `partstyle`). Work that spans the adapter or the rest of Partstyle runs from the repo root
+instead.
 
 ## Working loop
 
