@@ -17,4 +17,6 @@ export interface ProjectSource {
   comments?: TextFile;
   circuits: TextFile[];
   parts: PartSource[];
+  /** annotation.lock: refdes reserved for extra copies of reused blocks (a variant's, else main's). */
+  annotation?: TextFile;
 }

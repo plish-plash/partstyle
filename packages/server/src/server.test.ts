@@ -63,27 +63,27 @@ describe("viewer server", () => {
   });
 
   it("stores focus and comments where the CLI and MCP read them", async () => {
-    expect((await post("api/focus", { selection: ["PWR/U1"], sheet: "PWR/" })).status).toBe(200);
+    expect((await post("api/focus", { selection: ["U1"], sheet: "PWR/" })).status).toBe(200);
     const comment = (await (
-      await post("api/comments", { subject: "PWR/U1", text: "why?" })
+      await post("api/comments", { subject: "U1", text: "why?" })
     ).json()) as {
       id: string;
     };
     expect(comment.id).toBe("c1");
     const text = (await new Workspace(project).focus()).text;
-    expect(text).toContain("PWR/U1 lib:L7805CV");
-    expect(text).toContain("c1 on PWR/U1: why?");
+    expect(text).toContain("U1 lib:L7805CV");
+    expect(text).toContain("c1 on U1: why?");
     // Focus is read fresh even though the drawing is cached.
     const model = (await (await fetch(new URL("api/model", viewer.url))).json()) as {
       focus: { selection: string[] };
       comments: unknown[];
     };
-    expect(model.focus.selection).toEqual(["PWR/U1"]);
+    expect(model.focus.selection).toEqual(["U1"]);
     expect((await post("api/comments/c1/resolve", {})).status).toBe(200);
   });
 
   it("signs off parts for the person, and only from its own page", async () => {
-    const parts = ["PWR/U1", "MCU/R5"];
+    const parts = ["U1", "R5"];
     const refused = await fetch(new URL("api/approve", viewer.url), {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -91,12 +91,12 @@ describe("viewer server", () => {
     });
     expect(refused.status).toBe(403);
     const r = (await (await post("api/approve", { parts })).json()) as { text: string };
-    expect(r.text).toBe("approved 2 parts: PWR/U1 MCU/R5");
+    expect(r.text).toBe("approved 2 parts: U1 R5");
     expect(await readFile(path.join(project, "approvals.yaml"), "utf8")).toContain("by: person");
-    await post("api/approve", { parts: ["MCU/R5"], undo: true });
+    await post("api/approve", { parts: ["R5"], undo: true });
     const file = await readFile(path.join(project, "approvals.yaml"), "utf8");
-    expect(file).toContain("PWR/U1:");
-    expect(file).not.toContain("MCU/R5:");
+    expect(file).toContain("U1:");
+    expect(file).not.toContain("R5:");
   });
 
   it("announces file changes to connected viewers", async () => {

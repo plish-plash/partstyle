@@ -1,6 +1,5 @@
 import type { BomEntry } from "../bom.js";
 import type { Netlist } from "../netlist/elaborate.js";
-import type { Annotation } from "./annotate.js";
 import type { SheetInstance } from "./schematic.js";
 import { children, readSExpr, type SExpr, value, writeSExpr } from "./sexpr.js";
 import { toKicadPinType } from "./symbols.js";
@@ -8,7 +7,6 @@ import { toKicadPinType } from "./symbols.js";
 export interface NetlistInput {
   project: string;
   netlist: Netlist;
-  annotation: Annotation;
   bom: Map<string, BomEntry>;
   instances: SheetInstance[];
   /** UUIDs of each placed unit of a part. */
@@ -19,25 +17,20 @@ export interface NetlistInput {
   netNames?: Map<string, string>;
 }
 
-const refOf = (a: Annotation, path: string) => a.get(path) ?? path.slice(path.lastIndexOf("/") + 1);
-
 /**
  * A KiCad S-expression netlist (format "E"), the robust hand-off to the PCB editor. Symbol UUIDs
  * match the generated schematic, so this and "Update PCB from Schematic" agree.
  */
 export function writeKicadNetlist(input: NetlistInput): string {
-  const { netlist, annotation } = input;
-  const instanceOf = (path: string) => {
-    const prefix = path.slice(0, path.lastIndexOf("/") + 1);
-    return input.instances.find((i) => i.prefix === prefix);
-  };
+  const { netlist } = input;
+  const instanceOf = (prefix: string) => input.instances.find((i) => i.prefix === prefix);
   const sheetTstamps = (i: SheetInstance) =>
     `${i.path.split("/").slice(2).join("/")}/`.replace(/^\/?/, "/");
 
   const components = netlist.parts.map((part) => {
     const entry = input.bom.get(part.path);
     const r = entry?.record;
-    const inst = instanceOf(part.path);
+    const inst = instanceOf(part.prefix);
     const libId = input.libIdOf(part.path);
     const fields: [string, string][] = [
       ["Footprint", entry?.footprint ?? ""],
@@ -45,11 +38,10 @@ export function writeKicadNetlist(input: NetlistInput): string {
       ["Description", r?.summary ?? entry?.spec ?? ""],
       ["MPN", r?.preferred_mpn ?? ""],
       ["Manufacturer", r?.manufacturer ?? ""],
-      ["Spec", entry?.spec ?? ""],
     ];
     return [
       "comp",
-      ["ref", refOf(annotation, part.path)],
+      ["ref", part.path],
       ["value", entry?.value ?? ""],
       ["footprint", entry?.footprint ?? ""],
       ["fields", ...fields.map(([k, v]) => ["field", ["name", k], ...(v ? [v] : [])] as SExpr[])],
@@ -83,7 +75,7 @@ export function writeKicadNetlist(input: NetlistInput): string {
             (p) =>
               [
                 "node",
-                ["ref", refOf(annotation, p.part)],
+                ["ref", p.part],
                 ["pin", p.number],
                 ["pinfunction", p.name],
                 ["pintype", toKicadPinType(p.type)],
@@ -126,13 +118,9 @@ export function parseKicadNetlist(text: string): ParsedNetlist {
  * schematic. Empty means the schematic is faithful. Unconnected pins may appear in KiCad as
  * single-node nets; those are ignored.
  */
-export function compareNetlists(
-  ours: Netlist,
-  annotation: Annotation,
-  theirs: ParsedNetlist,
-): string[] {
+export function compareNetlists(ours: Netlist, theirs: ParsedNetlist): string[] {
   const problems: string[] = [];
-  const ourRefs = new Set(ours.parts.map((p) => refOf(annotation, p.path)));
+  const ourRefs = new Set(ours.parts.map((p) => p.path));
   for (const r of ourRefs)
     if (!theirs.refs.has(r)) problems.push(`${r} is missing from the schematic`);
   for (const r of theirs.refs)
@@ -141,7 +129,7 @@ export function compareNetlists(
   const key = (nodes: string[]) => [...nodes].sort().join(" ");
   const ourNetOf = new Map<string, { name: string; key: string }>();
   for (const n of ours.nets) {
-    const nodes = n.pins.map((p) => `${refOf(annotation, p.part)}.${p.number}`);
+    const nodes = n.pins.map((p) => `${p.part}.${p.number}`);
     for (const node of nodes) ourNetOf.set(node, { name: n.name, key: key(nodes) });
   }
   const theirNetOf = new Map<string, { name: string; key: string }>();

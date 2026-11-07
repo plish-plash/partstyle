@@ -23,13 +23,12 @@ import {
 import { type BomStatus, buildBom, formatBomCsv, unresolvedLines } from "../bom.js";
 import { compareIssues, formatIssue, issueDelta } from "../diagnostics.js";
 import { type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
-import { annotate, formatAnnotationLock, parseAnnotationLock } from "../kicad/annotate.js";
+import { ANNOTATION_FILE } from "../kicad/annotate.js";
 import { exportKicad } from "../kicad/export.js";
-import { buildImport } from "../kicad/import.js";
+import { buildImport, cktName } from "../kicad/import.js";
 import { compareNetlists, parseKicadNetlist } from "../kicad/netlist.js";
+import { mergeSymLibTable } from "../kicad/schematic.js";
 import { setInventoryFlag } from "../parts/inventory.js";
-import { parsePartRecord } from "../parts/library.js";
-import { isDraft } from "../parts/schema.js";
 import { describePart, type PartTier, searchParts } from "../parts/search.js";
 import { applyPatch } from "../patch.js";
 import { findPrompt, prompts } from "../prompts.js";
@@ -76,8 +75,10 @@ import {
 } from "./git.js";
 import { type ChangeSource, changesOf, History, readCircuits, toFiles } from "./history.js";
 import {
+  applyKicadTemplate,
   checkFootprints,
   findKicad,
+  findKicadTemplate,
   footprintPads,
   type KicadInstall,
   KicadSymbolLibraries,
@@ -295,6 +296,7 @@ export class Workspace {
     // Edits made since the last call (by anyone) become a changeset before anything else runs.
     await this.history.record();
     const result = validateProject(source);
+    await this.keepReservations(source, result);
     const { footprints } = await this.kicad();
     if (footprints && result.netlist) {
       const users = new Map<string, string[]>();
@@ -310,6 +312,22 @@ export class Workspace {
       if (found.length > 0) return { source, result: validateProject(source, found) };
     }
     return { source, result };
+  }
+
+  /**
+   * Writes annotation.lock when the refdes reserved for copies of reused blocks changed, so a
+   * copy's refdes stay what they were when anyone first saw them. Without reservations the file
+   * is removed. A variant keeps its own once it differs from main's.
+   */
+  private async keepReservations(source: ProjectSource, result: ValidationResult): Promise<void> {
+    if (result.annotationLock === undefined || !result.netlist) return;
+    if (result.annotationLock === (source.annotation?.text ?? "")) return;
+    const file = path.join(this.root, this.ownFile(ANNOTATION_FILE));
+    if (result.annotationLock === "") await rm(file, { force: true });
+    else {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, result.annotationLock, "utf8");
+    }
   }
 
   /** KiCad's power library and symbol candidates for the parts in use, when KiCad is installed. */
@@ -833,10 +851,10 @@ export class Workspace {
   }
 
   /**
-   * Writes the KiCad project to kicad/ (schematic sheets, symbol library, netlist), updates
-   * annotation.lock, then, when kicad-cli is available, re-derives the netlist from
-   * the written schematic to prove it matches the design and runs KiCad's ERC. Never touches
-   * the .kicad_pcb, and writes the .kicad_pro only if it is missing.
+   * Writes the KiCad project to kicad/ (schematic sheets, symbol library, netlist), then, when
+   * kicad-cli is available, re-derives the netlist from the written schematic to prove it matches
+   * the design and runs KiCad's ERC. The first export starts from the configured project template,
+   * if any; after that the .kicad_pro and .kicad_pcb are never touched.
    */
   kicadExport(opts: { check?: boolean } = {}): Promise<TextResult> {
     return this.guard(async () => {
@@ -845,16 +863,28 @@ export class Workspace {
         return fail(`cannot export with ${issueSummary(result)}; fix the errors first (validate)`);
       }
       const { cli, footprints, symbols } = await this.kicad();
-      const x = await exportKicad(
-        result,
-        await this.lock("annotation.lock"),
-        await this.libraries(result),
-      );
+      const x = await exportKicad(result, await this.libraries(result));
 
       const kicadDir = this.ownFile(KICAD_DIR);
       const dir = path.join(this.root, kicadDir);
-      await mkdir(dir, { recursive: true });
       const lines: string[] = [];
+      const proFile = path.join(dir, x.projectFile.name);
+      const template = result.config.kicad.template ?? (await this.settings()).kicad.template;
+      if (template !== undefined && !(await exists(proFile))) {
+        const found = await findKicadTemplate(template, this.root, cli);
+        if (!found.dir) {
+          const known = found.known.length > 0 ? found.known.join(", ") : "none found";
+          return fail(`no KiCad project template '${template}' (templates: ${known})`);
+        }
+        const copied = await applyKicadTemplate(found.dir, dir, result.config.name);
+        lines.push(`created ${kicadDir}/ from template ${template} (${copied.join(", ")})`);
+      }
+      await mkdir(dir, { recursive: true });
+      const libTable = path.join(dir, "sym-lib-table");
+      x.files.set(
+        "sym-lib-table",
+        mergeSymLibTable(await readFile(libTable, "utf8").catch(() => "")),
+      );
       for (const f of await readdir(dir)) {
         // Sheets for blocks that no longer exist, but only ones partstyle wrote.
         if (!f.endsWith(".kicad_sch") || x.files.has(f)) continue;
@@ -865,16 +895,10 @@ export class Workspace {
         }
       }
       for (const [f, text] of x.files) await writeFile(path.join(dir, f), text, "utf8");
-      const proFile = path.join(dir, x.projectFile.name);
       if (!(await exists(proFile))) {
         await writeFile(proFile, x.projectFile.text, "utf8");
         lines.push(`created ${kicadDir}/${x.projectFile.name}`);
       }
-      await writeFile(
-        path.join(this.root, this.ownFile("annotation.lock")),
-        x.annotationLock,
-        "utf8",
-      );
 
       const sheets = x.schematic.instances.length;
       lines.unshift(
@@ -901,8 +925,6 @@ export class Workspace {
               : "KiCad symbol libraries not found";
         lines.push(`generated symbol ${s.libId}: ${why}`);
       }
-      for (const [p, r] of x.renumbered)
-        lines.push(`annotation: ${p} -> ${r} (its refdes was taken)`);
 
       // Footprints the design check did not cover: those derived from generics.
       if (footprints) {
@@ -927,7 +949,7 @@ export class Workspace {
       if (opts.check === false) {
         lines.push("checks skipped (--no-check)");
       } else if (!cli) {
-        lines.push(`KiCad not found: round-trip and ERC skipped (${await this.kicadHint()})`);
+        lines.push(`KiCad not found: netlist check and ERC skipped (${await this.kicadHint()})`);
       } else {
         const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-"));
         const root = path.join(dir, x.rootSchematic);
@@ -945,14 +967,13 @@ export class Workspace {
           ]);
           const diffs = compareNetlists(
             result.netlist,
-            x.annotation,
             parseKicadNetlist(await readFile(net, "utf8")),
           );
           if (diffs.length === 0) {
-            lines.push(`round-trip: KiCad's netlist from the schematic matches the design`);
+            lines.push(`netlist check: KiCad's netlist from the schematic matches the design`);
           } else {
             ok = false;
-            lines.push("round-trip MISMATCH (an exporter bug):", ...diffs.map((d) => `  ${d}`));
+            lines.push("netlist MISMATCH (an exporter bug):", ...diffs.map((d) => `  ${d}`));
           }
 
           const erc = path.join(tmp, "erc.json");
@@ -987,15 +1008,16 @@ export class Workspace {
   }
 
   /**
-   * Imports a KiCad project (a .kicad_pro, .kicad_sch or its folder) through kicad-cli, which
-   * resolves the connectivity. Creates the project if there is none; importing again replaces
-   * circuit/ as one changeset, keeping intents, net attributes, port kinds, nc, waivers and block
-   * descriptions. Symbols that match no library record become draft records in parts/.
+   * Imports a KiCad project (a .kicad_pro, .kicad_sch or its folder), or some of its sheets,
+   * through kicad-cli, which resolves the connectivity. Creates the project if there is none, with
+   * the root sheet as main; otherwise it only adds blocks, under names the project does not have
+   * yet, for the AI to join into the design. Symbols that match no library record become draft
+   * records in parts/.
    */
-  kicadImport(source: string, opts: { replace?: boolean } = {}): Promise<TextResult> {
+  kicadImport(source: string, opts: { sheets?: string[] } = {}): Promise<TextResult> {
     return this.guard(async () => {
       if (this.variantName !== undefined) {
-        return fail("KiCad import replaces the main circuit; run it without a variant");
+        return fail("KiCad import adds to the main circuit; run it without a variant");
       }
       const hasProject = await exists(path.join(this.root, PROJECT_FILE));
       const { cli, symbols } = await this.kicad();
@@ -1005,15 +1027,6 @@ export class Workspace {
         );
       }
       const lines: string[] = [];
-      if (hasProject && !opts.replace) {
-        const circuits = Object.keys(await readCircuits(this.root));
-        if (circuits.length > 0 && !(await exists(path.join(this.root, IMPORT_NOTES)))) {
-          return fail(
-            `${this.root} already has a design (${circuits.join(", ")}) that was not imported; ` +
-              "import with replace to overwrite circuit/ (it stays revertible as one changeset)",
-          );
-        }
-      }
       let design: KicadDesign;
       try {
         design = await readKicadDesign(cli, source);
@@ -1026,8 +1039,11 @@ export class Workspace {
         lines.push(created.text.split("\n")[0] as string);
       }
 
-      const { result: before } = await this.load();
-      const beforeFiles = await readCircuits(this.root);
+      const { source: project, result: before } = await this.load();
+      // A project with no design yet (init's empty main) gets the import as its design.
+      const fresh = before.blocks.every(
+        (b) => b.parts.length + b.uses.length + b.nets.length + b.ports.length === 0,
+      );
       const { footprints } = await this.kicad();
       const pads = new Map<string, Set<string>>();
       if (footprints) {
@@ -1045,7 +1061,7 @@ export class Workspace {
         const names = new Set((await this.symbolLibs.index()).map((s) => `${s.lib}:${s.name}`));
         stockSymbol = (id) => names.has(id);
       }
-      const x = buildImport({
+      const input = {
         project: design.project,
         rootFile: design.rootFile,
         sheets: design.sheets,
@@ -1056,72 +1072,109 @@ export class Workspace {
         date: new Date().toLocaleDateString("sv"),
         ...(stockSymbol && { stockSymbol }),
         ...(design.unconnected && { unconnected: design.unconnected }),
-        ...(hasProject && {
-          previous: {
-            blocks: before.blocks,
-            annotation: parseAnnotationLock(await this.readOptional("annotation.lock")),
-          },
-        }),
-      });
+      };
+      let x: ReturnType<typeof buildImport>;
+      let alone: ReturnType<typeof buildImport>;
+      try {
+        // The imported design on its own, rooted at main: what is checked against KiCad.
+        alone = buildImport(input);
+        x =
+          fresh && !opts.sheets
+            ? alone
+            : buildImport({
+                ...input,
+                ...(opts.sheets && { select: opts.sheets }),
+                // Into a project with a design, the root sheet is a block of its own, never main.
+                ...(!fresh && {
+                  existingBlocks: before.blocks.map((b) => b.block.name),
+                  rootBlock: cktName(design.project),
+                }),
+              });
+      } catch (e) {
+        return fail((e as Error).message);
+      }
 
-      // circuit/ is replaced; drafts are remade, and records someone completed are left alone.
-      const circuitDir = path.join(this.root, "circuit");
-      await mkdir(circuitDir, { recursive: true });
-      const written = new Set(x.circuits.map((c) => c.file));
-      for (const f of Object.keys(beforeFiles)) {
-        if (!written.has(f)) await rm(path.join(this.root, f), { force: true });
+      // Checked before anything is written, against the whole KiCad design.
+      const drafts = x.drafts.map((d) => ({
+        file: `parts/${d.id}.yaml`,
+        text: d.text,
+        layer: "project" as const,
+      }));
+      let check: string[] = [];
+      if (x.expected) {
+        const checked = validateProject({
+          project: project.project,
+          circuits: alone.circuits,
+          parts: [...project.parts, ...drafts],
+          ...(alone.annotationLock && {
+            annotation: { file: ANNOTATION_FILE, text: alone.annotationLock },
+          }),
+        });
+        if (checked.netlist && x.expected) {
+          const diffs = compareNetlists(checked.netlist, x.expected);
+          check = [
+            diffs.length === 0
+              ? "netlist check: the imported design connects exactly what KiCad's netlist does"
+              : "netlist MISMATCH (an import bug):",
+            ...diffs.map((d) => `  ${d}`),
+          ];
+        }
+      } else {
+        check = ["netlist check: skipped, as only some sheets were imported"];
+      }
+
+      // Only adds: new block files, drafts for records the project lacks.
+      await mkdir(path.join(this.root, "circuit"), { recursive: true });
+      for (const c of x.circuits) {
+        if (!fresh && (await exists(path.join(this.root, c.file)))) {
+          return fail(`${c.file} already exists; nothing was imported`);
+        }
       }
       for (const c of x.circuits) await writeFile(path.join(this.root, c.file), c.text, "utf8");
       const partsDir = path.join(this.root, "parts");
-      const draftFiles = new Set(x.drafts.map((d) => `${d.id}.yaml`));
-      for (const f of await readdir(partsDir).catch(() => [] as string[])) {
-        if (draftFiles.has(f) || !/\.ya?ml$/.test(f)) continue;
-        const text = await readFile(path.join(partsDir, f), "utf8");
-        const { record } = parsePartRecord(text, f);
-        if (record && isDraft(record)) await rm(path.join(partsDir, f));
-      }
       if (x.drafts.length > 0) await mkdir(partsDir, { recursive: true });
-      for (const d of x.drafts)
-        await writeFile(path.join(partsDir, `${d.id}.yaml`), d.text, "utf8");
-      await writeFile(path.join(this.root, "annotation.lock"), x.annotationLock, "utf8");
+      for (const d of x.drafts) {
+        const file = path.join(partsDir, `${d.id}.yaml`);
+        if (!(await exists(file))) await writeFile(file, d.text, "utf8");
+      }
+      // Copies of a reused sheet keep their KiCad refdes in a new project, whose root is main.
+      if (fresh && x === alone && x.annotationLock) {
+        await writeFile(path.join(this.root, ANNOTATION_FILE), x.annotationLock, "utf8");
+      }
       await mkdir(path.join(this.root, "notes"), { recursive: true });
-      await writeFile(path.join(this.root, IMPORT_NOTES), x.notes, "utf8");
+      const notesFile = path.join(this.root, IMPORT_NOTES);
+      const earlier = await readFile(notesFile, "utf8").catch(() => "");
+      await writeFile(notesFile, earlier ? `${earlier}\n${x.notes}` : x.notes, "utf8");
       const logged = await this.history.record("import", `imported KiCad ${design.project}`);
 
-      const after = validateProject(await this.source());
+      const { result: after } = await this.load();
       const files = [
         ...x.circuits.map((c) => c.file),
         ...(x.drafts.length > 0 ? [`parts/ (${x.drafts.length} drafts)`] : []),
-        "annotation.lock",
         IMPORT_NOTES,
       ];
       lines.push(`imported into ${files.join(", ")}${logged ? ` as ${logged.id}` : ""}`);
-      lines.push(...x.report);
-      if (after.netlist) {
-        const diffs = compareNetlists(after.netlist, x.annotation, x.expected);
+      lines.push(...x.report, ...check);
+      const imported = new Set(x.circuits.map((c) => c.file));
+      const clashes = after.issues.filter(
+        (i) =>
+          (i.code === "elab.duplicate-ref" || i.code === "ref.reserved") &&
+          imported.has(i.location?.file ?? ""),
+      );
+      if (clashes.length > 0) {
         lines.push(
-          diffs.length === 0
-            ? "round-trip: the imported design connects exactly what KiCad's netlist does"
-            : "round-trip MISMATCH (an import bug):",
-          ...diffs.map((d) => `  ${d}`),
-        );
-      }
-      if (hasProject) {
-        const changes = diffCircuits(toFiles(beforeFiles), toFiles(await readCircuits(this.root)));
-        lines.push(
-          changes.length === 0
-            ? "changes: none to the circuit"
-            : `changes: ${changes.length} statement${changes.length === 1 ? "" : "s"} (see diff)`,
-          ...formatChanges(changes)
-            .slice(0, 12)
-            .map((l) => `  ${l}`),
+          `refdes clashes with the project (${clashes.length}): rename the imported parts`,
+          ...clashes.slice(0, 12).map((i) => `  ${formatIssue(i)}`),
         );
       }
       lines.push(`now: ${issueSummary(after)}`);
+      const blocks = x.blocks.join(", ");
       lines.push(
-        x.drafts.length > 0
-          ? "next: overview; resolve the drafts (validate lists them as part.draft), then rename auto-named nets"
-          : "next: overview, then validate",
+        fresh && !opts.sheets
+          ? x.drafts.length > 0
+            ? "next: overview; resolve the drafts (validate lists them as part.draft), then rename auto-named nets"
+            : "next: overview, then validate"
+          : `next: join ${blocks} into the design (a 'use' line, or move its parts into a block), clear any refdes clashes, resolve drafts`,
       );
       return { ok: true, text: lines.join("\n") };
     });
@@ -1294,11 +1347,7 @@ export class Workspace {
     };
     if (!result.netlist || !result.config) return empty;
     try {
-      const drawing = await prepareDrawing(
-        result,
-        await this.lock("annotation.lock"),
-        await this.libraries(result),
-      );
+      const drawing = await prepareDrawing(result, await this.libraries(result));
       return buildViewerModel(drawing, result, review, await this.approvals());
     } catch (e) {
       return {
@@ -1741,17 +1790,11 @@ export class Workspace {
       const { result } = await this.load();
       if (!result.netlist || !result.config)
         return fail(`cannot build a BOM: ${issueSummary(result)}`);
-      const { table } = annotate(
-        result.netlist.parts.map((p) => p.path),
-        parseAnnotationLock(await this.lock("annotation.lock")),
-      );
       const preferred = result.config.sourcing.distributors;
       const bom = buildBom(result.netlist);
-      const csv = formatBomCsv(bom, (p) => table.get(p) ?? p, preferred);
-      const out = (name: string) => path.join(this.root, this.ownFile(name));
+      const csv = formatBomCsv(bom, preferred);
       await mkdir(this.own, { recursive: true });
-      await writeFile(out("annotation.lock"), formatAnnotationLock(table), "utf8");
-      await writeFile(out("bom.csv"), csv, "utf8");
+      await writeFile(path.join(this.root, this.ownFile("bom.csv")), csv, "utf8");
 
       const count = (s: BomStatus) => bom.filter((e) => e.status === s).length;
       const unresolved = unresolvedLines(bom, result.library, preferred);

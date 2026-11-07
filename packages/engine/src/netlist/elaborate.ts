@@ -40,8 +40,17 @@ export function isOpenByDesign(pin: Pick<FlatPin, "type" | "open" | "unused">): 
 }
 
 export interface FlatPart {
-  /** Instance path plus refdes: `PWR/U1`. */
+  /**
+   * Its reference designator, unique in the design and the same as KiCad's: `C1`, or a reserved
+   * one such as `R3` for a part in an extra copy of a reused block.
+   */
   path: string;
+  /** The block declaring it. */
+  block: string;
+  /** Path of the block instance it is in: `""` for main, `F2/` for an instance F2. */
+  prefix: string;
+  /** The refdes its block declares: the same as `path` except in an extra copy of a block. */
+  local: string;
   spec: PartSpec;
   record?: PartRecord;
   pins: FlatPin[];
@@ -64,18 +73,43 @@ export interface FlatNet {
 export interface Netlist {
   parts: FlatPart[];
   nets: FlatNet[];
+  /** Each part's refdes by instance path and the refdes its block declares: `F2/R1` → `R3`. */
+  refs: Map<string, string>;
 }
 
-/** Waivers declared in one block instance; subjects are relative to `prefix`. */
+/**
+ * Waivers declared in one block instance. Subjects name the block's own parts, which `refs`
+ * maps to their refdes in this instance, and its nets, which are relative to `prefix`.
+ */
 export interface WaiverScope {
   prefix: string;
+  refs: Map<string, string>;
   waivers: WaiverDecl[];
 }
 
 export interface ElaborationResult {
   netlist: Netlist;
   waiverScopes: WaiverScope[];
+  /** The refdes reserved for parts in extra copies of reused blocks, for annotation.lock. */
+  reservations: Map<string, string>;
   issues: Issue[];
+}
+
+/** `R12` → `["R", 12]`; a refdes without a number has none. */
+export function splitRef(ref: string): [prefix: string, n: number | undefined] {
+  const m = /^(.*?)(\d+)$/.exec(ref);
+  return m ? [m[1] as string, Number(m[2])] : [ref, undefined];
+}
+
+/** The next refdes with the prefix of `like` after every one in `taken`. */
+export function nextFreeRef(like: string, taken: Iterable<string>): string {
+  const [prefix] = splitRef(like);
+  let max = 0;
+  for (const r of taken) {
+    const [pre, n] = splitRef(r);
+    if (pre === prefix && n !== undefined) max = Math.max(max, n);
+  }
+  return `${prefix}${max + 1}`;
 }
 
 interface NetNode {
@@ -90,9 +124,18 @@ type PortMap = Map<string, number>;
 /**
  * Resolves parts to pins, connects pins to nets and flattens `use` hierarchy from the top block,
  * joining a child's port net with the parent net that references `INST.PORT`.
+ *
+ * Refdes are unique across the project's blocks, used or not. The first copy of a block has the
+ * refdes it declares; every other copy has refdes reserved for it: those in `reserved` (from
+ * annotation.lock, by instance path and declared refdes), else the next free numbers.
  */
-export function elaborate(blocks: CktFile[], library: PartLibrary, top: string): ElaborationResult {
-  return new Elaborator(blocks, library).run(top);
+export function elaborate(
+  blocks: CktFile[],
+  library: PartLibrary,
+  top: string,
+  reserved: ReadonlyMap<string, string> = new Map(),
+): ElaborationResult {
+  return new Elaborator(blocks, library, reserved).run(top);
 }
 
 class Elaborator {
@@ -104,10 +147,20 @@ class Elaborator {
   private readonly pinNode = new Map<FlatPin, number>();
   private readonly waiverScopes: WaiverScope[] = [];
   private readonly visited = new Set<string>();
+  /** Every refdes a block declares, with where. */
+  private readonly declared = new Map<string, { block: string; location: Location }>();
+  /** Refdes declared or reserved, so a new reservation takes none of them. */
+  private readonly taken = new Set<string>();
+  /** Refdes given to a part so far. */
+  private readonly assigned = new Set<string>();
+  private readonly refs = new Map<string, string>();
+  private readonly reservations = new Map<string, string>();
+  private readonly reportedReserved = new Set<string>();
 
   constructor(
     blocks: CktFile[],
     private readonly library: PartLibrary,
+    private readonly reserved: ReadonlyMap<string, string>,
   ) {
     for (const b of blocks) {
       const existing = this.blocks.get(b.block.name);
@@ -122,6 +175,71 @@ class Elaborator {
       }
       this.blocks.set(b.block.name, b);
     }
+    this.claimProjectRefs();
+    for (const ref of reserved.values()) this.taken.add(ref);
+  }
+
+  /** Refdes are unique across the project, so a part has one name here and in KiCad. */
+  private claimProjectRefs(): void {
+    const all = [...this.blocks.values()].flatMap((b) => b.parts.map((p) => p.ref));
+    for (const b of this.blocks.values()) {
+      for (const p of b.parts) {
+        this.taken.add(p.ref);
+        const prior = this.declared.get(p.ref);
+        if (!prior) {
+          this.declared.set(p.ref, { block: b.block.name, location: p.location });
+        } else if (prior.block !== b.block.name) {
+          this.error(
+            "elab.duplicate-ref",
+            p.location,
+            [p.ref],
+            `${p.ref} is also declared in block ${prior.block} (${prior.location.file}:${prior.location.line}); ` +
+              `refdes are unique across the project: rename one (next free: ${nextFreeRef(p.ref, all)})`,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * The refdes of a part declared as `local` in the instance at `prefix`: a reservation when there
+   * is one, the declared refdes in a block's first copy, else a new reservation.
+   */
+  private refFor(block: string, prefix: string, local: string, copy: boolean): string {
+    const key = prefix + local;
+    const pinned = this.reserved.get(key);
+    let ref: string | undefined;
+    let clash = false;
+    if (pinned !== undefined) {
+      const owner = this.declared.get(pinned);
+      if (owner) {
+        // A block declared the copy's refdes. The reservation is kept, so the copy gets it back
+        // once the declared part is renamed; until then the copy has a stand-in.
+        clash = true;
+        if (!this.reportedReserved.has(pinned)) {
+          this.reportedReserved.add(pinned);
+          this.error(
+            "ref.reserved",
+            owner.location,
+            [pinned],
+            `${pinned} is reserved for ${local} in copy ${prefix.slice(0, -1)} of block ${block}; ` +
+              `rename it (next free: ${nextFreeRef(pinned, this.taken)})`,
+          );
+        }
+      } else if (!this.assigned.has(pinned)) {
+        ref = pinned;
+      }
+    } else if (!copy) {
+      ref = local;
+    }
+    if (ref === undefined) {
+      ref = nextFreeRef(local, this.taken);
+      this.taken.add(ref);
+    }
+    if (copy || pinned !== undefined) this.reservations.set(key, clash ? (pinned as string) : ref);
+    this.assigned.add(ref);
+    this.refs.set(key, ref);
+    return ref;
   }
 
   run(top: string): ElaborationResult {
@@ -146,7 +264,12 @@ class Elaborator {
         });
       }
     }
-    return { netlist: this.buildNetlist(), waiverScopes: this.waiverScopes, issues: this.issues };
+    return {
+      netlist: this.buildNetlist(),
+      waiverScopes: this.waiverScopes,
+      reservations: this.reservations,
+      issues: this.issues,
+    };
   }
 
   private error(code: string, location: Location, subjects: string[], message: string): void {
@@ -200,8 +323,10 @@ class Elaborator {
       }
       return undefined;
     }
+    const copy = this.visited.has(name);
     this.visited.add(name);
-    this.waiverScopes.push({ prefix, waivers: ckt.waivers });
+    const scopeRefs = new Map<string, string>();
+    this.waiverScopes.push({ prefix, refs: scopeRefs, waivers: ckt.waivers });
 
     // Parts and instances share one namespace, since both appear before the '.' in a pinref.
     const refs = new Map<string, Location>();
@@ -211,7 +336,7 @@ class Elaborator {
         this.error(
           "elab.duplicate-ref",
           location,
-          [prefix + ref],
+          [this.refs.get(prefix + ref) ?? prefix + ref],
           `'${ref}' is already declared at line ${prior.line}`,
         );
       } else {
@@ -223,7 +348,8 @@ class Elaborator {
     const unresolved = new Set<string>();
     for (const decl of ckt.parts) {
       claimRef(decl.ref, decl.location);
-      const path = prefix + decl.ref;
+      const path = this.refFor(name, prefix, decl.ref, copy);
+      scopeRefs.set(decl.ref, path);
       const resolved = this.resolvePart(decl.spec, decl.location, path);
       if (!resolved) {
         unresolved.add(decl.ref);
@@ -231,6 +357,9 @@ class Elaborator {
       }
       const part: FlatPart = {
         path,
+        block: name,
+        prefix,
+        local: decl.ref,
         spec: decl.spec,
         pins: resolved.pins.map((p) => ({ ...p, id: `${path}#${p.number}`, part: path })),
         location: decl.location,
@@ -415,7 +544,8 @@ class Elaborator {
   }
 
   private unknownPin(part: FlatPart, pin: string, location: Location): void {
-    const ref = part.path.replace(/^.*\//, "");
+    // Named as the block declares it, so that every copy of the block reports it once.
+    const ref = part.local;
     const names = [...new Set(part.pins.map((p) => p.name))];
     const shown = names.length > 12 ? `${names.slice(0, 12).join(" ")} …` : names.join(" ");
     this.error(
@@ -523,6 +653,6 @@ class Elaborator {
         net.pins.push(pin);
       }
     }
-    return { parts: this.parts, nets: [...netByRoot.values()] };
+    return { parts: this.parts, nets: [...netByRoot.values()], refs: this.refs };
   }
 }

@@ -105,7 +105,7 @@ describe("versioning", () => {
     expect(preview.preview?.changed).toEqual([
       { block: "power", kind: "part", key: "R90", op: "+" },
     ]);
-    expect(preview.parts["PWR/R90"]).toBeDefined();
+    expect(preview.parts.R90).toBeDefined();
 
     expect((await ws.pendingAccept("P1")).ok).toBe(true);
     expect(await readFile(power(), "utf8")).toContain("R90");
@@ -140,7 +140,7 @@ describe("versioning", () => {
 
       // An edit to a block buck takes from main reaches it.
       await ws.apply("in mcu\n+ part R85 res(10k, 1%, 0603)\n");
-      expect((await buck.query("part R85")).text).toMatch(/^MCU\/R85 /);
+      expect((await buck.query("part R85")).text).toMatch(/^R85 /);
       expect((await buck.overview()).text).toMatch(/^project bench-sensor, variant buck\n/);
 
       // Main moving on in a block buck has its own copy of is flagged.
@@ -195,9 +195,9 @@ describe("versioning", () => {
 
     it("keep their own history, pending changes and exports", async () => {
       const buck = ws.forVariant("buck");
-      await ws.setFocus({ selection: ["PWR/R91"], variant: "buck" });
+      await ws.setFocus({ selection: ["R91"], variant: "buck" });
       expect((await ws.focus()).text).toMatch(
-        /^viewing variant buck .*\nselected in the viewer:\n {2}PWR\/R91 /,
+        /^viewing variant buck .*\nselected in the viewer:\n {2}R91 /,
       );
 
       const changes = (await buck.changes()).text;

@@ -126,7 +126,7 @@ identical.
 | `part_get(id, tier)`                                                      | `partstyle part get ID --tier ...`                                                             |
 | `part_put(record, scope)`                                                 | `partstyle part put [FILE\|-] --scope ...`                                                     |
 | `kicad_export(check)`                                                     | `partstyle kicad export [--no-check]`                                                          |
-| `kicad_import(path, new_project)`                                         | `partstyle kicad import PATH` (`--replace` is CLI only)                                        |
+| `kicad_import(path, sheets, new_project)`                                 | `partstyle kicad import PATH [--sheet NAME]...`                                                |
 | `bom_export`                                                              | `partstyle bom export`                                                                         |
 | `focus`                                                                   | `partstyle focus`                                                                              |
 | `diff(since)`                                                             | `partstyle diff [--since ...]`                                                                 |
@@ -148,7 +148,8 @@ inside it, is refused (also for `kicad_import`'s `new_project`). With `--project
 project in that folder.
 
 `kicad_import`: `path` is relative to the open project, or with `new_project` (global mode) to
-the projects folder, importing into a new project of that name, which then opens.
+the projects folder, importing into a new project of that name, which then opens. Into a project
+with a design it only adds blocks; `sheets` limits it to those sheets.
 
 Variants: `overview`, `read_block`, `query`, `validate`, `read_doc`, `write_doc`, `diff`,
 `bom_export` and `kicad_export` take an optional `variant` (omitted or `"main"`: the main

@@ -148,7 +148,8 @@ function toLayoutInput(
 ): Translation {
   const name = block.block.name;
   const prefix = plan.instancesOf(name)[0]?.prefix ?? "";
-  const partsByPath = new Map(netlist.parts.map((p) => [p.path, p]));
+  // By instance path and declared refdes: a block's sheet is drawn from its first copy.
+  const partsByPath = new Map(netlist.parts.map((p) => [p.prefix + p.local, p]));
   const planOf = (net: string) => plan.net(name, net);
 
   const pinNet = new Map<string, string>(); // "R1#2" → net

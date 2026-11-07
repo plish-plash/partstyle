@@ -166,7 +166,7 @@ function showChange(c: { block: string; kind: string; key: string }) {
   if (!sheet) return;
   const subjects =
     c.kind === "part"
-      ? sheet.instances.map((i) => i.prefix + c.key)
+      ? sheet.instances.map((i) => i.parts[c.key] ?? c.key)
       : c.kind === "net"
         ? sheet.instances.flatMap((i) => (i.nets[c.key] ? [i.nets[c.key] as string] : []))
         : [];

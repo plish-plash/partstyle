@@ -7,7 +7,6 @@ import {
   type SymbolChoice,
 } from "../drawing/prepare.js";
 import type { ValidationResult } from "../validate.js";
-import { type Annotation, formatAnnotationLock } from "./annotate.js";
 import { symbolKey } from "./libsym.js";
 import { writeKicadNetlist } from "./netlist.js";
 import { type SchematicOutput, symbolLibrary, symLibTable, writeSchematics } from "./schematic.js";
@@ -21,9 +20,6 @@ export interface KicadExport {
   projectFile: { name: string; text: string };
   rootSchematic: string;
   netlistFile: string;
-  annotation: Annotation;
-  annotationLock: string;
-  renumbered: [path: string, ref: string][];
   bom: BomEntry[];
   drawing: Drawing;
   schematic: SchematicOutput;
@@ -34,10 +30,9 @@ export interface KicadExport {
 /** Turns a validated design into a KiCad project. Throws if the design did not elaborate. */
 export async function exportKicad(
   result: ValidationResult,
-  annotationLock: string,
   libraries: KicadLibraries = {},
 ): Promise<KicadExport> {
-  const drawing = await prepareDrawing(result, annotationLock, libraries);
+  const drawing = await prepareDrawing(result, libraries);
   const project = drawing.config.name;
   const schematic = writeSchematics(drawing);
 
@@ -51,7 +46,6 @@ export async function exportKicad(
     writeKicadNetlist({
       project,
       netlist: drawing.netlist,
-      annotation: drawing.annotation,
       bom: drawing.bomByPath,
       instances: schematic.instances,
       symbolUuids: schematic.symbolUuids,
@@ -71,9 +65,6 @@ export async function exportKicad(
     },
     rootSchematic: `${project}.kicad_sch`,
     netlistFile,
-    annotation: drawing.annotation,
-    annotationLock: formatAnnotationLock(drawing.annotation),
-    renumbered: drawing.renumbered,
     bom: drawing.bom,
     drawing,
     schematic,

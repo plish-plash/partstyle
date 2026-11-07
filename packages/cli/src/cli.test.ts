@@ -69,7 +69,7 @@ describe("partstyle read commands", () => {
 
   it("query joins its arguments", async () => {
     expect((await inExample(["query", "parts", "where", "vin_max", "<", "15V"])).stdout).toBe(
-      "1 part\nPWR/U2  lib:MCP1700-3302  vin_max=6V",
+      "1 part\nU2  lib:MCP1700-3302  vin_max=6V",
     );
     expect((await inExample(["query", "help"])).stdout).toMatch(/^queries:/);
   });

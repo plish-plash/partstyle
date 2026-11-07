@@ -51,7 +51,7 @@ function patched(patch: string): ValidationResult {
 
 describe("buildBom", () => {
   it("leaves a generic unresolved even when a library record satisfies it", () => {
-    const e = entry("PWR/C2");
+    const e = entry("C2");
     expect(e.status).toBe("unresolved");
     expect(e.record).toBeUndefined();
     expect(e.footprint).toBe("Capacitor_SMD:C_0603_1608Metric");
@@ -61,19 +61,19 @@ describe("buildBom", () => {
   it("shows a real passive's value, and other parts by name", () => {
     const r = patched("in power\n= part C2 lib:CL10B104KB8NNNC");
     const bom = buildBom(r.netlist as Netlist);
-    const c2 = bom.find((e) => e.part.path === "PWR/C2");
+    const c2 = bom.find((e) => e.part.path === "C2");
     expect(c2).toMatchObject({ status: "library", value: "100n" });
-    expect(bom.find((e) => e.part.path === "PWR/U1")?.value).toBe("L7805CV");
+    expect(bom.find((e) => e.part.path === "U1")?.value).toBe("L7805CV");
   });
 });
 
 describe("bomCandidates", () => {
   const ids = (lib: PartLibrary, preferred: ("lcsc" | "digikey")[] = []) =>
-    bomCandidates(entry("PWR/C2"), lib, preferred).map((r) => r.id);
+    bomCandidates(entry("C2"), lib, preferred).map((r) => r.id);
 
   it("offers the records that satisfy a generic, and nothing for a library part", () => {
     expect(ids(result.library)).toEqual(["CL10B104KB8NNNC"]);
-    expect(bomCandidates(entry("PWR/U1"), result.library, [])).toEqual([]);
+    expect(bomCandidates(entry("U1"), result.library, [])).toEqual([]);
   });
 
   it("ranks parts in inventory first, then the preferred distributors", () => {
@@ -82,8 +82,8 @@ describe("bomCandidates", () => {
     expect(ids(stocked, ["lcsc"])).toEqual(["ZZ100N", "CL10B104KB8NNNC"]);
     const owned = withCopy("ZZ100N", "CL10B104KB8NNNC", { sourcing: { in_inventory: true } });
     expect(ids(owned)).toEqual(["ZZ100N", "CL10B104KB8NNNC"]);
-    expect(unresolvedLines([entry("PWR/C2")], owned, [])).toEqual([
-      "cap(100n, 16V, X7R, 0603) x1 (PWR/C2): lib:ZZ100N [in inventory], lib:CL10B104KB8NNNC",
+    expect(unresolvedLines([entry("C2")], owned, [])).toEqual([
+      "cap(100n, 16V, X7R, 0603) x1 (C2): lib:ZZ100N [in inventory], lib:CL10B104KB8NNNC",
     ]);
   });
 
@@ -96,7 +96,7 @@ describe("bomCandidates", () => {
       next.set(id, { ...base, record: { ...base.record, id } });
       lib = next;
     }
-    expect(unresolvedLines([entry("PWR/C2")], lib, [])[0]).toContain("lib:A3 +1 more");
+    expect(unresolvedLines([entry("C2")], lib, [])[0]).toContain("lib:A3 +1 more");
   });
 });
 
@@ -123,8 +123,8 @@ describe("the inventory flag", () => {
   it("reaches the CSV and part summaries", () => {
     const lib = withCopy("ZZ100N", "CL10B104KB8NNNC", { sourcing: { in_inventory: true } });
     const r = lib.get("ZZ100N")?.record;
-    const owned = { ...entry("PWR/U1"), ...(r && { record: r }) };
-    const csv = formatBomCsv([owned], (p) => p, []);
+    const owned = { ...entry("U1"), ...(r && { record: r }) };
+    const csv = formatBomCsv([owned], []);
     expect(csv.split("\n")[0]).toContain("In inventory");
     expect(csv.split("\n")[1]).toContain(",yes,");
     expect(describePart(lib, "ZZ100N", "summary").text).toContain("[in inventory]");
@@ -175,7 +175,7 @@ describe("a real part draws like its generic", () => {
 = part C4 lib:CL10B105KA8NNNC`;
 
   it("uses the generated capacitor without KiCad, once", async () => {
-    const x = await exportKicad(patched(swap), "");
+    const x = await exportKicad(patched(swap));
     const choices = x.symbols.filter((s) => s.key.startsWith("lib:CL10"));
     expect(choices.map((s) => s.libId)).toEqual(["partstyle:cap", "partstyle:cap"]);
     const lib = x.files.get("partstyle.kicad_sym") as string;
@@ -209,7 +209,7 @@ describe("a real part draws like its generic", () => {
       ["symbol", "LED_1_1", ...pads.map(pin)],
     ]);
     const part = {
-      path: "PWR/D2",
+      path: "D2",
       spec: { kind: "lib", id: "BACKWARD" },
       pins: pads.map(([number, name]) => ({ number, name, type: "passive" })),
     } as FlatPart;

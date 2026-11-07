@@ -86,7 +86,8 @@ net GND     : J1.SLEEVE U1.GND C1.2 C2.2 C3.2 -> port GND
 - `@` attaches intent to a statement; it travels with the part through edits and is what makes review cheap later.
 - `{…}` net attributes (voltage range, signal kind, max current, impedance) feed the part-aware checks.
 - Generic parts like `cap(…)` are constraints: a part not chosen yet. Preparing the BOM replaces each with a `lib:` part in the circuit; nothing chooses one automatically.
-- Hierarchy: `main.ckt` uses `use power as PWR` and joins `PWR.+5V` to other blocks' ports. Instance paths (`PWR/C1`) map to flat refdes on export via a stable annotation table.
+- Hierarchy: `main.ckt` uses `use power as PWR` and joins `PWR.+5V` to other blocks' ports. Refdes are unique across the project, so a part has one name for the person, the AI and KiCad (`C1`). Reusing a block is rare; when it happens, each extra copy gets refdes reserved for it in `annotation.lock` (the block's `R1` is `R3` in the second copy), as KiCad numbers every copy uniquely too.
+- KiCad is a hand-off, not a second home: export carries what PCB layout needs, and import creates a design or adds blocks to one, leaving the AI to join them in. Neither needs the other to round-trip.
 
 ### Part records
 
@@ -138,12 +139,12 @@ assembly:
   method: SMT service + hand-soldered THT
   volume: 10
 external_interfaces:
-  - connector: PWR/J1
+  - connector: J1
     connects_to: 12 V wall adapter
     signal: 12 V DC
     hazards:
       - reverse polarity
-  - connector: AFE/J2
+  - connector: J2
     connects_to: remote sensor on 2 m cable
     signal: 0-3.3 V analog
     hazards:

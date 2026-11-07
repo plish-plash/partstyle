@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Issue, Location } from "../diagnostics.js";
-import type { FlatPart, Netlist } from "../netlist/elaborate.js";
+import { type FlatPart, type Netlist, splitRef } from "../netlist/elaborate.js";
 
 /**
  * The parts of the design context the engine reads. External interfaces are the person's
@@ -58,17 +58,24 @@ export function contextChecks(
   }
   const ctx = parsed.data;
   const issues: Issue[] = [];
-  const paths = new Set(netlist.parts.map((p) => p.path));
-
   for (const { connector } of ctx.external_interfaces) {
-    if (paths.has(connector)) continue;
-    // The project file is written first: say nothing until the connector's block has parts.
-    const prefix = connector.slice(0, connector.lastIndexOf("/") + 1);
-    if (!netlist.parts.some((p) => p.path.startsWith(prefix))) continue;
+    // A refdes (J1), or one qualified by its instance path (PWR/J1), which must agree.
+    const slash = connector.lastIndexOf("/");
+    const ref = connector.slice(slash + 1);
+    const prefix = slash === -1 ? undefined : connector.slice(0, slash + 1);
+    const part = netlist.parts.find((p) => p.path === ref);
+    if (part && (prefix === undefined || part.prefix === prefix)) continue;
+    // The project file is written first: say nothing until the design has parts like it (in
+    // the instance it names, if it names one).
+    const [letters] = splitRef(ref);
+    const like = netlist.parts.some((p) =>
+      prefix === undefined ? splitRef(p.path)[0] === letters : p.prefix === prefix,
+    );
+    if (!like) continue;
     issues.push(
       issue(
         "context.unknown-connector",
-        `external interface ${connector} is not a part in the design (use its instance path, e.g. PWR/J1)`,
+        `external interface ${connector} is not a part in the design (name its refdes, e.g. J1)`,
         [connector],
       ),
     );

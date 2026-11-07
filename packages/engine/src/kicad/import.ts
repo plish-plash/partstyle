@@ -1,6 +1,5 @@
-import type { CktFile, PartSpec, PortKind } from "../ckt/ast.js";
-import { printPinRef, printSpec, printStatement } from "../ckt/print.js";
-import { globToRegExp } from "../diagnostics.js";
+import type { PartSpec, PortKind } from "../ckt/ast.js";
+import { printSpec } from "../ckt/print.js";
 import { isOpenByDesign } from "../netlist/elaborate.js";
 import {
   checkGenericArgs,
@@ -9,7 +8,6 @@ import {
   genericPins,
   generics,
   parseGenericSpec,
-  parseGenericText,
 } from "../parts/generic.js";
 import type { PartLibrary } from "../parts/library.js";
 import { isDraft, type PartRecord, type PinType } from "../parts/schema.js";
@@ -128,8 +126,15 @@ export interface ImportInput {
   notes?: Map<string, string[]>;
   /** Pad numbers of footprints, where known: drafts list pads the symbol lacks as `nc` pins. */
   pads?: Map<string, Set<string>>;
-  /** The project as it was, on a re-import: its edits to keep. */
-  previous?: { blocks: CktFile[]; annotation: Annotation };
+  /** Block names the project already has: imported blocks take others. */
+  existingBlocks?: Iterable<string>;
+  /** The root sheet's block name: `main` for a new project (the default). */
+  rootBlock?: string;
+  /**
+   * Sheets to import, by sheet name (`PWR`) or file (`power.kicad_sch`), each with the sheets
+   * inside it; all of them when absent. Nets to sheets left out become ports.
+   */
+  select?: string[];
   /** Shown in the notes file. */
   source?: string;
   date?: string;
@@ -143,17 +148,23 @@ export interface ImportedDraft {
 }
 
 export interface ImportResult {
-  /** circuit/<block>.ckt texts. */
+  /** circuit/<block>.ckt texts, for the imported sheets. */
   circuits: { file: string; text: string }[];
   drafts: ImportedDraft[];
-  annotation: Annotation;
+  /**
+   * annotation.lock for the imported design on its own, with the root sheet as `main`: the KiCad
+   * refdes of each extra copy of a reused sheet.
+   */
   annotationLock: string;
   /** notes/kicad-import.md */
   notes: string;
   /** Report lines for the person and the AI. */
   report: string[];
-  /** KiCad's connectivity minus what import leaves out, to check the imported design against. */
-  expected: ParsedNetlist;
+  /**
+   * KiCad's connectivity minus what import leaves out, to check the imported design against.
+   * Only when every sheet was imported.
+   */
+  expected?: ParsedNetlist;
   blocks: string[];
 }
 
@@ -223,7 +234,7 @@ interface PinDef {
   unused?: "open" | "required";
 }
 
-type How = "spec" | "mpn" | "lcsc" | "value" | "generic" | "draft";
+type How = "mpn" | "lcsc" | "value" | "generic" | "draft";
 
 interface Resolution {
   spec: PartSpec;
@@ -305,9 +316,8 @@ function passiveGeneric(
 }
 
 /**
- * How a KiCad symbol enters the design: partstyle's own Spec field (a design exported from
- * here), then the MPN or LCSC field against the library, then a generic for plain passives,
- * then the value as an MPN; anything else becomes a draft record.
+ * How a KiCad symbol enters the design: the MPN or LCSC field against the library, then a
+ * generic for plain passives, then the value as an MPN; anything else becomes a draft record.
  */
 function resolve(c: KicadComp, kpins: KicadPin[], byMpn: Map<string, PartRecord>): Resolution {
   const lib = (r: PartRecord, how: How): Resolution => ({
@@ -321,33 +331,6 @@ function resolve(c: KicadComp, kpins: KicadPin[], byMpn: Map<string, PartRecord>
   });
   const notes: string[] = [];
   const mpn = field(c, "mpn");
-
-  // A design exported from here names its spec; a Value, MPN or footprint changed in KiCad
-  // since then wins over it.
-  const spec = c.fields.Spec?.trim() ?? "";
-  if (spec.startsWith("lib:")) {
-    const r = byMpn.get(`id:${spec.slice(4)}`);
-    const sameMpn = !mpn || !r?.preferred_mpn || norm(mpn) === norm(r.preferred_mpn);
-    if (r && fits(r, kpins) && sameMpn) return lib(r, "spec");
-  } else if (spec !== "") {
-    const g = /^([a-z]+)\((.*)\)$/.exec(spec);
-    const fn = g?.[1] ?? "";
-    const args = (g?.[2] ?? "")
-      .split(",")
-      .map((a) => a.trim())
-      .filter(Boolean);
-    const def = generics[fn];
-    const parsed = parseGenericText(spec);
-    if (def && parsed && checkGenericArgs(fn, args) === undefined) {
-      if (c.value !== "" && c.value !== args[0]) {
-        const edited = passiveGeneric({ ...c, footprint: "" }, kpins);
-        if (edited && "args" in edited) args[0] = edited.args[0] as string;
-      }
-      if (c.footprint === "" || genericFootprint(parsed) === c.footprint) {
-        return { spec: { kind: "generic", fn, args }, pins: genericPins(fn, args), how: "spec" };
-      }
-    }
-  }
 
   // Test points and solder jumpers are footprints with nothing to buy.
   if (/^(TestPoint|SolderJumper)/.test(c.part) && c.footprint !== "" && kpins.length <= 3) {
@@ -472,8 +455,10 @@ function inferKind(name: string, types: Set<PinType>): PortKind {
 /**
  * Turns KiCad's view of a design into partstyle files: one block per sheet file (a reused sheet
  * is one block used twice), ports where nets cross sheets, parts mapped to the library or to
- * generics where exact, and draft records for the rest. On a re-import, the person's intents,
- * net attributes, port kinds, nc statements, waivers and block descriptions are carried over.
+ * generics where exact, and draft records for the rest. Import only adds: blocks take names the
+ * project does not have yet, and each part keeps its KiCad refdes (a collision with the project's
+ * own parts is then an error for the AI to clear). Every sheet is modelled, so that ports come
+ * out the same, but only the selected ones are written.
  */
 export function buildImport(input: ImportInput): ImportResult {
   const report: string[] = [];
@@ -484,31 +469,24 @@ export function buildImport(input: ImportInput): ImportResult {
   const byMpn = new Map<string, PartRecord>();
   for (const { record: r } of input.library.values()) {
     if (isDraft(r)) continue;
-    byMpn.set(`id:${r.id}`, r);
     if (r.preferred_mpn && !byMpn.has(norm(r.preferred_mpn))) byMpn.set(norm(r.preferred_mpn), r);
     if (!byMpn.has(norm(r.id))) byMpn.set(norm(r.id), r);
     if (r.sourcing?.lcsc) byMpn.set(`lcsc:${norm(r.sourcing.lcsc)}`, r);
-  }
-
-  const previous = new Map((input.previous?.blocks ?? []).map((b) => [b.block.name, b]));
-  const prevPinNet = new Map([...previous].map(([name, b]) => [name, pinNets(b, input.library)]));
-  const prevLocal = new Map<string, string>();
-  for (const [p, ref] of input.previous?.annotation ?? []) {
-    const cut = p.lastIndexOf("/") + 1;
-    prevLocal.set(`${p.slice(0, cut)}\u0000${ref}`, p.slice(cut));
   }
 
   // Blocks per sheet file, in page order.
   const files = [...new Set([input.rootFile, ...root.sheets.map((s) => s.file)])].filter(
     (f) => f !== "" && input.sheets.has(f),
   );
-  const blockNames = new Set<string>(["main"]);
+  const selected = selectedFiles(root, input.rootFile, input.select);
+  const blockNames = new Set<string>(input.existingBlocks ?? []);
+  const rootBlock = unique(input.rootBlock ?? "main", blockNames);
   const models = new Map<string, FileModel>();
   const skipped: string[] = [];
   for (const file of files) {
     const data = input.sheets.get(file) as KicadNetlist;
     const base = file.replace(/^.*[\\/]/, "").replace(/\.kicad_sch$/, "");
-    const block = file === input.rootFile ? "main" : unique(cktName(base), blockNames);
+    const block = file === input.rootFile ? rootBlock : unique(cktName(base), blockNames);
     const childSheets = new Map<string, { file: string; inst: string }>();
     const insts = new Set<string>();
     for (const s of data.sheets) {
@@ -561,9 +539,7 @@ export function buildImport(input: ImportInput): ImportResult {
         continue;
       }
       const kicadRef = (inst && rootComp.get(`${inst.tstamps}|${c.uuid}`)?.ref) ?? c.ref;
-      const wanted = prevLocal.get(`${inst?.prefix ?? ""}\u0000${kicadRef}`) ?? kicadRef;
-      const ref = taken.has(cktName(wanted)) ? unique(cktName(kicadRef), taken) : cktName(wanted);
-      taken.add(ref);
+      const ref = unique(cktName(kicadRef), taken);
       m.parts.push({ uuid: c.uuid, comp: c, ref, res: resolve(c, kpins, byMpn), token: new Map() });
     }
   }
@@ -574,6 +550,7 @@ export function buildImport(input: ImportInput): ImportResult {
     [...input.library.values()].filter((e) => !isDraft(e.record)).map((e) => e.record.id),
   );
   for (const m of models.values()) {
+    if (!selected.has(m.file)) continue;
     for (const p of m.parts) {
       const key = p.res.draftKey;
       if (key === undefined) continue;
@@ -601,7 +578,7 @@ export function buildImport(input: ImportInput): ImportResult {
         drafts.set(key, d);
       }
       p.res = { ...p.res, pins: d.res.pins, spec: { kind: "lib", id: d.id } };
-      d.users.push(`${m.block}/${p.ref}`);
+      d.users.push(p.ref);
     }
   }
   for (const d of drafts.values()) d.text = draftYaml(d.id, d.comp, d.res, input.stockSymbol);
@@ -717,9 +694,8 @@ export function buildImport(input: ImportInput): ImportResult {
     }
   }
 
-  // Net names, strongest first: the sheet's own label; the name the net had here before (found
-  // by its pins, for nets KiCad drew as bare wires or named after a child's label); a child
-  // sheet's label; else the first pin's. Ports take the sheet's label.
+  // Net names, strongest first: the sheet's own label; a child sheet's label; else the first
+  // pin's. Ports take the sheet's label.
   const autoNamed = new Map<string, string[]>();
   const taken = new Map([...models.values()].map((m) => [m, new Set<string>()]));
   const namedNets = (m: FileModel) =>
@@ -730,43 +706,13 @@ export function buildImport(input: ImportInput): ImportResult {
     for (const { n } of namedNets(m)) {
       if (ownLabel(n.kicadName)) n.name = unique(cktName(last(n.kicadName)), t);
     }
-    const prevBlock = previous.get(m.block);
     for (const { n, i } of namedNets(m)) {
-      if (!m.ports.has(i) || n.name === "") continue;
-      n.port = n.name;
-      const was = prevBlock?.nets.find((x) => x.port === n.port)?.name;
-      if (was !== undefined && was !== n.name && !t.has(was)) {
-        t.delete(n.name);
-        t.add(was);
-        n.name = was;
-      }
+      if (m.ports.has(i) && n.name !== "") n.port = n.name;
     }
   }
   for (const m of models.values()) {
     const t = taken.get(m) as Set<string>;
     const named = namedNets(m);
-    const before = prevPinNet.get(m.block);
-    for (const { n } of named) {
-      if (n.name !== "" || !before) continue;
-      const votes = new Map<string, number>();
-      const keys = [
-        ...n.pins.map((p) => `${p.part.ref}.${p.num}`),
-        ...n.childRefs.map((r) => {
-          const sheet = m.childSheets.get(r.seg);
-          const port = models.get(sheet?.file ?? "")?.nets[r.net]?.port;
-          return `${sheet?.inst}.${port}`;
-        }),
-      ];
-      for (const k of keys) {
-        const was = before.get(k);
-        if (was !== undefined) votes.set(was, (votes.get(was) ?? 0) + 1);
-      }
-      const best = [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (best !== undefined && !t.has(best)) {
-        n.name = best;
-        t.add(best);
-      }
-    }
     for (const { n } of named) {
       if (n.name !== "" || /^(Net-|unconnected-)/.test(n.kicadName)) continue;
       const name = cktName(last(n.kicadName));
@@ -794,43 +740,40 @@ export function buildImport(input: ImportInput): ImportResult {
     }
   }
 
-  // Annotation: every instance's KiCad refdes for each block-local part.
+  // The KiCad refdes of each extra copy of a reused sheet, where it differs from the block's own
+  // (its first copy's): reservations for the imported design on its own, rooted at main.
   const annotation: Annotation = new Map();
   for (const inst of instances) {
     const m = models.get(inst.file);
     for (const p of m?.parts ?? []) {
       const c = rootComp.get(`${inst.tstamps}|${p.uuid}`);
-      if (c) annotation.set(`${inst.prefix}${p.ref}`, c.ref);
+      if (c && c.ref !== p.ref) annotation.set(`${inst.prefix}${p.ref}`, c.ref);
     }
   }
 
-  // Write the blocks.
+  // Write the selected blocks.
   const circuits: ImportResult["circuits"] = [];
   const counts = new Map<How, number>();
   const notes: string[] = [];
   let ncFlags = 0;
   for (const m of models.values()) {
-    const prev = previous.get(m.block);
-    const prevPart = new Map(prev?.parts.map((p) => [p.ref, p]));
-    const prevNet = new Map(prev?.nets.map((n) => [n.name, n]));
-    const prevPort = new Map(prev?.ports.map((p) => [p.name, p]));
+    if (!selected.has(m.file)) continue;
     const lines: string[] = [];
     const sheetTitle = root.sheets.find((s) => s.file === m.file)?.title ?? "";
     const rootTitle = root.sheets.find((s) => s.names === "/")?.title ?? "";
     const description =
-      prev?.block.description ??
-      (m.file === input.rootFile
+      m.file === input.rootFile
         ? rootTitle || `KiCad project ${input.project}`
         : sheetTitle && sheetTitle !== rootTitle
           ? sheetTitle
-          : `KiCad sheet ${m.file}`);
+          : `KiCad sheet ${m.file}`;
     lines.push(`block ${m.block} ${quote(description)}`, "");
 
     const ports = [...m.ports]
       .map((i) => m.nets[i] as LocalNet)
       .map((n) => {
         const name = n.port ?? n.name;
-        return { name, kind: prevPort.get(name)?.kind ?? inferKind(name, n.types) };
+        return { name, kind: inferKind(name, n.types) };
       })
       .sort((a, b) => kindOrder(a.kind) - kindOrder(b.kind) || natural(a.name, b.name));
     section(
@@ -848,9 +791,8 @@ export function buildImport(input: ImportInput): ImportResult {
       lines,
       m.parts.map((p) => {
         counts.set(p.res.how, (counts.get(p.res.how) ?? 0) + 1);
-        if (p.res.note && p.res.how !== "draft") notes.push(`${m.block}/${p.ref}: ${p.res.note}`);
-        const intent = prevPart.get(p.ref)?.intent;
-        return [`part ${p.ref}`, printSpec(p.res.spec), ...(intent ? [`@ ${intent}`] : [])];
+        if (p.res.note && p.res.how !== "draft") notes.push(`${p.ref}: ${p.res.note}`);
+        return [`part ${p.ref}`, printSpec(p.res.spec)];
       }),
     );
 
@@ -875,55 +817,25 @@ export function buildImport(input: ImportInput): ImportResult {
         if (sheet && port) refs.push(`${sheet.inst}.${port}`);
       }
       if (refs.length === 0) continue;
-      // A net that was here before keeps its pin order and attributes (KiCad has no attributes,
-      // and its PWR_FLAGs may be ones the export added).
-      const pn = prevNet.get(n.name);
-      if (pn) {
-        const order = pn.pins.map((p) => `${p.target}.${p.pin}`);
-        const rank = (r: string) => (order.includes(r) ? order.indexOf(r) : order.length);
-        refs.sort((a, b) => rank(a) - rank(b));
-      }
-      const attrs: Record<string, string> = pn
-        ? pn.attrs
-        : { ...(n.flag && { source: FLAG_SOURCE }) };
-      const a = Object.entries(attrs);
       netLines.push([
         `net ${n.name}`,
         [
           `: ${refs.join(" ")}`,
           m.ports.has(m.nets.indexOf(n)) ? ` -> port ${n.port ?? n.name}` : "",
-          a.length > 0 ? ` {${a.map(([k, v]) => `${k}: ${v}`).join(", ")}}` : "",
-          pn?.intent ? ` @ ${pn.intent}` : "",
+          n.flag ? ` {source: ${FLAG_SOURCE}}` : "",
         ].join(""),
       ]);
     }
     section(lines, netLines);
 
-    // Pins KiCad's ERC accepts as unconnected carry a no-connect flag. The person's nc statements
-    // stay while a pin they cover is still open; the ones import wrote follow KiCad's flags.
+    // Pins KiCad's ERC accepts as unconnected carry a no-connect flag.
     const connected = new Set(
       m.nets
         .filter((_, i) => used(m, i) || m.ports.has(i))
         .flatMap((n) => n.pins.map((p) => `${p.part.ref}.${p.num}`)),
     );
     const inst = firstInst.get(m.file);
-    const carried = (prev?.ncs ?? []).filter((n) => {
-      if (n.intent === NC_INTENT) return false;
-      const part = m.parts.find((p) => p.ref === n.pin.target);
-      const pattern = globToRegExp(n.pin.pin);
-      return part?.res.pins.some(
-        (pin) =>
-          !connected.has(`${part.ref}.${pin.number}`) &&
-          (pattern.test(pin.name) || pattern.test(pin.number)),
-      );
-    });
-    const ncs = carried.map((decl) => printStatement({ kind: "nc", decl }));
-    const covered = [
-      ...carried.map((n) => printPinRef(n.pin)),
-      ...(prev?.waivers ?? [])
-        .filter((w) => w.code === "erc.unconnected-pin")
-        .map((w) => w.subject),
-    ].map(globToRegExp);
+    const ncs: string[] = [];
     if (input.unconnected) {
       for (const p of m.parts) {
         const kicadRef = (inst && rootComp.get(`${inst.tstamps}|${p.uuid}`)?.ref) ?? p.comp.ref;
@@ -931,28 +843,33 @@ export function buildImport(input: ImportInput): ImportResult {
           // A pin that may stay open needs no nc: its flag says nothing new.
           if (isOpenByDesign(pin) || connected.has(`${p.ref}.${pin.number}`)) continue;
           if (input.unconnected.has(`${kicadRef}.${pin.number}`)) continue;
-          const subjects = [`${p.ref}.${pin.name}`, `${p.ref}.${pin.number}`, p.ref];
-          if (covered.some((re) => subjects.some((s) => re.test(s)))) continue;
           ncs.push(`nc ${p.ref}.${p.token.get(pin.number)} @ ${NC_INTENT}`);
           ncFlags++;
         }
       }
     }
-    const waivers = (prev?.waivers ?? []).map((decl) => printStatement({ kind: "waive", decl }));
     if (ncs.length > 0) lines.push(...ncs, "");
-    if (waivers.length > 0) lines.push(...waivers, "");
     circuits.push({ file: `circuit/${m.block}.ckt`, text: `${lines.join("\n").trimEnd()}\n` });
   }
 
   // Report.
   const blocksUsed = new Map<string, number>();
-  for (const i of instances) {
-    const b = models.get(i.file)?.block ?? "";
+  let partCount = 0;
+  let sheetCount = 0;
+  // A selection imports each sheet file as one block; the whole design counts every instance.
+  const counted = input.select?.length
+    ? instances.filter((i, k) => instances.findIndex((j) => j.file === i.file) === k)
+    : instances;
+  for (const i of counted) {
+    if (!selected.has(i.file)) continue;
+    const m = models.get(i.file);
+    const b = m?.block ?? "";
     blocksUsed.set(b, (blocksUsed.get(b) ?? 0) + 1);
+    partCount += m?.parts.length ?? 0;
+    sheetCount++;
   }
-  const partCount = [...annotation].length;
   report.push(
-    `KiCad ${input.project}: ${instances.length} sheet${instances.length === 1 ? "" : "s"} -> blocks ${[
+    `KiCad ${input.project}: ${sheetCount} sheet${sheetCount === 1 ? "" : "s"} -> blocks ${[
       ...blocksUsed,
     ]
       .map(([b, n]) => (n > 1 ? `${b} x${n}` : b))
@@ -960,15 +877,16 @@ export function buildImport(input: ImportInput): ImportResult {
   );
   const kinds = { generic: 0, library: 0, draft: 0 };
   for (const m of models.values()) {
+    if (!selected.has(m.file)) continue;
     for (const p of m.parts) {
       kinds[
         p.res.how === "draft" ? "draft" : p.res.spec.kind === "generic" ? "generic" : "library"
       ]++;
     }
   }
-  const matched = (["spec", "mpn", "lcsc", "value"] as const)
+  const matched = (["mpn", "lcsc", "value"] as const)
     .filter((h) => counts.has(h))
-    .map((h) => `${counts.get(h)} by ${h === "spec" ? "partstyle Spec field" : h}`);
+    .map((h) => `${counts.get(h)} by ${h}`);
   report.push(
     `block parts: ${kinds.library} library, ${kinds.generic} generic, ${kinds.draft} on ${drafts.size} draft record${drafts.size === 1 ? "" : "s"}${matched.length > 0 ? ` (matched ${matched.join(", ")})` : ""}`,
   );
@@ -1007,41 +925,43 @@ export function buildImport(input: ImportInput): ImportResult {
       nodes: n.nodes.filter((x) => !dropped.has(x.ref)).map((x) => `${x.ref}.${x.pin}`),
     })),
   };
+  const everything = files.every((f) => selected.has(f));
 
   return {
     circuits,
     drafts: [...drafts.values()].map(({ id, text, users, from }) => ({ id, text, users, from })),
-    annotation,
     annotationLock: formatAnnotationLock(annotation),
     notes: notesMarkdown(input, autoNamed),
     report,
-    expected,
-    blocks: [...models.values()].map((m) => m.block),
+    ...(everything && { expected }),
+    blocks: [...models.values()].filter((m) => selected.has(m.file)).map((m) => m.block),
   };
 }
 
-/** `REF.NUMBER` (and `INST.PORT`) → net name in a block, with pins resolved as elaboration does. */
-function pinNets(b: CktFile, library: PartLibrary): Map<string, string> {
-  const tables = new Map<string, PinDef[]>();
-  for (const p of b.parts) {
-    const pins =
-      p.spec.kind === "lib"
-        ? (() => {
-            const r = library.get(p.spec.id)?.record;
-            return r ? recordPins(r) : [];
-          })()
-        : genericPins(p.spec.fn, p.spec.args);
-    tables.set(p.ref, pins);
-  }
-  const out = new Map<string, string>();
-  for (const n of b.nets) {
-    for (const ref of n.pins) {
-      if (!tables.has(ref.target)) out.set(`${ref.target}.${ref.pin}`, n.name);
-      const pins = tables.get(ref.target) ?? [];
-      const byNumber = pins.filter((p) => p.number === ref.pin);
-      for (const p of byNumber.length > 0 ? byNumber : pins.filter((x) => x.name === ref.pin)) {
-        out.set(`${ref.target}.${p.number}`, n.name);
-      }
+/**
+ * The sheet files to import: every one, or those named by `select` (sheet name or file) and the
+ * sheets inside them. Throws for a name that is not a sheet, listing the sheets.
+ */
+function selectedFiles(root: KicadNetlist, rootFile: string, select?: string[]): Set<string> {
+  const all = new Set([rootFile, ...root.sheets.map((s) => s.file)].filter((f) => f !== ""));
+  if (select === undefined || select.length === 0) return all;
+  const nameOf = (names: string) => names.split("/").filter(Boolean).at(-1) ?? "";
+  const baseOf = (file: string) => file.replace(/^.*[\\/]/, "");
+  const out = new Set<string>();
+  for (const want of select) {
+    const hits = root.sheets.filter(
+      (s) =>
+        nameOf(s.names) === want ||
+        baseOf(s.file) === want ||
+        baseOf(s.file) === `${want}.kicad_sch` ||
+        (want === "/" && s.names === "/"),
+    );
+    if (hits.length === 0) {
+      const sheets = root.sheets.filter((s) => s.names !== "/").map((s) => nameOf(s.names));
+      throw new Error(`no sheet '${want}' (sheets: ${[...new Set(sheets)].join(", ")})`);
+    }
+    for (const hit of hits) {
+      for (const s of root.sheets) if (s.names.startsWith(hit.names)) out.add(s.file);
     }
   }
   return out;
@@ -1128,8 +1048,7 @@ function notesMarkdown(input: ImportInput, autoNamed: Map<string, string[]>): st
   const lines = [
     "# KiCad import",
     "",
-    `Imported from \`${input.source ?? input.project}\`${input.date ? ` on ${input.date}` : ""}. Re-importing replaces`,
-    "circuit/ but keeps intents, net attributes, port kinds, nc statements, waivers and block descriptions.",
+    `Imported from \`${input.source ?? input.project}\`${input.date ? ` on ${input.date}` : ""}.`,
     "",
   ];
   if (autoNamed.size > 0) {

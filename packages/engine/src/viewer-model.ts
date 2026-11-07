@@ -17,9 +17,12 @@ import type { ChangeOp } from "./versions/diff.js";
 import { countIssues } from "./views.js";
 
 export interface PartInfo {
+  /** Its refdes, the same as KiCad's (as is `ref`). */
   path: string;
-  /** Flat refdes, as exported to KiCad. */
   ref: string;
+  /** The block declaring it, and the refdes there when this is an extra copy of the block. */
+  block: string;
+  local?: string;
   spec: string;
   value: string;
   intent?: string;
@@ -82,6 +85,8 @@ export interface ViewerSheet {
     page: number;
     /** Block-local net name → flat net name in this instance. */
     nets: Record<string, string>;
+    /** The block's declared refdes → the refdes in this instance (they differ in extra copies). */
+    parts: Record<string, string>;
   }[];
   layout: SheetLayout;
 }
@@ -188,6 +193,9 @@ export function buildViewerModel(
             return flat ? [[n.name, flat]] : [];
           }),
         ),
+        parts: Object.fromEntries(
+          (decl?.parts ?? []).map((d) => [d.ref, netlist.refs.get(i.prefix + d.ref) ?? d.ref]),
+        ),
       })),
       layout,
     });
@@ -208,7 +216,9 @@ export function buildViewerModel(
     const libEntry = r && result.library.get(r.id);
     parts[p.path] = {
       path: p.path,
-      ref: drawing.annotation.get(p.path) ?? p.path,
+      ref: p.path,
+      block: p.block,
+      ...(p.local !== p.path && { local: p.local }),
       spec: printSpec(p.spec),
       value: entry?.value ?? printSpec(p.spec),
       ...(p.intent !== undefined && { intent: p.intent }),

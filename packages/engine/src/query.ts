@@ -17,14 +17,16 @@ export const queryUsage = `queries:
   parts [where COND [and ...]]  e.g. parts where vin_max < 15V, parts where kind = generic
   nets [where COND [and ...]]   e.g. nets where pins = 1, nets where voltage ~ 5V
   unconnected                   every pin on no net, marking those left open by nc
-COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path id preferred_mpn
-manufacturer package footprint kind fn value intent, approved (yes, no or changed: changed since
-approval), verified and in_inventory (yes/no, library parts), or any rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
-and NAME may omit the instance path when unambiguous (U1 for PWR/U1).`;
+COND is FIELD OP VALUE; OP is = != < <= > >= or ~ (contains). Part fields: path (the refdes) block
+id preferred_mpn manufacturer package footprint kind fn value intent, approved (yes, no or
+changed: changed since approval), verified and in_inventory (yes/no, library parts), or any
+rating. Net fields: name pins, or any attribute. Quantities compare numerically (35V > 5V). REF
+is a refdes, unique in the design (U1); NAME may omit the instance path when unambiguous.`;
 
 /** Fields any design may use; ratings and attributes exist only if something in it has them. */
 const partBaseFields = [
   "path",
+  "block",
   "id",
   "kind",
   "fn",
@@ -91,7 +93,14 @@ function formatAttrs(attrs: Record<string, string>): string {
 function describePartLine(part: FlatPart): string {
   const r = part.record;
   const identity = r ? ` ${r.summary}${r.provenance.verified_by ? "" : " [unverified]"}` : "";
-  return `${part.path} ${printSpec(part.spec)}${identity}${part.intent ? ` @ ${part.intent}` : ""}`;
+  return `${part.path}${copyNote(part)} ${printSpec(part.spec)}${identity}${part.intent ? ` @ ${part.intent}` : ""}`;
+}
+
+/** For a part in an extra copy of a block: where to edit it, as ` [copy F2: R1 in filter]`. */
+export function copyNote(part: FlatPart): string {
+  return part.local === part.path
+    ? ""
+    : ` [copy ${part.prefix.slice(0, -1)}: ${part.local} in ${part.block}]`;
 }
 
 const approvedWord = { approved: "yes", changed: "changed", none: "no" };
@@ -100,6 +109,7 @@ function partFields(part: FlatPart, approvals: Approvals): Record<string, string
   const r = part.record;
   const fields: Record<string, string> = {
     path: part.path,
+    block: part.block,
     kind: part.spec.kind,
     intent: part.intent ?? "",
     approved: approvedWord[approvalStatus(part, approvals)],
@@ -224,14 +234,31 @@ export function selectParts(
     if (unknown) return unknown;
     return rows.filter(([, f]) => matches(f, conditions)).map(([p]) => p);
   }
-  const paths = netlist.parts.map((p) => p.path);
   const parts: FlatPart[] = [];
   for (const name of text.split(/\s+/)) {
-    const path = resolve(paths, name, "part");
-    if (isResult(path)) return path;
-    parts.push(netlist.parts.find((p) => p.path === path) as FlatPart);
+    const part = findPart(netlist, name);
+    if (isResult(part)) return part;
+    parts.push(part);
   }
   return parts;
+}
+
+/**
+ * A part by refdes (`R3`), or by refdes qualified with its instance path (`F2/R3`), which must
+ * agree with where the part is.
+ */
+export function findPart(netlist: Netlist, name: string): FlatPart | TextResult {
+  const slash = name.lastIndexOf("/");
+  const ref = name.slice(slash + 1);
+  const prefix = slash === -1 ? undefined : name.slice(0, slash + 1);
+  const part = netlist.parts.find((p) => p.path === ref);
+  if (!part) return fail(`no part '${ref}'`);
+  if (prefix !== undefined && part.prefix !== prefix) {
+    return fail(
+      `${ref} is ${part.prefix === "" ? "in main" : `in ${part.prefix.slice(0, -1)}`}, not ${prefix.slice(0, -1)}`,
+    );
+  }
+  return part;
 }
 
 /** Answers a targeted lookup over the flattened netlist. */
@@ -247,13 +274,8 @@ export function runQuery(
   switch (command) {
     case "part": {
       if (args.length !== 1) return fail(`usage: part REF\n\n${queryUsage}`);
-      const path = resolve(
-        netlist.parts.map((p) => p.path),
-        args[0] as string,
-        "part",
-      );
-      if (isResult(path)) return path;
-      const part = netlist.parts.find((p) => p.path === path) as FlatPart;
+      const part = findPart(netlist, args[0] as string);
+      if (isResult(part)) return part;
       const pins = part.pins.map(
         (p) => `  ${p.number} ${p.name} ${p.type} -> ${p.net ?? "(unconnected)"}`,
       );

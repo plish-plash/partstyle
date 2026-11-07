@@ -12,7 +12,8 @@ part record says so, and a `bidir`, output-type or `nc` pin needs nothing unless
 | --------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------- |
 | `parse.syntax`, `parse.missing-block`                           | error                              | malformed statement                                                    |
 | `elab.unknown-part/-pin/-ref/-port/-block/-top`                 | error                              | name does not resolve                                                  |
-| `elab.duplicate-ref/-net/-port/-block`, `elab.port-bound-twice` | error                              | declared twice                                                         |
+| `elab.duplicate-ref/-net/-port/-block`, `elab.port-bound-twice` | error                              | declared twice (a refdes: anywhere in the project's blocks)            |
+| `ref.reserved`                                                  | error                              | a block declares a refdes reserved for a reused block's extra copy     |
 | `elab.pin-multiple-nets`                                        | error                              | pin on two nets (a short)                                              |
 | `elab.nc-connected`                                             | error                              | pin named by `nc` is on a net                                          |
 | `elab.unbound-port`, `elab.bad-generic`, `elab.recursive-use`   | error                              |                                                                        |

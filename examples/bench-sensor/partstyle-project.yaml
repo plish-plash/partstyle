@@ -10,19 +10,19 @@ assembly:
   method: SMT service + hand-soldered THT
   volume: 10
 external_interfaces:
-  - connector: PWR/J1
+  - connector: J1
     connects_to: 12 V wall adapter
     signal: 12 V DC
     hazards:
       - reverse polarity
-  - connector: AFE/J2
+  - connector: J2
     connects_to: remote sensor on 2 m cable
     signal: 0-3.3 V analog, sensor powered from +5V
     hazards:
       - ESD
       - hazard: miswiring to 12 V
         accepted: on a bench tool; it may destroy D3, but R2 keeps it out of U3
-  - connector: MCU/J5
+  - connector: J5
     connects_to: USB-UART adapter
     signal: 3.3 V UART
     hazards:

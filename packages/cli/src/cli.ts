@@ -44,7 +44,7 @@ commands:
   part get ID [--tier summary|pins|full]   read a part record
   part put [FILE|-] [--scope global|project]  add or update a part record
   kicad export [--no-check]                write kicad/ and verify it with kicad-cli
-  kicad import PATH [--replace]            import a KiCad project (creates the project if needed)
+  kicad import PATH [--sheet NAME]...      add a KiCad project or some sheets (creates the project if needed)
   bom export                               write bom.csv, list generics to replace
   view [--port N]                          serve the live viewer on 127.0.0.1 until Ctrl-C
   mcp [--project DIR | --projects-dir DIR] [--viewer-port N] [--no-viewer]
@@ -88,7 +88,7 @@ function parse(argv: string[]) {
       json: { type: "boolean" },
       "dry-run": { type: "boolean" },
       "no-check": { type: "boolean" },
-      replace: { type: "boolean" },
+      sheet: { type: "string", multiple: true },
       detail: { type: "string" },
       tier: { type: "string" },
       scope: { type: "string" },
@@ -244,11 +244,11 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
       if (args[0] === "import" && args.length === 2) {
         return fromText(
           await ws.kicadImport(path.resolve(args[1] as string), {
-            replace: values.replace ?? false,
+            ...(values.sheet && { sheets: values.sheet }),
           }),
         );
       }
-      return usageError("usage: kicad export [--no-check] | kicad import PATH [--replace]");
+      return usageError("usage: kicad export [--no-check] | kicad import PATH [--sheet NAME]...");
 
     case "bom":
       if (args[0] !== "export" || args.length > 1) return usageError("usage: bom export");

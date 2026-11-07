@@ -46,7 +46,11 @@ describe("Workspace review", () => {
   beforeEach(async () => {
     tmp = await mkdtemp(path.join(tmpdir(), "partstyle-review-"));
     project = path.join(tmp, "examples/bench-sensor");
-    await cp(repo("examples/bench-sensor"), project, { recursive: true });
+    // Without .partstyle/: a viewer run on the example leaves its local state there.
+    await cp(repo("examples/bench-sensor"), project, {
+      recursive: true,
+      filter: (src) => path.basename(src) !== ".partstyle",
+    });
     await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
     // Verifying writes the record, so the settings list this copy of the library.
     await writeFile(path.join(tmp, "settings.yaml"), "libraries: [library]\n");
@@ -58,18 +62,18 @@ describe("Workspace review", () => {
 
   it("reports the viewer selection and open comments through focus", async () => {
     expect((await ws.focus()).text).toBe("nothing selected in the viewer\nno open comments");
-    await ws.setFocus({ selection: ["PWR/U1", "+5V", "PWR/U1.IN", "MCU/"], sheet: "PWR/" });
-    const c = await ws.addComment("PWR/U1", "Why a linear regulator here?");
+    await ws.setFocus({ selection: ["U1", "+5V", "U1.IN", "MCU/"], sheet: "PWR/" });
+    const c = await ws.addComment("U1", "Why a linear regulator here?");
     expect(c.id).toBe("c1");
     await ws.setViewerUrl("http://127.0.0.1:7766/");
     expect((await ws.focus()).text.split("\n")).toEqual([
       "selected in the viewer (viewing sheet PWR):",
-      "  PWR/U1 lib:L7805CV 5 V 1.5 A linear regulator, TO-220 [unverified]",
+      "  U1 lib:L7805CV 5 V 1.5 A linear regulator, TO-220 [unverified]",
       "  net +5V {voltage: 5V} (joins PWR/+5V, AFE/+5V): 7 pins",
-      "  pin PWR/U1.IN (pin 1, power_in) on net PWR/+12V",
+      "  pin U1.IN (pin 1, power_in) on net PWR/+12V",
       "  sheet MCU",
       "open comments (1):",
-      "  c1 on PWR/U1: Why a linear regulator here?",
+      "  c1 on U1: Why a linear regulator here?",
       "viewer: http://127.0.0.1:7766/",
     ]);
     expect((await ws.overview()).text).toContain("comments: 1 open (see focus)");
@@ -103,11 +107,11 @@ describe("Workspace review", () => {
     const text = await readFile(file, "utf8");
     expect(text).toContain("# keep this comment");
     expect(text).toMatch(/sourcing: \{.*in_inventory: true/);
-    expect((await ws.viewerModel()).parts["PWR/U1"]?.record?.inInventory).toBe(true);
+    expect((await ws.viewerModel()).parts.U1?.record?.inInventory).toBe(true);
 
     await ws.setInInventory("L7805CV", false);
     expect(await readFile(file, "utf8")).toBe(`# keep this comment\n${original}`);
-    expect((await ws.viewerModel()).parts["PWR/U1"]?.record?.inInventory).toBe(false);
+    expect((await ws.viewerModel()).parts.U1?.record?.inInventory).toBe(false);
     expect((await ws.setInInventory("NOPE", true)).ok).toBe(false);
   });
 
@@ -115,28 +119,30 @@ describe("Workspace review", () => {
     const file = path.join(tmp, "library/L7805CV.yaml");
     await writeFile(file, (await readFile(file, "utf8")).replace(/^sourcing:.*\n/m, ""));
     await ws.setInInventory("L7805CV", true);
-    expect((await ws.viewerModel()).parts["PWR/U1"]?.record?.inInventory).toBe(true);
+    expect((await ws.viewerModel()).parts.U1?.record?.inInventory).toBe(true);
   });
 
   it("builds a viewer model with sheets, symbols, parts and review state", async () => {
     await writeFile(
       path.join(project, "comments.yaml"),
       formatComments([
-        { id: "c1", subject: "PWR/C3", text: "10u enough?", status: "open", created: "" },
+        { id: "c1", subject: "C3", text: "10u enough?", status: "open", created: "" },
       ]),
     );
     const m = await ws.viewerModel();
     expect(m.project).toBe("bench-sensor");
     expect(m.sheets.map((s) => s.block)).toEqual(["main", "power", "sensor_afe", "mcu"]);
-    expect(m.sheets.find((s) => s.block === "power")?.instances[0]?.nets["+12V"]).toBe("PWR/+12V");
-    expect(m.parts["MCU/U4"]?.record?.requirements).toHaveLength(4);
-    expect(m.parts["PWR/C1"]?.ref).toBe("C1");
+    const power = m.sheets.find((s) => s.block === "power")?.instances[0];
+    expect(power?.nets["+12V"]).toBe("PWR/+12V");
+    expect(power?.parts.C1).toBe("C1");
+    expect(m.parts.U4?.record?.requirements).toHaveLength(4);
+    expect(m.parts.C1).toMatchObject({ ref: "C1", block: "power" });
     for (const s of m.sheets) {
       for (const u of s.layout.units) expect(m.symbols[u.libId]).toBeDefined();
     }
     expect(m.comments).toHaveLength(1);
     // A generic with no part chosen yet is a normal state of designing, not an issue.
-    expect(m.parts["PWR/C3"]?.bom.status).toBe("unresolved");
+    expect(m.parts.C3?.bom.status).toBe("unresolved");
     expect(m.issues.map((i) => i.code)).not.toContain("bom.unresolved");
   });
 

@@ -24,11 +24,11 @@ beforeAll(async () => {
 const q = (expr: string) => runQuery(netlist, expr);
 
 describe("runQuery", () => {
-  it("lists a part's pins and nets, resolving an unqualified refdes", () => {
+  it("lists a part's pins and nets by its refdes", () => {
     expect(q("part U1")).toEqual({
       ok: true,
       text: [
-        "PWR/U1 lib:L7805CV 5 V 1.5 A linear regulator, TO-220 [unverified]",
+        "U1 lib:L7805CV 5 V 1.5 A linear regulator, TO-220 [unverified]",
         "  1 IN power_in -> PWR/+12V",
         "  2 GND power_in -> GND",
         "  3 OUT power_out -> +5V",
@@ -41,26 +41,24 @@ describe("runQuery", () => {
     expect(r.text.split("\n")[0]).toBe(
       "+3V3 {voltage: 3.3V} (joins PWR/+3V3, AFE/+3V3, MCU/+3V3): 12 pins",
     );
-    expect(r.text).toContain("MCU/U4.VCC[4](power_in) MCU/U4.VCC[6](power_in)");
+    expect(r.text).toContain("U4.VCC[4](power_in) U4.VCC[6](power_in)");
   });
 
   it("filters parts by rating with numeric comparison", () => {
-    expect(q("parts where vin_max < 15V").text).toBe(
-      "1 part\nPWR/U2  lib:MCP1700-3302  vin_max=6V",
-    );
+    expect(q("parts where vin_max < 15V").text).toBe("1 part\nU2  lib:MCP1700-3302  vin_max=6V");
     expect(q("parts where vin_max >= 6V").text.split("\n")[0]).toBe("2 parts");
   });
 
   it("combines conditions", () => {
     expect(q("parts where fn = cap and value = 10n").text).toBe(
-      "1 part\nAFE/C6  cap(10n, 16V, X7R, 0603)  value=10n",
+      "1 part\nC6  cap(10n, 16V, X7R, 0603)  value=10n",
     );
-    expect(q("parts where path ~ MCU/ and kind = lib").text.split("\n")[0]).toBe("3 parts");
+    expect(q("parts where block = mcu and kind = lib").text.split("\n")[0]).toBe("3 parts");
   });
 
   it("filters nets by attribute and pin count", () => {
     expect(q("nets where voltage ~ 12V").text).toBe(
-      "1 net\nPWR/VIN_RAW {voltage: 12V ±10%}: PWR/J1.TIP PWR/D1.A",
+      "1 net\nPWR/VIN_RAW {voltage: 12V ±10%}: J1.TIP D1.A",
     );
     expect(q("nets where pins > 20").text).toMatch(/^1 net\nGND: /);
   });
@@ -114,7 +112,7 @@ describe("runQuery", () => {
   it("lists unconnected pins, including ones that may stay open", () => {
     const lines = q("unconnected").text.split("\n");
     expect(lines[0]).toBe("17 unconnected pins");
-    expect(lines).toContain("  MCU/U4.PB0 (pin 12, bidir)");
+    expect(lines).toContain("  U4.PB0 (pin 12, bidir)");
   });
 
   it.each([
@@ -131,24 +129,23 @@ describe("runQuery", () => {
     expect(r.text.split("\n")[0]).toBe(message);
   });
 
-  it("resolves names without their instance path when unambiguous", () => {
-    expect(q("part J2").text).toMatch(/^AFE\/J2 /);
+  it("takes a refdes qualified by its instance path when the two agree", () => {
+    expect(q("part AFE/J2").text).toMatch(/^J2 /);
+    expect(q("part PWR/J2")).toEqual({ ok: false, text: "J2 is in AFE, not PWR" });
     expect(q("net SENSE").text).toMatch(/^AFE\/SENSE /);
   });
 
-  it("reports ambiguous names", () => {
-    const location = { file: "x", line: 1, col: 1 };
-    const part = (path: string) => ({
-      path,
-      spec: { kind: "generic" as const, fn: "res", args: ["1k"] },
-      pins: [],
-      location,
-    });
-    const twoR1: Netlist = { parts: [part("A/R1"), part("B/R1")], nets: [] };
-    expect(runQuery(twoR1, "part R1")).toEqual({
-      ok: false,
-      text: "part 'R1' is ambiguous: A/R1, B/R1",
-    });
+  it("names a part in an extra copy of a reused block by its own refdes", async () => {
+    const multi = validateProject(
+      await loadProject(fileURLToPath(new URL("../test-fixtures/multi", import.meta.url)), [
+        fileURLToPath(new URL("../../../library", import.meta.url)),
+      ]),
+    ).netlist as Netlist;
+    expect(runQuery(multi, "part R3").text.split("\n")[0]).toBe(
+      "R3 [copy F2: R1 in filter] res(1k, 1%, 0603)",
+    );
+    expect(runQuery(multi, "part F2/R3").ok).toBe(true);
+    expect(runQuery(multi, "part F1/R1").ok).toBe(true);
   });
 });
 
@@ -160,7 +157,7 @@ describe("overview and readBlock", () => {
       "context: Bench interface that reads a remote analog sensor and reports over UART",
     ]);
     expect(text).toContain(
-      "  interface AFE/J2: remote sensor on 2 m cable (0-3.3 V analog, sensor powered from +5V); hazards: ESD, miswiring to 12 V (accepted: on a bench tool; it may destroy D3, but R2 keeps it out of U3)",
+      "  interface J2: remote sensor on 2 m cable (0-3.3 V analog, sensor powered from +5V); hazards: ESD, miswiring to 12 V (accepted: on a bench tool; it may destroy D3, but R2 keeps it out of U3)",
     );
     expect(text).toContain("  power (circuit/power.ckt): 11 parts; ports +5V +3V3 GND");
     expect(text).toContain("parts: 30 (10 library, 20 generic; 9 of 9 records unverified)");

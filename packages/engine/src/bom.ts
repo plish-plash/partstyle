@@ -110,11 +110,7 @@ function csvField(s: string): string {
  * listed with what they have, and every row links to a search at each distributor, as the viewer
  * does.
  */
-export function formatBomCsv(
-  entries: BomEntry[],
-  refOf: (path: string) => string,
-  preferred: readonly Distributor[],
-): string {
+export function formatBomCsv(entries: BomEntry[], preferred: readonly Distributor[]): string {
   const groups = new Map<string, BomEntry[]>();
   for (const e of entries) {
     if (e.status === "board") continue;
@@ -144,7 +140,7 @@ export function formatBomCsv(
     ].filter(Boolean);
     return [
       group
-        .map((g) => refOf(g.part.path))
+        .map((g) => g.part.path)
         .sort(natural)
         .join(" "),
       String(group.length),

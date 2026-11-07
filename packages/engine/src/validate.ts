@@ -10,6 +10,7 @@ import {
   type Location,
 } from "./diagnostics.js";
 import { runErc } from "./erc/rules.js";
+import { formatAnnotationLock, parseAnnotationLock } from "./kicad/annotate.js";
 import { elaborate, type Netlist, type WaiverScope } from "./netlist/elaborate.js";
 import { buildLibrary, type PartLibrary } from "./parts/library.js";
 import { isDraft } from "./parts/schema.js";
@@ -36,6 +37,8 @@ export interface ValidationResult {
   /** Parsed circuit files, in source order. */
   blocks: CktFile[];
   library: PartLibrary;
+  /** annotation.lock as it should now read: the refdes reserved for copies of reused blocks. */
+  annotationLock?: string;
 }
 
 /**
@@ -69,7 +72,12 @@ export function validateProject(source: ProjectSource, extra: Issue[] = []): Val
     };
   }
 
-  const elaborated = elaborate(blocks, library, TOP_BLOCK);
+  const elaborated = elaborate(
+    blocks,
+    library,
+    TOP_BLOCK,
+    parseAnnotationLock(source.annotation?.text ?? ""),
+  );
   issues.push(
     // A variant that stops using one of main's blocks (replacing it with its own) is not
     // warned about it: the block is main's.
@@ -98,6 +106,7 @@ export function validateProject(source: ProjectSource, extra: Issue[] = []): Val
     netlist: elaborated.netlist,
     blocks,
     library,
+    annotationLock: formatAnnotationLock(elaborated.reservations),
   };
 }
 
@@ -142,6 +151,21 @@ function draftIssues(netlist: Netlist, library: PartLibrary): Issue[] {
 }
 
 /**
+ * What a waiver's subject matches in one block instance. A subject naming the block's own parts
+ * (`R1`, `R1.2`, `R*`) matches their refdes in this instance; anything else (a net, a port) is
+ * relative to the instance path.
+ */
+function subjectPatterns(scope: WaiverScope, subject: string): RegExp[] {
+  const dot = subject.indexOf(".");
+  const head = dot === -1 ? subject : subject.slice(0, dot);
+  const rest = dot === -1 ? "" : subject.slice(dot);
+  const local = globToRegExp(head);
+  const parts = [...scope.refs].filter(([l]) => local.test(l));
+  if (parts.length > 0) return parts.map(([, ref]) => globToRegExp(ref + rest));
+  return [globToRegExp(scope.prefix + subject)];
+}
+
+/**
  * Removes warnings matched by a waiver; reports waivers that matched nothing in any instance.
  * Errors are design faults to fix, so no waiver removes them.
  */
@@ -150,7 +174,7 @@ export function applyWaivers(
   scopes: WaiverScope[],
 ): { kept: Issue[]; waived: number; waivers: AppliedWaiver[] } {
   const matchers = scopes.flatMap((scope) =>
-    scope.waivers.map((decl) => ({ decl, pattern: globToRegExp(scope.prefix + decl.subject) })),
+    scope.waivers.map((decl) => ({ decl, patterns: subjectPatterns(scope, decl.subject) })),
   );
   const applied = new Map<WaiverDecl, Issue[]>();
   const refused = new Set<WaiverDecl>();
@@ -158,8 +182,8 @@ export function applyWaivers(
 
   const kept = issues.filter((issue) => {
     const match = matchers.find(
-      ({ decl, pattern }) =>
-        decl.code === issue.code && issue.subjects.some((s) => pattern.test(s)),
+      ({ decl, patterns }) =>
+        decl.code === issue.code && issue.subjects.some((s) => patterns.some((p) => p.test(s))),
     );
     if (!match) return true;
     if (issue.severity === "error") {

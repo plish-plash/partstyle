@@ -4,9 +4,9 @@ use filter as F1
 use filter as F2
 
 part J1 lib:TSW-103-07-G-S       @ 1 = in, 2 = out, 3 = GND
-part R1 res(10k, 1%, 0603)       @ load
+part R2 res(10k, 1%, 0603)       @ load
 
 net IN   : J1.1 F1.IN
 net MID  : F1.OUT F2.IN
-net OUT  : F2.OUT J1.2 R1.1
-net GND  : J1.3 F1.GND F2.GND R1.2
+net OUT  : F2.OUT J1.2 R2.1
+net GND  : J1.3 F1.GND F2.GND R2.2

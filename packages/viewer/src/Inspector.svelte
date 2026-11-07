@@ -87,7 +87,7 @@ async function setInInventory(id: string, inInventory: boolean) {
   {#if !subject}
     <p class="hint">Click a part, pin, wire or sheet to inspect it. The AI sees your selection through <code>focus</code>; shift-click selects several.</p>
   {:else if part}
-    <h2>{part.ref} <small>{part.path}</small></h2>
+    <h2>{part.ref} <small>block {part.block}{part.local ? `, its ${part.local}` : ""}</small></h2>
     <p class="spec"><code>{part.spec}</code> — {part.value}</p>
     {#if part.intent}<p class="intent">@ {part.intent}</p>{/if}
     <div class="approval">

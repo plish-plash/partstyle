@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { ANNOTATION_FILE } from "../kicad/annotate.js";
 import type { PartSource } from "../parts/library.js";
 import { PROJECT_FILE } from "./config.js";
 import type { ProjectSource, TextFile } from "./source.js";
@@ -94,6 +95,11 @@ export async function loadProject(
       throw e;
     });
   const comments = await optional("comments.yaml");
+  const annotation =
+    (variant === undefined
+      ? undefined
+      : await optional(path.join(VARIANTS_DIR, variant, ANNOTATION_FILE))) ??
+    (await optional(ANNOTATION_FILE));
   const projectOverride =
     variant === undefined
       ? undefined
@@ -103,6 +109,7 @@ export async function loadProject(
     circuits,
     parts,
     ...(comments && { comments }),
+    ...(annotation && { annotation }),
     ...(variant !== undefined && { variant }),
     ...(projectOverride && { projectOverride }),
   };

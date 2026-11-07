@@ -68,6 +68,10 @@ suggested fix.
 - Errors are design faults: fix them. They cannot be waived, and one that looks wrong is a
   Partstyle bug to raise with the person. Warnings need a fix or the person's decision.
 - Mark a pin left open on purpose with `nc U2.GAIN* @ open = gain 20`, not a waiver.
+- A part's refdes is its name everywhere, the same as in KiCad, so refdes are unique across the
+  project's blocks. A block used twice gets refdes reserved for its extra copy (its R1 is R3
+  there; `read-block` lists them): edit the copy through the block's own R1. A block copied in
+  from another project may clash (`elab.duplicate-ref`): rename its parts with `rename part`.
 - The engine does not check an interface's hazards: handle them in the design. If the person
   accepts one, record it in the project file as `{hazard: ESD, accepted: why}`.
 - Use generics for passives: `res(4.7k, 1%, 0603)`, `cap(100n, 16V, X7R, 0603)`, `led(red, 0603)`.
@@ -76,9 +80,11 @@ suggested fix.
   exist (from memory or a datasheet), never an MPN extrapolated from a series. A record caches
   the datasheet: put everything in it, in sections of your own where no field fits. Leave
   `verified_by: null`: only a human verifies a record.
-- A design imported from KiCad (`partstyle kicad import`) has draft records for symbols the
-  library lacked, each a `part.draft` warning: identify the part with the person, then complete
-  the record from its datasheet (or switch the parts to an existing record or a generic).
+- `partstyle kicad import PATH [--sheet NAME]` adds a KiCad project, or some of its sheets, as
+  new blocks: join them into the design yourself (a `use`, or moving parts into a block). Each
+  symbol the library lacked becomes a draft record with a `part.draft` warning: identify the part
+  with the person, then complete the record from its datasheet (or switch to another record or a
+  generic).
 
 ## Project knowledge
 
@@ -106,9 +112,11 @@ Export only when the person asks.
   part, with library parts that could replace it (a record's `generic:` field says what it
   satisfies, e.g. `generic: cap(100n, 50V, X7R, 10%, 0603)`). Nothing replaces a generic
   automatically: the person agrees each part, and `/handoff` has the steps.
-- `partstyle kicad export` writes `kicad/` and checks it with kicad-cli (netlist round trip and
-  KiCad ERC). It draws parts with KiCad's own symbols, found by MPN; when it reports a
-  generated symbol for a part KiCad has under another name (connectors, transistors, generic
-  modules), set `kicad_symbol: Library:Symbol` in the part record. Never edit `kicad/*.kicad_sch`: change the .ckt files and export again. PCB layout
-  happens in KiCad, and re-export never touches the PCB.
-- Keep `annotation.lock` under version control: it holds refdes stable across exports.
+- `partstyle kicad export` writes `kicad/` and checks it with kicad-cli (netlist and KiCad
+  ERC). The first export starts from the KiCad project template in `kicad.template`, if set. It
+  draws parts with KiCad's own symbols, found by MPN; when it reports a generated symbol for a
+  part KiCad has under another name (connectors, transistors, generic modules), set
+  `kicad_symbol: Library:Symbol` in the part record. Never edit `kicad/*.kicad_sch`: change the
+  .ckt files and export again. PCB layout happens in KiCad, and re-export never touches the PCB.
+- Keep `annotation.lock` under version control when there is one: it holds the refdes reserved
+  for copies of reused blocks.

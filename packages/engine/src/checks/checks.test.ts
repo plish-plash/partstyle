@@ -213,7 +213,7 @@ ${more}`;
   it("reports an interface whose connector is not in the design", () => {
     const issues = check(board(""), { context: context("ESD").replace("J1", "J9") });
     expect(codes(issues, "context.unknown")).toEqual([
-      "warning context.unknown-connector external interface J9 is not a part in the design (use its instance path, e.g. PWR/J1)",
+      "warning context.unknown-connector external interface J9 is not a part in the design (name its refdes, e.g. J1)",
     ]);
   });
 

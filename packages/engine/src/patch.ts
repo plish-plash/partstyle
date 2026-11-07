@@ -2,6 +2,7 @@ import type { CktFile, PinRef, Statement, StatementKind } from "./ckt/ast.js";
 import { parseCkt, parsePinRef, parseStatement } from "./ckt/parser.js";
 import { printPinRef, printStatement } from "./ckt/print.js";
 import type { Issue } from "./diagnostics.js";
+import { parseAnnotationLock } from "./kicad/annotate.js";
 import type { ProjectSource, TextFile } from "./project/source.js";
 
 export interface PatchResult {
@@ -261,6 +262,22 @@ function parseEdit(text: string, lineNo: number): Statement {
  * Applies a patch in the .ckt patch language (see docs/ckt-grammar.md). Atomic: on the first
  * error, nothing is applied and the error is returned.
  */
+/**
+ * A part an edit could not find may be in an extra copy of a reused block, whose refdes is
+ * reserved for it: such a part is edited through the block's own refdes.
+ */
+function copyHint(source: ProjectSource, message: string): string | undefined {
+  const m = /^no part (\S+) in ([^\s;]+)/.exec(message);
+  if (!m) return undefined;
+  for (const [key, reserved] of parseAnnotationLock(source.annotation?.text ?? "")) {
+    if (reserved !== m[1]) continue;
+    const slash = key.lastIndexOf("/");
+    const local = key.slice(slash + 1);
+    return `no part ${m[1]} in ${m[2]}: ${m[1]} is ${local} in copy ${key.slice(0, slash)} of a reused block; edit ${local} in that block`;
+  }
+  return undefined;
+}
+
 export function applyPatch(source: ProjectSource, patch: string): PatchResult {
   const files = new Map<string, FileEdit>();
   const blockFiles = new Map<string, string>();
@@ -371,7 +388,7 @@ export function applyPatch(source: ProjectSource, patch: string): PatchResult {
           {
             code: "patch.error",
             severity: "error",
-            message: `${e.message}; nothing was applied`,
+            message: `${copyHint(source, e.message) ?? e.message}; nothing was applied`,
             location: { file: PATCH_FILE, line: lineNo, col: 1 },
             subjects: [],
           },

@@ -15,6 +15,13 @@ waive SUBJECT CODE "reason"                       # suppress a warning
 
 - **Names** are any run of characters without whitespace or `: { } ( ) , [ ] " @ #`, so `+12V`
   and `VINA+` are fine. Refdes, net, port and instance names must not contain `.` or `/`.
+- **Refdes** name a part everywhere, the same as in KiCad, so they are unique across the
+  project's block files, used or not (`elab.duplicate-ref` names the next free one; a block
+  copied from another project may need its parts renamed). Net, port and instance names are
+  local to their block.
+- **A block used twice** gets refdes of its own for each extra copy, reserved in
+  `annotation.lock`: its `R1` might be `R3` in the copy `F2` (`read_block` lists them). The copy is
+  edited through the block's own `R1`, and no block may declare `R3` (`ref.reserved`).
 - **PINREF** is `REF.PIN` or `INST.PORT`. `PIN` is a pin number (`C1.1`, `U4.22`) or a pin name
   (`U1.OUT`). A name shared by several pins (`U4.GND`) connects all of them.
 - A pin may appear in only one net. List every pin of a net on its one line.
@@ -51,8 +58,8 @@ net +3V3 : PWR.+3V3 MCU.+3V3
 net GND  : PWR.GND MCU.GND
 ```
 
-Parts inside an instance get path names (`PWR/U1`), and so do nets that are not joined to a
-parent net (`PWR/VIN_RAW`). The top block is always `main`, in `circuit/main.ckt`.
+Parts keep their refdes inside an instance (`U1`, wherever it is); nets that are not joined to a
+parent net get path names (`PWR/VIN_RAW`). The top block is always `main`, in `circuit/main.ckt`.
 
 ## Conventions
 

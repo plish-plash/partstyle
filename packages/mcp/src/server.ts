@@ -369,27 +369,29 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
     "kicad_import",
     {
       description: projects
-        ? "Import a KiCad project (.kicad_pro, .kicad_sch or folder) as new_project, or re-import into the open one (replaces circuit/, keeping intents and attributes). Unmatched symbols become drafts."
-        : "Import a KiCad project (.kicad_pro, .kicad_sch or folder, relative to the project). Re-import replaces circuit/, keeping intents and attributes; unmatched symbols become drafts.",
+        ? "Import a KiCad project (.kicad_pro, .kicad_sch or folder) as new_project, or add it to the open one as new blocks. Unmatched symbols become drafts."
+        : "Add a KiCad project (.kicad_pro, .kicad_sch or folder, relative to the project) as new blocks. Unmatched symbols become drafts.",
       inputSchema: {
         path: z.string(),
+        sheets: z.array(z.string()).optional().describe("Only these sheets"),
         ...(projects && {
           new_project: z.string().optional().describe("Name of a new project to import into"),
         }),
       },
-      annotations: { destructiveHint: true, openWorldHint: false },
+      annotations: { destructiveHint: false, openWorldHint: false },
     },
-    async ({ path: source, new_project }) => {
+    async ({ path: source, sheets, new_project }) => {
+      const opts = sheets ? { sheets } : {};
       if (projects && typeof new_project === "string") {
         const target = projects.workspace(projects.resolve(new_project));
         const refused = (await isProject(target.root))
           ? `${target.root} is already a project`
           : projects.refuseNew(target.root);
         if (refused) return reply({ ok: false, text: refused });
-        const imported = await target.kicadImport(path.resolve(projects.dir, source));
+        const imported = await target.kicadImport(path.resolve(projects.dir, source), opts);
         return reply(imported.ok ? await opened(target.root, [imported.text]) : imported);
       }
-      return run((w) => w.kicadImport(path.resolve(w.root, source)));
+      return run((w) => w.kicadImport(path.resolve(w.root, source), opts));
     },
   );
 

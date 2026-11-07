@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parseCkt } from "../ckt/parser.js";
 import { buildLibrary, parsePartRecord } from "../parts/library.js";
 import { validateProject } from "../validate.js";
 import { buildImport, exposeFlags, type ImportInput, parseNetlistForImport } from "./import.js";
@@ -240,6 +239,7 @@ function load(x: ReturnType<typeof buildImport>) {
         layer: "project" as const,
       })),
     ],
+    ...(x.annotationLock && { annotation: { file: "annotation.lock", text: x.annotationLock } }),
   });
 }
 
@@ -287,24 +287,47 @@ describe("buildImport", () => {
         "",
       ].join("\n"),
     );
-    // Each instance keeps its KiCad refdes.
-    expect(x.annotation.get("CH_A/R1")).toBe("R1");
-    expect(x.annotation.get("CH_B/R1")).toBe("R11");
+    // The block has the first copy's KiCad refdes; the second copy's are reserved for it.
+    expect(x.annotationLock).toContain("CH_B/R1 R11\n");
+    expect(x.annotationLock).not.toContain("CH_A/");
   });
 
-  it("produces a design that elaborates to exactly KiCad's connectivity", () => {
+  it("produces a design that elaborates to exactly KiCad's connectivity, refdes and all", () => {
     const x = buildImport(input());
     const result = load(x);
     expect(result.issues.filter((i) => i.severity === "error")).toEqual([]);
     expect(result.issues.map((i) => i.code)).toEqual(["part.draft"]);
+    expect(result.netlist?.parts.map((p) => p.path).sort()).toEqual(
+      ["C1", "C11", "J1", "R1", "R11", "U1", "U11"].sort(),
+    );
+    const expected = x.expected ?? { refs: new Set<string>(["missing"]), nets: [] };
     expect(
-      compareNetlists(result.netlist ?? { parts: [], nets: [] }, x.annotation, x.expected),
+      compareNetlists(result.netlist ?? { parts: [], nets: [], refs: new Map() }, expected),
     ).toEqual([]);
+  });
+
+  it("only adds to a project: blocks take free names and the root is never main", () => {
+    const x = buildImport(input({ existingBlocks: ["main", "chan"], rootBlock: "test" }));
+    expect(x.blocks).toEqual(["test", "chan_2"]);
+    expect(text(x, "test")).toMatch(/^block test "Test board"\n\nuse chan_2 as CH_A\n/);
+    expect(x.circuits.map((c) => c.file)).toEqual(["circuit/test.ckt", "circuit/chan_2.ckt"]);
+  });
+
+  it("imports selected sheets, with nets to the rest as ports", () => {
+    const x = buildImport(input({ select: ["CH_A"] }));
+    expect(x.blocks).toEqual(["chan"]);
+    expect(text(x, "chan")).toContain("port IN  : passive");
+    // KiCad's netlist is the whole design's, so a part of it cannot be checked against it.
+    expect(x.expected).toBeUndefined();
+    expect(buildImport(input({ select: ["chan.kicad_sch"] })).blocks).toEqual(["chan"]);
+    expect(() => buildImport(input({ select: ["NOPE"] }))).toThrow(
+      "no sheet 'NOPE' (sheets: CH_A, CH B)",
+    );
   });
 
   it("writes draft records that validate, flagged by part.draft", () => {
     const x = buildImport(input());
-    expect(x.drafts.map((d) => [d.id, d.users])).toEqual([["C_100n", ["chan/C1"]]]);
+    expect(x.drafts.map((d) => [d.id, d.users])).toEqual([["C_100n", ["C1"]]]);
     const draft = x.drafts[0]?.text ?? "";
     expect(draft).toContain(`footprint: "${disc}"`);
     expect(draft).toContain('  1: { name: "1", type: passive }');
@@ -313,12 +336,10 @@ describe("buildImport", () => {
     expect(record?.provenance.extracted_by).toBe("kicad");
     expect(record?.preferred_mpn).toBeUndefined();
     expect(x.report.join("\n")).toContain(
-      `lib:C_100n (chan/C1): KiCad Test:C, value 100n; footprint ${disc} is not a standard chip footprint`,
+      `lib:C_100n (C1): KiCad Test:C, value 100n; footprint ${disc} is not a standard chip footprint`,
     );
     const issue = load(x).issues.find((i) => i.code === "part.draft");
-    expect(issue?.message).toMatch(
-      /^lib:C_100n \(CH_A\/C1 CH_B\/C1\) is a draft from KiCad import/,
-    );
+    expect(issue?.message).toMatch(/^lib:C_100n \(C1 C11\) is a draft from KiCad import/);
   });
 
   it("turns test points and solder jumpers into footprints, not drafts", () => {
@@ -353,66 +374,25 @@ describe("buildImport", () => {
     expect(buildImport(withoutErc).report.join("\n")).toContain("no-connect flags: unknown");
   });
 
-  it("uses partstyle's Spec field, but a Value edited in KiCad wins", () => {
-    const withSpec = (value: string) =>
-      netlist(
-        [["/", "/", "top.kicad_sch"]],
-        [
-          {
-            ref: "R1",
-            part: "R",
-            uuid: "r",
-            value,
-            footprint: chip,
-            fields: { Spec: "res(10k, 1%, 0603)" },
-          },
-        ],
-        [["/A", ["R1.1", "R1.2"]]],
-      );
-    const run = (value: string) =>
-      text(
-        buildImport(
-          input({ sheets: new Map([["top.kicad_sch", parseNetlistForImport(withSpec(value))]]) }),
-        ),
-        "main",
-      );
-    expect(run("10k")).toContain("part R1 res(10k, 1%, 0603)");
-    expect(run("22k")).toContain("part R1 res(22k, 1%, 0603)");
-  });
-
-  it("keeps the person's edits on a re-import", () => {
-    const first = buildImport(input());
-    const edited = first.circuits.map((c) => ({
-      ...c,
-      text: c.text
-        .replace("part U1 lib:OPA1", "part U1 lib:OPA1 @ input buffer")
-        .replace("net N_R1_2 : R1.2 U1.IN+", "net BUF_IN : R1.2 U1.IN+ {impedance: high}")
-        .replace("port IN  : passive", "port IN  : input")
-        .replace("net IN     : R1.1 -> port IN", "net CH_IN : R1.1 -> port IN"),
-    }));
-    const blocks = edited.map((c) => parseCkt(c.text, c.file).ast);
-    const again = buildImport(input({ previous: { blocks, annotation: first.annotation } }));
-    const chanText = text(again, "chan");
-    expect(chanText).toContain("part U1 lib:OPA1 @ input buffer");
-    expect(chanText).toContain("net BUF_IN : R1.2 U1.IN+ {impedance: high}");
-    expect(chanText).toContain("port IN  : input");
-    expect(chanText).toContain("net CH_IN  : R1.1 -> port IN");
-    expect(again.report.join("\n")).not.toContain("named after a pin");
-  });
-
-  it("keeps the person's nc statements on a re-import, and follows KiCad's flags for its own", () => {
-    const first = buildImport(input());
-    const parsed = (from: string) =>
-      first.circuits.map((c) => parseCkt(c.text.replace(/^nc .*$/m, from), c.file).ast);
-    const previous = (from: string) => ({ blocks: parsed(from), annotation: first.annotation });
-
-    const own = buildImport(input({ previous: previous("nc U1.TRIM @ offset not trimmed") }));
-    expect(text(own, "chan")).toContain("nc U1.TRIM @ offset not trimmed");
-    expect(text(own, "chan")).not.toContain("no-connect flag in KiCad");
-
-    const unflagged = input({ previous: previous("nc U1.TRIM @ no-connect flag in KiCad") });
-    unflagged.unconnected = new Set(["U1.7"]);
-    expect(text(buildImport(unflagged), "chan")).not.toMatch(/^nc /m);
+  it("ignores a Spec field: a plain passive comes from its value and footprint", () => {
+    const withSpec = netlist(
+      [["/", "/", "top.kicad_sch"]],
+      [
+        {
+          ref: "R1",
+          part: "R",
+          uuid: "r",
+          value: "22k",
+          footprint: chip,
+          fields: { Spec: "res(10k, 1%, 0603)" },
+        },
+      ],
+      [["/A", ["R1.1", "R1.2"]]],
+    );
+    const x = buildImport(
+      input({ sheets: new Map([["top.kicad_sch", parseNetlistForImport(withSpec)]]) }),
+    );
+    expect(text(x, "main")).toContain("part R1 res(22k, 0603)");
   });
 
   it("names nets KiCad left unnamed after a pin, and reports them", () => {

@@ -1,10 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Netlist } from "../netlist/elaborate.js";
+import { nextFreeRef } from "../netlist/elaborate.js";
 import { parseGenericSpec, parseGenericText, satisfies } from "../parts/generic.js";
 import { loadProject } from "../project/load.js";
 import { type ValidationResult, validateProject } from "../validate.js";
-import { annotate, formatAnnotationLock, parseAnnotationLock } from "./annotate.js";
+import { formatAnnotationLock, parseAnnotationLock } from "./annotate.js";
 import { exportKicad } from "./export.js";
 import { compareNetlists, parseKicadNetlist } from "./netlist.js";
 import { parseSymbolLib, powerLibrary } from "./power.js";
@@ -73,21 +74,22 @@ describe("generic specs", () => {
   });
 });
 
-describe("annotate", () => {
-  it("keeps local refdes, renumbers clashes past every existing number, and stays stable", () => {
-    const paths = ["R1", "A/R1", "A/R2", "B/R1", "R7"];
-    const first = annotate(paths, new Map());
-    expect(Object.fromEntries(first.table)).toEqual({
-      R1: "R1",
-      "A/R2": "R2",
-      R7: "R7",
-      "A/R1": "R8",
-      "B/R1": "R9",
-    });
-    const lock = formatAnnotationLock(first.table);
-    const again = annotate([...paths, "C/R1"], parseAnnotationLock(lock));
-    expect(again.table.get("A/R1")).toBe("R8");
-    expect(again.renumbered).toEqual([["C/R1", "R10"]]);
+describe("annotation.lock", () => {
+  it("holds only the refdes reserved for copies, and is empty without any", () => {
+    const table = new Map([
+      ["F2/R1", "R3"],
+      ["F2/C1", "C2"],
+    ]);
+    const text = formatAnnotationLock(table);
+    expect(text).toMatch(/^# Partstyle annotation\.lock/);
+    expect(text).toContain("F2/C1 C2\nF2/R1 R3\n");
+    expect(parseAnnotationLock(text)).toEqual(table);
+    expect(formatAnnotationLock(new Map())).toBe("");
+  });
+
+  it("finds the next free refdes after every one taken", () => {
+    expect(nextFreeRef("R1", ["R1", "R7", "C9", "RN2"])).toBe("R8");
+    expect(nextFreeRef("TP1", [])).toBe("TP1");
   });
 });
 
@@ -160,38 +162,38 @@ describe("power symbols", () => {
 
 describe("exportKicad", () => {
   it("writes a netlist that reads back as the same connectivity", async () => {
-    const x = await exportKicad(result, "");
+    const x = await exportKicad(result);
     const parsed = parseKicadNetlist(x.files.get(x.netlistFile) as string);
     expect(parsed.refs.size).toBe(30);
-    expect(compareNetlists(result.netlist as Netlist, x.annotation, parsed)).toEqual([]);
+    expect(compareNetlists(result.netlist as Netlist, parsed)).toEqual([]);
   });
 
   it("detects a netlist that differs", async () => {
-    const x = await exportKicad(result, "");
+    const x = await exportKicad(result);
     const parsed = parseKicadNetlist(x.files.get(x.netlistFile) as string);
     const gnd = parsed.nets.find((n) => n.name === "GND");
     gnd?.nodes.pop();
     parsed.refs.delete("U4");
-    const problems = compareNetlists(result.netlist as Netlist, x.annotation, parsed);
+    const problems = compareNetlists(result.netlist as Netlist, parsed);
     expect(problems[0]).toBe("U4 is missing from the schematic");
     expect(problems.some((p) => p.startsWith("net GND {"))).toBe(true);
   });
 
   it("is deterministic", async () => {
-    const a = await exportKicad(result, "");
-    const b = await exportKicad(result, "");
+    const a = await exportKicad(result);
+    const b = await exportKicad(result);
     expect([...a.files]).toEqual([...b.files]);
   });
 
   it("flags only nets fed from outside: the 12 V input and ground", async () => {
-    const x = await exportKicad(result, "");
+    const x = await exportKicad(result);
     expect(x.schematic.powerFlags).toBe(2);
     expect(x.files.get("power.kicad_sch")).toContain('(lib_id "power:PWR_FLAG")');
     expect(x.files.get("partstyle.kicad_sym")).not.toContain("PWR_FLAG");
   });
 
   it("draws power nets with power symbols and keeps them off sheet pins", async () => {
-    const x = await exportKicad(result, "");
+    const x = await exportKicad(result);
     const power = x.files.get("power.kicad_sch") as string;
     expect(power).toContain('(lib_id "power:GND")');
     expect(power).not.toMatch(/\(hierarchical_label "(GND|\+5V|\+3V3)"/);
@@ -227,7 +229,7 @@ net AIN2 : B.AIN`;
         c.file === "circuit/main.ckt" ? { ...c, text: main } : c,
       ),
     });
-    const x = await exportKicad(r, "");
+    const x = await exportKicad(r);
     const afe = x.files.get("sensor_afe.kicad_sch") as string;
     expect(afe).toMatch(/\(hierarchical_label "\+5V"/);
     expect(afe).toContain('(lib_id "power:GND")');

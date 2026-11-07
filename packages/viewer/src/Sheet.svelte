@@ -43,7 +43,8 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
   const layout = $derived(sheet.layout);
   const instance = $derived(sheet.instances.find((i) => i.prefix === prefix) ?? sheet.instances[0]);
   const flatNet = (local: string) => instance?.nets[local] ?? prefix + local;
-  const partPath = (ref: string) => prefix + ref;
+  // Parts are named by refdes; an extra copy of a block has its own for each declared one.
+  const partPath = (ref: string) => instance?.parts[ref] ?? ref;
   const selected = $derived(new Set(selection));
 
   // Which nets and parts are highlighted: selected directly, or the net of a selected pin.

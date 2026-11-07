@@ -57,11 +57,16 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     warning but stays in the YAML, and unknown sections are kept. Keep this lenient: a record
     must never lose datasheet information to validation.
   - Pipeline: `ckt/parser` → `parts/library` → `netlist/elaborate` (hierarchy flattening,
-    union-find net joining) → `erc/rules`, `checks/parts` (pin `vmax`, capacitor derating,
+    union-find net joining, refdes) → `erc/rules`, `checks/parts` (pin `vmax`, capacitor derating,
     requirement checks) and `checks/context` (temperature range, interfaces naming real
     connectors; `checks/nets` has net voltages) → waivers in `validate.ts` (warnings only).
+  - Refdes: a part's name everywhere (`FlatPart.path`), the same as KiCad's, unique across the
+    project's block files. A reused block's extra copies get refdes reserved by `elaborate` and
+    kept in `annotation.lock` (`kicad/annotate.ts`), which `Workspace` rewrites on load when it
+    changes. `FlatPart` keeps `block`, `prefix` and `local` (the declared refdes) for drawing and
+    editing; `Netlist.refs` maps `prefix + local` to the refdes.
   - Configuration: `project/config.ts` (`partstyle-project.yaml`: name, description, design
-    context, `sourcing`, `checks`; the top block is always `main`), `project/settings.ts` (node:
+    context, `sourcing`, `checks`, `kicad.template`; the top block is always `main`), `project/settings.ts` (node:
     the user's `settings.yaml` with libraries and KiCad overrides, read fresh per call). The
     review mode is `.partstyle/review.json`, set only from the viewer.
   - Procedures: `prompts.ts` (design_review, ingest_part, handoff) feeds `guide`, the MCP
@@ -80,7 +85,8 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   CLAUDE.md template; keep the two workflows in step. Every MCP tool has a CLI
   command with identical output; add both together (see [docs/claude-code.md](docs/claude-code.md)).
   - KiCad hand-off: `bom.ts` (BOM rows, candidates for generics), `kicad/` (S-expressions,
-    annotation, schematic and netlist writers; pure). Symbols: `kicad/libsym.ts` matches and
+    schematic and netlist writers; pure). Export carries nothing for rebuilding the design; the
+    first export can start from a KiCad project template (`project/kicad.ts`). Symbols: `kicad/libsym.ts` matches and
     vets KiCad library symbols (flattening, units, pin compatibility, `adaptedSymbol`'s copies
     renumbered by pin name), `kicad/power.ts` power
     symbols, `kicad/symbols.ts` generated fallbacks. `project/kicad.ts` (node) finds kicad-cli
@@ -91,9 +97,10 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
     matches the netlist; `drawing/prepare.ts` is the entry point.
     `kicad/schematic.ts` only serializes it.
   - KiCad import: `kicad/import.ts` (pure: netlist reading, sheets → blocks and ports, part
-    matching, draft records, re-import carry-over) and `project/kicad-import.ts` (node: runs
+    matching, draft records, sheet selection) and `project/kicad-import.ts` (node: runs
     kicad-cli on a temporary copy, with PWR_FLAGs exposed and ERC for no-connect flags).
-    Workspace `kicadImport` writes the files and checks the result against KiCad's netlist.
+    Workspace `kicadImport` creates a design or only adds blocks to one, after checking the
+    imported design on its own against KiCad's netlist.
   - Review: `review.ts` (comments.yaml, .partstyle/focus.json, `focus` text), `approvals.ts`
     (approvals.yaml: sign-offs per part, each a snapshot of its spec and nets, so a change shows)
     and `viewer-model.ts` (the JSON the viewer renders, with each part's lookup links).

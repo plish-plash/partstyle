@@ -99,12 +99,12 @@ describe("prepareDrawing", () => {
   const patched = async (patch: string) => {
     const p = applyPatch(source, patch);
     expect(p.issues).toEqual([]);
-    return prepareDrawing(validateProject(p.source), "");
+    return prepareDrawing(validateProject(p.source));
   };
   beforeAll(async () => {
     source = await loadProject(repo("examples/bench-sensor"), seed);
     result = validateProject(source);
-    drawing = await prepareDrawing(result, "");
+    drawing = await prepareDrawing(result);
   });
   const sheetOf = (d: Drawing, name: string) => d.sheets.get(name) as SheetLayout;
   const unitOf = (s: SheetLayout, ref: string) => s.units.find((u) => u.ref === ref) as PlacedUnit;
@@ -175,7 +175,7 @@ describe("prepareDrawing", () => {
   });
 
   it("is deterministic", async () => {
-    const again = await prepareDrawing(result, "");
+    const again = await prepareDrawing(result);
     expect([...again.sheets.values()]).toEqual([...drawing.sheets.values()]);
   });
 
@@ -183,7 +183,7 @@ describe("prepareDrawing", () => {
     const r = validateProject(
       await loadProject(repo("packages/engine/test-fixtures/pulldowns"), seed),
     );
-    const d = await prepareDrawing(r, "");
+    const d = await prepareDrawing(r);
     const sheet = sheetOf(d, "main");
     expect(checkConnectivity(sheet)).toEqual([]);
     for (const [ref, net] of [
@@ -207,7 +207,7 @@ describe("prepareDrawing", () => {
 
   it("lays out a block used twice", async () => {
     const r = validateProject(await loadProject(repo("packages/engine/test-fixtures/multi"), seed));
-    const d = await prepareDrawing(r, "");
+    const d = await prepareDrawing(r);
     expect(d.issues.filter((i) => i.code.startsWith("layout"))).toEqual([]);
     expect(d.plan.instancesOf("filter").map((i) => i.prefix)).toEqual(["F1/", "F2/"]);
   });
@@ -293,7 +293,7 @@ describe("prepareDrawing", () => {
 
   it("follows the project's layout preferences and stays connected at their limits", async () => {
     const draw = (layout: Record<string, Record<string, number | string>>) =>
-      prepareDrawing({ ...result, config: { ...(result.config as ProjectConfig), layout } }, "");
+      prepareDrawing({ ...result, config: { ...(result.config as ProjectConfig), layout } });
     const spread = await draw({ "pack-groups": { gap: 12 }, "shunt-hang": { spacing: 10 } });
     expect(spread.sheets).not.toEqual(drawing.sheets);
     expect(spread.issues.filter((i) => i.code.startsWith("layout."))).toEqual([]);

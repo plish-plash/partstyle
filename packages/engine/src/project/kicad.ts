@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Issue } from "../diagnostics.js";
@@ -63,6 +64,8 @@ export interface KicadOverrides {
   cli?: string;
   footprints?: string;
   symbols?: string;
+  /** Project template for first exports (not discovery, but kept with the KiCad settings). */
+  template?: string;
 }
 
 /**
@@ -116,6 +119,101 @@ export async function findKicad(overrides: KicadOverrides = {}): Promise<KicadIn
     "KICAD9_SYMBOL_DIR",
   ]);
   return { ...(cli && { cli }), ...(footprints && { footprints }), ...(symbols && { symbols }) };
+}
+
+/** Whether a `kicad.template` value is a folder path rather than a template name. */
+export const isTemplatePath = (t: string) => /[\\/]/.test(t) || t.startsWith(".");
+
+const hasProject = async (dir: string) =>
+  (await readdir(dir).catch(() => [] as string[])).some((f) => f.endsWith(".kicad_pro"));
+
+/** Folders holding KiCad project templates: the user's first, then KiCad's own. */
+async function templateDirs(cli: string | undefined): Promise<string[]> {
+  const versioned = async (base: string) => {
+    const versions = await readdir(base).catch(() => [] as string[]);
+    versions.sort((a, b) => b.localeCompare(a, "en", { numeric: true }));
+    return versions.map((v) => path.join(base, v, "template"));
+  };
+  const home = homedir();
+  const candidates = [
+    process.env.KICAD_USER_TEMPLATE_DIR,
+    ...(await versioned(path.join(home, "Documents", "KiCad"))),
+    ...(await versioned(path.join(home, ".local", "share", "kicad"))),
+    process.env.KICAD10_TEMPLATE_DIR,
+    process.env.KICAD9_TEMPLATE_DIR,
+    ...(cli
+      ? [
+          path.resolve(path.dirname(cli), "..", "share", "kicad", "template"),
+          path.resolve(path.dirname(cli), "..", "SharedSupport", "template"),
+        ]
+      : []),
+    "/usr/share/kicad/template",
+    "/usr/local/share/kicad/template",
+  ];
+  const found: string[] = [];
+  for (const c of candidates) if (c && (await exists(c)) && !found.includes(c)) found.push(c);
+  return found;
+}
+
+/**
+ * The folder of a KiCad project template: `value` is a folder path (relative to `base`) or the
+ * name of a template in KiCad's template folders. `known` lists the names found, for a message.
+ */
+export async function findKicadTemplate(
+  value: string,
+  base: string,
+  cli: string | undefined,
+): Promise<{ dir?: string; known: string[] }> {
+  if (isTemplatePath(value) || path.isAbsolute(value)) {
+    const dir = path.resolve(base, value);
+    return (await hasProject(dir)) ? { dir, known: [] } : { known: [] };
+  }
+  const known = new Set<string>();
+  for (const d of await templateDirs(cli)) {
+    if (await hasProject(path.join(d, value))) return { dir: path.join(d, value), known: [] };
+    for (const name of await readdir(d).catch(() => [] as string[])) {
+      if (await hasProject(path.join(d, name))) known.add(name);
+    }
+  }
+  return { known: [...known].sort() };
+}
+
+/**
+ * Starts a KiCad project folder from a template: everything but its schematic, its local
+ * settings (.kicad_prl) and meta/ (the template's own description), with the project, board and
+ * design rules renamed after `project`. Existing files are never overwritten. Returns what was
+ * copied.
+ */
+export async function applyKicadTemplate(
+  templateDir: string,
+  kicadDir: string,
+  project: string,
+): Promise<string[]> {
+  const entries = await readdir(templateDir, { withFileTypes: true });
+  const pro = entries.find((e) => e.isFile() && e.name.endsWith(".kicad_pro"));
+  const base = pro ? pro.name.slice(0, -".kicad_pro".length) : "";
+  await mkdir(kicadDir, { recursive: true });
+  const copied: string[] = [];
+  for (const e of entries) {
+    if (e.name === "meta" || /\.kicad_(sch|prl)$/.test(e.name)) continue;
+    const renamed = /^(.*)\.(kicad_pro|kicad_pcb|kicad_dru)$/.exec(e.name);
+    const name = renamed && renamed[1] === base ? `${project}.${renamed[2]}` : e.name;
+    const to = path.join(kicadDir, name);
+    if (await exists(to)) continue;
+    await cp(path.join(templateDir, e.name), to, { recursive: true });
+    if (name.endsWith(".kicad_pro")) {
+      // KiCad records the project's own file name inside it.
+      try {
+        const json = JSON.parse(await readFile(to, "utf8")) as { meta?: Record<string, unknown> };
+        json.meta = { ...json.meta, filename: name };
+        await writeFile(to, `${JSON.stringify(json, null, 2)}\n`, "utf8");
+      } catch {
+        // Left as the template had it: KiCad still opens it.
+      }
+    }
+    copied.push(name);
+  }
+  return copied;
 }
 
 /**

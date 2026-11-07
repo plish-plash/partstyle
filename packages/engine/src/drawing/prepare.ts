@@ -1,6 +1,5 @@
 import { type BomEntry, buildBom } from "../bom.js";
 import type { Issue } from "../diagnostics.js";
-import { type Annotation, annotate, parseAnnotationLock } from "../kicad/annotate.js";
 import {
   adaptedSymbol,
   generatedSymbol,
@@ -48,8 +47,6 @@ export interface SymbolChoice {
 export interface Drawing {
   config: ProjectConfig;
   netlist: Netlist;
-  annotation: Annotation;
-  renumbered: [path: string, ref: string][];
   bom: BomEntry[];
   bomByPath: Map<string, BomEntry>;
   /** The symbol drawn for each part type, by `symbolKey`. */
@@ -126,22 +123,17 @@ function chooseSymbols(
 }
 
 /**
- * Prepares a validated design for drawing: stable refdes, BOM entries, a symbol per part type, how each net is drawn, and a layout of every sheet. Throws if the design did not
+ * Prepares a validated design for drawing: BOM entries, a symbol per part type, how each net is drawn, and a layout of every sheet. Throws if the design did not
  * elaborate. A connectivity mismatch in a laid-out sheet is reported as a `layout.connectivity`
  * error: it is a layout bug, never a design problem.
  */
 export async function prepareDrawing(
   result: ValidationResult,
-  annotationLock: string,
   libraries: KicadLibraries = {},
 ): Promise<Drawing> {
   const { config, netlist } = result;
   if (!config || !netlist) throw new Error("design has no netlist; fix validation errors first");
 
-  const { table: annotation, renumbered } = annotate(
-    netlist.parts.map((p) => p.path),
-    parseAnnotationLock(annotationLock),
-  );
   const bom = buildBom(netlist);
   const bomByPath = new Map<string, BomEntry>(bom.map((e) => [e.part.path, e]));
 
@@ -193,8 +185,6 @@ export async function prepareDrawing(
   return {
     config,
     netlist,
-    annotation,
-    renumbered,
     bom,
     bomByPath,
     symbols: chosen,

@@ -144,5 +144,17 @@ export function readBlock(
   ];
   if (block.ncs.length > 0) lines.push(`nc: ${block.ncs.map((n) => printPinRef(n.pin)).join(" ")}`);
   if (block.waivers.length > 0) lines.push(`waivers: ${block.waivers.length}`);
+  // Extra copies of a reused block have refdes of their own, reserved for them.
+  const copies = new Map<string, string[]>();
+  for (const p of result.netlist?.parts ?? []) {
+    if (p.block !== name || p.local === p.path) continue;
+    copies.set(p.prefix, [...(copies.get(p.prefix) ?? []), `${p.local}=${p.path}`]);
+  }
+  if (copies.size > 0) {
+    const listed = [...copies].map(
+      ([prefix, refs]) => `${prefix.slice(0, -1)} (${refs.join(" ")})`,
+    );
+    lines.push(`copies: ${listed.join(", ")}; edit their parts here, by the refdes on the left`);
+  }
   return { ok: true, text: lines.join("\n") };
 }

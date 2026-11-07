@@ -46,7 +46,7 @@ describe("Workspace.apply", () => {
         "  power: + part C13 cap(47u, 25V) @ bulk",
         "  power: net +12V += C13.1",
         "new issues:",
-        "  circuit/power.ckt:18:1 warning erc.unconnected-pin PWR/C13.2 (pin 2, passive) is not connected; connect it, or mark it nc if it is open on purpose",
+        "  circuit/power.ckt:18:1 warning erc.unconnected-pin C13.2 (pin 2, passive) is not connected; connect it, or mark it nc if it is open on purpose",
         "now: 0 errors, 1 warning",
       ].join("\n"),
     });
@@ -54,7 +54,7 @@ describe("Workspace.apply", () => {
 
     const fix = await ws.apply("in power\nnet GND += C13.2");
     expect(fix.text).toContain(
-      "resolved:\n  erc.unconnected-pin PWR/C13.2 (pin 2, passive) is not connected",
+      "resolved:\n  erc.unconnected-pin C13.2 (pin 2, passive) is not connected",
     );
     expect(fix.text).toMatch(/now: 0 errors, 0 warnings/);
   });
@@ -420,19 +420,17 @@ net GND : C1.- R1.2 {source: bench}
     expect(parts.C1?.links.length).toBe(3);
   });
 
-  it.skipIf(!kicad.cli)("exports to KiCad and imports back unchanged", async () => {
+  it.skipIf(!kicad.cli)("exports to KiCad with KiCad's own symbols", async () => {
     const { w, dir } = await fresh("fp-kicad", design);
     const out = await w.kicadExport();
-    expect(out.text).toContain("round-trip: KiCad's netlist from the schematic matches the design");
+    expect(out.text).toContain(
+      "netlist check: KiCad's netlist from the schematic matches the design",
+    );
     expect(out.text).toContain("Device:C_Polarized");
     expect(out.text).toContain("Connector:TestPoint");
     expect(out.text).toContain("Jumper:SolderJumper_2_Open");
     const sch = await readFile(path.join(dir, "kicad/fp-kicad.kicad_sch"), "utf8");
     expect(sch).toMatch(/lib_id "Connector:TestPoint"\)[\s\S]*?\(in_bom no\)/);
-    const back = await w.kicadImport(path.join(dir, "kicad/fp-kicad.kicad_pro"), {
-      replace: true,
-    });
-    expect(back.text).toContain("changes: none to the circuit");
   });
 });
 

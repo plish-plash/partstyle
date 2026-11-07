@@ -39,8 +39,8 @@ overwritten.
 | `CLAUDE.md`              | instructions for Claude Code: workflow and procedures              |
 | `.claude/commands/`      | Claude Code slash commands for the procedures (see `guide`)        |
 
-Later commands add `annotation.lock` (commit it), `bom.csv`, and the generated KiCad project in
-`kicad/`.
+Later commands add `bom.csv` and the generated KiCad project in `kicad/`, and a design that uses a
+block twice gets `annotation.lock` (commit it; see `kicad export`).
 
 If `CLAUDE.md` already exists, the instructions go to `CLAUDE.partstyle.md`; add the line
 `@CLAUDE.partstyle.md` to your `CLAUDE.md` to load them.
@@ -60,9 +60,10 @@ partstyle init boards/thermo --name thermo
 | `description`           | one or two sentences; `overview` leads with it                                                                               |
 | `environment`           | `temp_c: [min, max]` is checked against part records; other keys are notes                                                   |
 | `assembly`, others      | free-form context for people and design review                                                                               |
-| `external_interfaces`   | per connector: `connector` (instance path), `connects_to`, `signal`, `hazards`                                               |
+| `external_interfaces`   | per connector: `connector` (its refdes), `connects_to`, `signal`, `hazards`                                                  |
 | `sourcing.distributors` | distributors to use, in order: `lcsc`, `digikey`, `mouser`. The BOM has a link column for each, and the viewer links to them |
 | `checks.cap_derating`   | capacitor voltage derating factor (default 1.5)                                                                              |
+| `kicad.template`        | KiCad project template for the first `kicad export`: a template name or a folder path (see `kicad export`)                   |
 | `layout`                | visual layout preferences, set from the viewer's Layout tab (see [layout.md](layout.md#preferences))                         |
 
 `external_interfaces` lists every connection to the outside world, the power input included:
@@ -87,6 +88,7 @@ libraries: # your part-library folders
   - C:/Users/me/parts
 kicad: # overrides for Finding KiCad (below); normally not needed
   cli: C:/Program Files/KiCad/10.0/bin/kicad-cli.exe
+  template: my-fab-4layer # project template for first exports (see kicad export)
 ```
 
 The MCP server in global mode puts its projects folder's `library/` before these for every
@@ -126,13 +128,16 @@ case-insensitive). Quantities compare numerically (`35V > 5V`, `4.7k < 10k`). A 
 missing the field never matches. A field no part or net in the design could have, such as a
 misspelt one, fails and lists the fields that exist.
 
-- Part fields: `path id preferred_mpn manufacturer package footprint kind fn value verified
-  in_inventory approved intent` and every rating in the part record (`vin_max`, or `vout.max` for a
+- Part fields: `path` (the refdes) `block id preferred_mpn manufacturer package footprint kind fn
+  value verified in_inventory approved intent` and every rating in the part record (`vin_max`, or `vout.max` for a
   nested one). `verified` and `in_inventory` are `yes` or `no`, and only library parts have them. `approved` is `yes`, `no` or
   `changed`, so `approved != yes` finds everything still to sign off. Both also take `true` and
   `false`, for `yes` and `no`.
 - Net fields: `name pins` (pin count) and every net attribute (`voltage`, `source`, ...).
-- REF and NAME may omit the instance path when unambiguous (`U1` for `PWR/U1`).
+- REF is a refdes, unique in the design and the same as KiCad's (`U1`). It may be qualified by
+  its instance path (`PWR/U1`), which must agree. A part in an extra copy of a reused block shows
+  where to edit it: `R3 [copy F2: R1 in filter]`. NAME may omit the instance path when
+  unambiguous (`SENSE` for `AFE/SENSE`).
 
 ```sh
 partstyle query part U1
@@ -291,17 +296,30 @@ rating, then id.
 
 ### `kicad export [--no-check]`
 
-Writes a KiCad 10 project to `kicad/` and updates `annotation.lock`. Refuses while the design has
-validation errors. Generics are exported as they are, with their derived footprints.
+Writes a KiCad 10 project to `kicad/`, the hand-off for PCB layout. Refuses while the design has
+validation errors. Generics are exported as they are, with their derived footprints. The files
+carry what the PCB needs and nothing for rebuilding the Partstyle design.
 
-| File                  | Contents                                                  |
-| --------------------- | --------------------------------------------------------- |
-| `<name>.kicad_sch`    | top block; each `use` is a hierarchical sheet             |
-| `<block>.kicad_sch`   | one sheet per block, shared by all its instances          |
-| `partstyle.kicad_sym` | symbols generated for parts with no usable KiCad symbol   |
-| `sym-lib-table`       | registers `partstyle.kicad_sym` for the project           |
-| `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor |
-| `<name>.kicad_pro`    | written only if missing, so KiCad's own settings survive  |
+| File                  | Contents                                                                    |
+| --------------------- | --------------------------------------------------------------------------- |
+| `<name>.kicad_sch`    | top block; each `use` is a hierarchical sheet                               |
+| `<block>.kicad_sch`   | one sheet per block, shared by all its instances                            |
+| `partstyle.kicad_sym` | symbols generated for parts with no usable KiCad symbol                     |
+| `sym-lib-table`       | registers `partstyle.kicad_sym`, keeping any other library listed there     |
+| `<name>.net`          | KiCad netlist, the most robust hand-off to the PCB editor                   |
+| `<name>.kicad_pro`    | written only if missing (from the template, if any), so KiCad's own survive |
+
+**Template.** With `kicad.template` set in the project file, or in the [settings](#settings) for
+every project, the first export (while `kicad/` has no `.kicad_pro`) starts from that KiCad
+project template: board outline, stackup and design rules (`.kicad_pcb`, `.kicad_dru`), net classes
+(`.kicad_pro`), worksheet and library tables. The value is a folder path, relative to the project
+(or to the state folder, in the settings), or the name of a template in `KICAD_USER_TEMPLATE_DIR`,
+`~/Documents/KiCad/<version>/template` or KiCad's own `share/kicad/template`. Everything is copied
+but `meta/`, the template's schematic and its `.kicad_prl`; the project, board and rules files are
+renamed after the project. Nothing that exists is overwritten, and later exports never apply the
+template again. The template's schematic content (an Arduino shield's header symbols, say) is not
+used, so the design needs its own connectors for its footprints. An unknown name fails the
+export, listing the templates found.
 
 Each sheet is drawn as the viewer shows it, with wires, labels and KiCad power symbols. The rules
 are in [layout.md](layout.md).
@@ -334,41 +352,54 @@ from the pin table into `partstyle.kicad_sym`. The export lists which KiCad symb
 why any part got a generated one. A `kicad_symbol` that cannot be used is a
 `kicad.symbol-fallback` warning.
 
-Symbols carry MPN, Manufacturer, Spec and distributor fields, so KiCad's own BOM tools work
-too. Before writing, the layout's connectivity is re-derived from its geometry and compared with
-the design; a difference is reported as a `layout.connectivity` error (a layout bug).
+Symbols carry MPN, Manufacturer and distributor fields, so KiCad's own BOM tools work too; a
+generic's spec is its Description. Before writing, the layout's connectivity is re-derived from
+its geometry and compared with the design; a difference is reported as a `layout.connectivity`
+error (a layout bug).
 
-Refdes come from `annotation.lock`, which maps instance paths to flat references. A new part
-keeps its local refdes when free; a clash (two blocks both with `C1`) takes the next free
-number. Edit the lock to renumber. UUIDs are derived from names, so re-exporting the same
-design produces identical files and "Update PCB from Schematic" keeps placement. The PCB file is
-never written; stale sheets are removed only if Partstyle wrote them.
+**Refdes** are the design's own: a part's refdes in KiCad is its name in Partstyle, unique across
+the project. A block used more than once has refdes reserved for each extra copy (its `R1` is
+`R3` in the second copy), kept in `annotation.lock` from the moment the copy is first read, so
+they never move. UUIDs are derived from names, so re-exporting the same design produces
+identical files and "Update PCB from Schematic" keeps placement. The PCB file is never written;
+stale sheets are removed only if Partstyle wrote them.
 
 Unless `--no-check` is given and when kicad-cli is found, the export is then verified:
 
-1. **Round trip:** `kicad-cli sch export netlist` re-derives the netlist from the written
+1. **Netlist check:** `kicad-cli sch export netlist` re-derives the netlist from the written
    schematic, and it must match the design net for net. A mismatch is an exporter bug.
 2. **ERC:** `kicad-cli sch erc` runs on the schematic; violations are listed.
 
-The command fails (exit 1) on a round-trip mismatch or KiCad ERC errors. Only pins open by design
+The command fails (exit 1) on a netlist mismatch or KiCad ERC errors. Only pins open by design
 get a no-connect flag (see [issues.md](issues.md)),
 so KiCad's ERC also reports a pin left open by mistake; the files are still written.
 Next step: open `kicad/<name>.kicad_pro`, then in the PCB editor run Tools > Update PCB from
 Schematic.
 
-### `kicad import PATH [--replace]`
+### `kicad import PATH [--sheet NAME]...`
 
-Imports a KiCad project: a `.kicad_pro`, its root `.kicad_sch`, or a folder holding one project.
-KiCad itself resolves the connectivity, so kicad-cli is required. It runs on a temporary copy of
-the schematics; the KiCad files are never written. Without a `partstyle-project.yaml` the project
-is created first (as `init` would); then:
+Creates a Partstyle design from a KiCad project, or adds to one: a `.kicad_pro`, its root
+`.kicad_sch`, or a folder holding one project. KiCad itself resolves the connectivity, so
+kicad-cli is required. It runs on a temporary copy of the schematics; the KiCad files are never
+written.
 
-| Written                 | Contents                                                   |
-| ----------------------- | ---------------------------------------------------------- |
-| `circuit/<block>.ckt`   | one block per sheet file; the root sheet is `main`         |
-| `parts/<id>.yaml`       | draft records for symbols that match no library record     |
-| `annotation.lock`       | each instance's KiCad refdes, so a later export keeps them |
-| `notes/kicad-import.md` | nets that had no name, and the schematic's text notes      |
+- **Into a new project** (none yet, or one with no design: the project is created first, as
+  `init` would), the root sheet becomes `main` and each part keeps its KiCad refdes, the copies
+  of a reused sheet included (in `annotation.lock`).
+- **Into a project with a design**, import only adds: each sheet becomes a new block file, under
+  a name the project does not have yet (`power_2`), and the root sheet becomes a block named after
+  the KiCad project, never `main`. Join them into the design yourself, with a `use` or by moving
+  parts into a block. Parts keep their KiCad refdes, so ones the project already has are listed
+  as `elab.duplicate-ref` errors to clear with `rename part`. Drafts never overwrite a record.
+- **`--sheet NAME`** (repeatable) imports only that sheet, by sheet name or file, with the sheets
+  inside it; nets to the sheets left out become ports.
+
+| Written                 | Contents                                                            |
+| ----------------------- | ------------------------------------------------------------------- |
+| `circuit/<block>.ckt`   | one block per sheet file                                            |
+| `parts/<id>.yaml`       | draft records for symbols that match no library record              |
+| `annotation.lock`       | in a new project, the KiCad refdes of a reused sheet's extra copies |
+| `notes/kicad-import.md` | nets that had no name, and the schematic's text notes (appended)    |
 
 How KiCad maps onto blocks:
 
@@ -381,8 +412,8 @@ How KiCad maps onto blocks:
 - **PWR_FLAG** on a net becomes `{source: KiCad PWR_FLAG}`.
 - **No-connect flags**: pins KiCad's ERC accepts as unconnected get
   `nc REF.PIN @ no-connect flag in KiCad`, unless they may stay open anyway.
-- **Parts** are matched in order: Partstyle's own Spec field (a design exported from here), the
-  MPN field (also "Manufacturer Part Number" and similar), the LCSC field, then plain R, C, L
+- **Parts** are matched in order: the MPN field (also "Manufacturer Part Number" and similar),
+  the LCSC field, then plain R, C, L
   and coloured LED symbols become generics (`res(10k, 1%, 0603)`) when the value parses and the
   footprint is Partstyle's standard chip footprint, then the value as an MPN or record id. A
   library record must have every pin number of the KiCad symbol.
@@ -392,18 +423,14 @@ How KiCad maps onto blocks:
   worklist: identify the part, complete the record from its datasheet and set `extracted_by`,
   or switch the parts to another record.
 
-Afterwards the imported design is validated and its connectivity compared with KiCad's netlist;
-a mismatch is reported as an import bug. Symbols without pins (mounting holes, logos) are
-skipped.
+Before anything is written, the imported design on its own is validated and its connectivity
+compared with KiCad's netlist; a mismatch is reported as an import bug. With `--sheet` that check
+is skipped, as KiCad's netlist covers the whole design. Symbols without pins (mounting holes,
+logos) are skipped. The import is one changeset, revertible like any other.
 
-**Re-importing** (after editing in KiCad) replaces `circuit/` as one changeset, revertible like
-any other, and reports the semantic diff. It keeps what KiCad cannot hold: part and net intents,
-net attributes, port kinds, `nc` statements (other than the ones import wrote), waivers and block
-descriptions, and the local refdes, net and port
-names the design had (matched by `annotation.lock` and by pins). Drafts are remade; records
-someone completed are left alone. A project with a design that was not imported needs
-`--replace`. Exporting and re-importing an unchanged design gives no circuit changes; a value
-changed in KiCad updates the generic's value.
+Import does not round-trip an export: exported files carry no Partstyle metadata, so intents,
+net attributes and the full spec of a generic (its tolerance or voltage, beyond what the value
+and footprint say) are not recovered.
 
 ### Finding KiCad
 
@@ -582,9 +609,9 @@ variants/buck/
   takes `--variant` several times (`main` is the main circuit) and applies the patch to each,
   all or nothing. With `main` among them, a variant gets only the edits to blocks of its own:
   main's edit already reaches the rest. Changesets, pending patches, `diff --since last` and
-  the export outputs (`bom.csv`, `annotation.lock`, `kicad/`) are the variant's own, under
-  `variants/NAME/`; the locks fall back to main's, so shared parts keep their refdes. KiCad
-  import works on main only.
+  the export outputs (`bom.csv`, `kicad/`) are the variant's own, under `variants/NAME/`, as is
+  its `annotation.lock` once its reserved refdes differ from main's (until then it uses main's).
+  KiCad import works on main only.
 - **Shared.** Parts, notes, comments and checkpoints.
 
 | Op                          | Does                                                                                                                                     |

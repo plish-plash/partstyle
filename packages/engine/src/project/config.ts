@@ -31,6 +31,12 @@ export const ProjectConfigSchema = z.looseObject({
       cap_derating: z.number().min(1).default(1.5),
     })
     .default({ cap_derating: 1.5 }),
+  kicad: z
+    .object({
+      /** KiCad project template for the first export: a template name or a folder path. */
+      template: z.string().min(1).optional(),
+    })
+    .default({}),
   /** Visual layout preferences: values by rule, then setting. */
   layout: z
     .record(z.string(), z.record(z.string(), z.union([z.number(), z.string()])))

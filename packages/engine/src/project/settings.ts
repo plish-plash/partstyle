@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { parseDocument } from "yaml";
 import { z } from "zod";
-import type { KicadOverrides } from "./kicad.js";
+import { isTemplatePath, type KicadOverrides } from "./kicad.js";
 import { ProjectLoadError } from "./load.js";
 
 /**
@@ -24,6 +24,8 @@ const SettingsSchema = z.object({
       cli: z.string().optional(),
       footprints: z.string().optional(),
       symbols: z.string().optional(),
+      /** The KiCad project template for first exports, unless a project names its own. */
+      template: z.string().min(1).optional(),
     })
     .default({}),
 });
@@ -60,7 +62,7 @@ export async function readSettings(stateDir: string, shared?: string): Promise<S
     throw new ProjectLoadError(`${file}: ${why}`);
   }
   const abs = (p: string) => path.resolve(stateDir, p);
-  const { cli, footprints, symbols } = parsed.data.kicad;
+  const { cli, footprints, symbols, template } = parsed.data.kicad;
   const first = shared ?? (await rememberedLibrary(stateDir));
   const same = (a: string, b: string) =>
     process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
@@ -72,6 +74,10 @@ export async function readSettings(stateDir: string, shared?: string): Promise<S
       ...(cli !== undefined && { cli: abs(cli) }),
       ...(footprints !== undefined && { footprints: abs(footprints) }),
       ...(symbols !== undefined && { symbols: abs(symbols) }),
+      // A name is looked up in KiCad's template folders; a path is against the state folder.
+      ...(template !== undefined && {
+        template: isTemplatePath(template) ? abs(template) : template,
+      }),
     },
   };
 }

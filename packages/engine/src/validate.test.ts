@@ -133,15 +133,18 @@ net GND : U1.GND C1.2 A.GND B.GND -> port GND
 net S   : A.SIG B.SIG
 `;
 
-    it("flattens instances with path-qualified names and joins nets through ports", () => {
+    it("flattens instances, joins nets through ports, and gives extra copies refdes of their own", () => {
       const r = validate({ main: parent, amp: child });
       expect(r.issues).toEqual([]);
       const nets = Object.fromEntries(
         (r.netlist?.nets ?? []).map((n) => [n.name, n.pins.map((p) => `${p.part}.${p.name}`)]),
       );
-      expect(nets.VDD).toEqual(["U1.OUT", "A/U2.VDD", "B/U2.VDD"]);
-      expect(nets["A/FB"]).toEqual(["A/U2.OUT", "A/R1.1"]);
-      expect(nets.S).toEqual(["A/U2.IN", "A/R1.2", "B/U2.IN", "B/R1.2"]);
+      // A has the block's refdes; B, the second copy, has the next free ones.
+      expect(nets.VDD).toEqual(["U1.OUT", "U2.VDD", "U3.VDD"]);
+      expect(nets["A/FB"]).toEqual(["U2.OUT", "R1.1"]);
+      expect(nets.S).toEqual(["U2.IN", "R1.2", "U3.IN", "R2.2"]);
+      expect(r.annotationLock).toContain("B/U2 U3\n");
+      expect(r.netlist?.refs.get("B/R1")).toBe("R2");
       expect(r.netlist?.nets.find((n) => n.name === "VDD")?.aliases).toEqual([
         "VDD",
         "A/VDD",
@@ -152,6 +155,48 @@ net S   : A.SIG B.SIG
     it("reports errors in a reused block once", () => {
       const r = validate({ main: parent, amp: child.replace("U2.IN", "U2.INP") });
       expect(r.issues.filter((i) => i.code === "elab.unknown-pin")).toHaveLength(1);
+    });
+
+    it("keeps refdes unique across the project's blocks, used or not", () => {
+      const r = validate({ main: parent, amp: child, spare: "part C1 cap(1u)" });
+      const dup = r.issues.find((i) => i.code === "elab.duplicate-ref");
+      expect(dup?.message).toBe(
+        "C1 is also declared in block main (circuit/main.ckt:5); refdes are unique across the project: rename one (next free: C2)",
+      );
+      expect(dup?.location?.file).toBe("circuit/spare.ckt");
+    });
+
+    it("keeps a copy's reserved refdes, and refuses a block declaring one", () => {
+      const lock = (text: string) => ({ file: "annotation.lock", text });
+      const reserved = (circuits: Record<string, string>, text: string) =>
+        validateProject({ ...project(circuits), annotation: lock(text) });
+      // Pinned refdes win over the next free ones, so adding a part elsewhere moves nothing.
+      const pinned = reserved({ main: parent, amp: child }, "B/U2 U7\nB/R1 R9\n");
+      expect(pinned.netlist?.refs.get("B/U2")).toBe("U7");
+      expect(pinned.annotationLock).toContain("B/U2 U7\n");
+      // An entry for a part that is gone is dropped.
+      const stale = reserved({ main: parent, amp: child }, "B/U2 U7\nB/R1 R9\nB/GONE X1\n");
+      expect(stale.annotationLock).not.toContain("GONE");
+
+      const clash = reserved({ main: `${parent}part U7 lib:REG\n`, amp: child }, "B/U2 U7\n");
+      const err = clash.issues.find((i) => i.code === "ref.reserved");
+      expect(err?.message).toBe(
+        "U7 is reserved for U2 in copy B of block amp; rename it (next free: U8)",
+      );
+      expect(err?.location?.line).toBe(12);
+      // The reservation stays for when the clash is fixed; meanwhile the copy has a stand-in.
+      expect(clash.annotationLock).toContain("B/U2 U7\n");
+      expect(clash.netlist?.refs.get("B/U2")).not.toBe("U7");
+    });
+
+    it("applies a block's waivers to each copy's own refdes", () => {
+      const spare = child.replace("net SIG : U2.IN R1.2", "net SIG : R1.2");
+      const r = validate({
+        main: parent,
+        amp: `${spare}waive U2.IN erc.unconnected-pin "spare input"`,
+      });
+      expect(r.waived).toBe(2);
+      expect(r.waivers[0]?.issues.map((i) => i.subjects[0])).toEqual(["U2.IN", "U3.IN"]);
     });
 
     it("warns about unused instance ports and unknown ones", () => {

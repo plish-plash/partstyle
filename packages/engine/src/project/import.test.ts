@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,51 +29,79 @@ const at = (p: string) => path.join(tmp, p);
 
 describe("kicadImport", () => {
   it.skipIf(!kicad.cli)(
-    "gives back the design it exported, with no circuit changes",
+    "creates a project with KiCad's connectivity and refdes, copies of a reused sheet included",
     async () => {
-      for (const p of ["examples/bench-sensor", "packages/engine/test-fixtures/multi"]) {
-        const ws = new Workspace(at(p));
-        expect((await ws.kicadExport({ check: false })).ok).toBe(true);
-        const refused = await ws.kicadImport(at(`${p}/kicad`));
-        expect(refused.ok).toBe(false);
-        expect(refused.text).toContain("import with replace");
-
-        const r = await ws.kicadImport(at(`${p}/kicad`), { replace: true });
-        expect(r.ok).toBe(true);
-        expect(r.text).toContain(
-          "round-trip: the imported design connects exactly what KiCad's netlist does",
-        );
-        expect(r.text).toContain("changes: none to the circuit");
-        expect(r.text).toContain("now: 0 errors, 0 warnings");
-      }
+      await new Workspace(at("packages/engine/test-fixtures/multi")).kicadExport({ check: false });
+      const ws = new Workspace(at("fresh"));
+      const r = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"));
+      expect(r.ok).toBe(true);
+      expect(r.text.split("\n")[0]).toMatch(/^created project multi in /);
+      expect(r.text).toContain("KiCad multi: 3 sheets -> blocks main, filter x2; 6 parts");
+      expect(r.text).toContain(
+        "netlist check: the imported design connects exactly what KiCad's netlist does",
+      );
+      expect(r.text).toContain("now: 0 errors, 0 warnings");
+      // The block has its first copy's refdes; the second copy keeps its KiCad ones. Export
+      // carries no Partstyle spec, so a generic comes back from its value and footprint.
+      expect(await readFile(at("fresh/circuit/filter.ckt"), "utf8")).toContain(
+        "part R1 res(1k, 0603)",
+      );
+      expect(await readFile(at("fresh/annotation.lock"), "utf8")).toContain("F2/R1 R3\n");
+      expect((await ws.query("part R3")).text).toMatch(/^R3 \[copy F2: R1 in filter\]/);
     },
     120_000,
   );
 
   it.skipIf(!kicad.cli)(
-    "creates a project, then picks up a value changed in KiCad on re-import",
+    "only adds blocks to a project with a design, reporting refdes that clash",
     async () => {
-      const source = new Workspace(at("packages/engine/test-fixtures/multi"));
-      await source.kicadExport({ check: false });
-      const sheet = at("packages/engine/test-fixtures/multi/kicad/filter.kicad_sch");
-
-      const ws = new Workspace(at("fresh"));
-      const first = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"));
-      expect(first.ok).toBe(true);
-      expect(first.text.split("\n")[0]).toMatch(/^created project multi in /);
-      expect(first.text).toContain("KiCad multi: 3 sheets -> blocks main, filter x2; 6 parts");
-      // Without an earlier annotation.lock, block parts take their first instance's refdes.
-      expect(await readFile(at("fresh/circuit/filter.ckt"), "utf8")).toContain(
-        "part R2 res(1k, 1%, 0603)",
+      await new Workspace(at("examples/bench-sensor")).kicadExport({ check: false });
+      const ws = new Workspace(at("packages/engine/test-fixtures/multi"));
+      const main = await readFile(
+        at("packages/engine/test-fixtures/multi/circuit/main.ckt"),
+        "utf8",
       );
 
-      const text = await readFile(sheet, "utf8");
-      expect(text).toContain('(property "Value" "1k"');
-      await writeFile(sheet, text.replace('(property "Value" "1k"', '(property "Value" "2k2"'));
-      const again = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"));
-      expect(again.ok).toBe(true);
-      expect(again.text).toContain("changes: 1 statement (see diff)");
-      expect(again.text).toContain("~ part R2 res(2k2, 1%, 0603)");
+      const r = await ws.kicadImport(at("examples/bench-sensor/kicad"));
+      expect(r.ok).toBe(true);
+      expect(r.text).toContain("netlist check: the imported design connects exactly");
+      expect(r.text).toMatch(/refdes clashes with the project \(\d+\): rename the imported parts/);
+      expect(r.text).toContain("elab.duplicate-ref");
+      expect(r.text).toContain("next: join bench-sensor, power, sensor_afe, mcu into the design");
+      const files = await readdir(at("packages/engine/test-fixtures/multi/circuit"));
+      expect(files.sort()).toEqual([
+        "bench-sensor.ckt",
+        "filter.ckt",
+        "main.ckt",
+        "mcu.ckt",
+        "power.ckt",
+        "sensor_afe.ckt",
+      ]);
+      // main is the project's own: never touched.
+      expect(
+        await readFile(at("packages/engine/test-fixtures/multi/circuit/main.ckt"), "utf8"),
+      ).toBe(main);
+    },
+    120_000,
+  );
+
+  it.skipIf(!kicad.cli)(
+    "imports chosen sheets, under names the project does not have",
+    async () => {
+      await new Workspace(at("packages/engine/test-fixtures/multi")).kicadExport({ check: false });
+      const ws = new Workspace(at("packages/engine/test-fixtures/multi"));
+      const r = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"), {
+        sheets: ["F1"],
+      });
+      expect(r.ok).toBe(true);
+      expect(r.text).toContain("KiCad multi: 1 sheet -> blocks filter_2; 2 parts");
+      expect(r.text).toContain("netlist check: skipped, as only some sheets were imported");
+      // The copy of the project's own block clashes with it, for the AI to sort out.
+      expect(r.text).toContain("refdes clashes with the project (2)");
+      const bad = await ws.kicadImport(at("packages/engine/test-fixtures/multi/kicad"), {
+        sheets: ["NOPE"],
+      });
+      expect(bad).toEqual({ ok: false, text: "no sheet 'NOPE' (sheets: F1, F2)" });
     },
     120_000,
   );
