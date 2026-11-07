@@ -149,8 +149,7 @@ function targets(
 
 /** A net by name, preferring the one in the part's own block instance. */
 function netsNamed(part: FlatPart, name: string, netlist: Netlist): Set<string> {
-  const prefix = part.path.slice(0, part.path.lastIndexOf("/") + 1);
-  const local = netlist.nets.filter((n) => n.aliases.includes(prefix + name));
+  const local = netlist.nets.filter((n) => n.aliases.includes(part.prefix + name));
   const found =
     local.length > 0
       ? local
@@ -216,9 +215,7 @@ function checkRequirement(
         v !== undefined &&
         (min === undefined || v >= min * (1 - 1e-6)) &&
         (max === undefined || v <= max * (1 + 1e-6));
-      (ok ? fits : near).push(
-        `${other.path.slice(other.path.lastIndexOf("/") + 1)} ${v === undefined ? "?" : fmt(v, unit)}`,
-      );
+      (ok ? fits : near).push(`${other.path} ${v === undefined ? "?" : fmt(v, unit)}`);
     }
     if (fits.length < need) {
       const what = fn === "cap" ? "capacitor" : "resistor";

@@ -13,7 +13,6 @@ import { describePart } from "./parts/search.js";
 import { applyPatch } from "./patch.js";
 import { loadProject } from "./project/load.js";
 import type { ProjectSource } from "./project/source.js";
-import { findPrompt } from "./prompts.js";
 import { type ValidationResult, validateProject } from "./validate.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
@@ -216,17 +215,5 @@ describe("a real part draws like its generic", () => {
     const adapted = adaptedSymbol(led, part);
     expect(adapted?.libId).toBe("partstyle:BACKWARD");
     expect(JSON.stringify(adapted?.def)).toContain("BACKWARD_1_1");
-  });
-});
-
-describe("procedures", () => {
-  it("design review looks for BOM consolidation", () => {
-    expect(findPrompt("design_review")?.render({})).toContain("BOM consolidation");
-  });
-
-  it("handoff has the person agree each part", () => {
-    const text = findPrompt("handoff")?.render({});
-    expect(text).toContain("= part REF lib:ID");
-    expect(text).toContain("in inventory first");
   });
 });

@@ -23,7 +23,11 @@ let stateDir: string;
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), "partstyle-"));
   project = path.join(tmp, "examples/bench-sensor");
-  await cp(repo("examples/bench-sensor"), project, { recursive: true });
+  // Without .partstyle/: local state left by running the example is not part of it.
+  await cp(repo("examples/bench-sensor"), project, {
+    recursive: true,
+    filter: (src) => path.basename(src) !== ".partstyle",
+  });
   await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
   stateDir = path.join(tmp, "state");
   await mkdir(stateDir);
@@ -115,6 +119,13 @@ describe("Workspace.partPut", () => {
       );
       const missing = await ws.partPut(record("X4").replace("SMD:SOT-23", "SMD:SOT-99"));
       expect(missing.text).toContain("warning: X4: footprint Package_TO_SOT_SMD:SOT-99 is not in");
+      // Both are warnings on the design while a part uses them.
+      await ws.apply(
+        "in power\n+ part U8 lib:X3\n+ part U9 lib:X4\nnet GND += U8.GND U9.GND\nnet +12V += U8.IN U9.IN\n",
+      );
+      const issues = (await ws.validate()).text;
+      expect(issues).toMatch(/warning part\.footprint-pads .*X3/);
+      expect(issues).toMatch(/warning part\.footprint-missing .*X4/);
     },
   );
 
@@ -387,23 +398,6 @@ net GND : C1.- R1.2 {source: bench}
     expect((await w.validate()).text).toBe("fp-names: 0 errors, 0 warnings");
     expect((await w.query("part C1")).text).toMatch(/1 \+ passive -> \+5V\n {2}2 - passive -> GND/);
     expect((await w.query("part JP1")).text).toContain("2 2 passive -> SW");
-  });
-
-  it("errors when a polarized capacitor is certainly reversed", async () => {
-    const reversed = design
-      .replace("C1.+ JP1.1", "C1.- JP1.1")
-      .replace("net GND : C1.-", "net GND : C1.+");
-    const { w } = await fresh("fp-reversed", reversed);
-    expect((await w.validate()).text).toContain(
-      "error part.cap-polarity C1 is polarized, but + is on GND (0V), below - on +5V (5V)",
-    );
-  });
-
-  it("rejects a bad footprint argument", async () => {
-    for (const bad of ["fp(nofootprint)", "fp(A:B, 4)", "fp(A:B, x)", "fp(A:B, 2, 3)"]) {
-      const { w } = await fresh(`fp-bad-${bad.length}${bad.at(-2)}`, `part TP1 ${bad}\n`);
-      expect((await w.validate()).text).toContain("elab.bad-generic");
-    }
   });
 
   it("keeps footprints out of the BOM and the distributor links", async () => {

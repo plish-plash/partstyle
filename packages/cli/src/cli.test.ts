@@ -1,15 +1,24 @@
 import { execFile } from "node:child_process";
+import { cpSync, mkdtempSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { run } from "./cli.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
-const example = repo("examples/bench-sensor");
-const broken = repo("packages/engine/test-fixtures/broken");
+// Copies, as every command records history in the project's .partstyle/.
+const copies = mkdtempSync(path.join(tmpdir(), "partstyle-cli-projects-"));
+const copy = (p: string) => {
+  const to = path.join(copies, path.basename(p));
+  cpSync(repo(p), to, { recursive: true, filter: (src) => path.basename(src) !== ".partstyle" });
+  return to;
+};
+const example = copy("examples/bench-sensor");
+const broken = copy("packages/engine/test-fixtures/broken");
+afterAll(() => rm(copies, { recursive: true, force: true }));
 
 const io = (stdin = "") => ({ readStdin: async () => stdin });
 const cli = (args: string[], stdin?: string) => run(args, io(stdin));

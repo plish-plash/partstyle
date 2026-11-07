@@ -28,6 +28,7 @@ const parts = [
     5: ["GND", "power_in"],
     6: ["NC", "nc"],
   }),
+  part("OC", { 1: ["OUT", "open_collector"], 2: ["VCC", "power_in"], 3: ["GND", "power_in"] }),
 ];
 
 function project(circuits: Record<string, string>): ProjectSource {
@@ -85,6 +86,10 @@ describe("validateProject", () => {
       ["duplicate net", `${good}net SIG : C1.1`, "elab.duplicate-net"],
       ["bad generic", good.replace("cap(1u)", "cap(1uH)"), "elab.bad-generic"],
       ["unknown generic", good.replace("cap(1u)", "capacitor(1u)"), "elab.bad-generic"],
+      ["footprint without library", `${good}part TP1 fp(nofootprint)`, "elab.bad-generic"],
+      ["footprint with 4 pins", `${good}part TP1 fp(A:B, 4)`, "elab.bad-generic"],
+      ["footprint pin count", `${good}part TP1 fp(A:B, x)`, "elab.bad-generic"],
+      ["footprint extra argument", `${good}part TP1 fp(A:B, 2, 3)`, "elab.bad-generic"],
       ["unbound port", `${good}port X : input`, "elab.unbound-port"],
       ["undeclared port", good.replace("-> port GND", "-> port GROUND"), "elab.unknown-port"],
     ])("%s", (_, text, code) => {
@@ -335,10 +340,73 @@ pins:
       expect(r.issues[0]?.message).toMatch(/^VIN: U1\.IN needs power/);
     });
 
-    it("treats nets through a ground port as sourced", () => {
+    it("treats ground as sourced, by its port or by its name", () => {
+      const noPort = good.replace("-> port GND", "").replace("port GND : ground", "");
+      expect(codes({ main: noPort })).toEqual([]);
+      // Any other name with only supply inputs on it still needs a source.
+      expect(codes({ main: noPort.replace("net GND :", "net RTN :") })).toEqual([
+        "erc.unsourced-power",
+      ]);
+    });
+
+    it("flags two supply outputs on one net", () => {
+      const twoRegs =
+        `${good}part U3 lib:REG\nnet VIN2 : U3.IN {source: x}\nnet GND2 : U3.GND {source: x}\n`.replace(
+          "net VDD : U1.OUT U2.VDD",
+          "net VDD : U1.OUT U2.VDD U3.OUT",
+        );
+      expect(codes({ main: twoRegs })).toContain("erc.output-conflict");
+    });
+
+    it("respects a stated source on a net of inputs", () => {
+      const external = good
+        .replace("net SIG : R1.1 U2.IN", "net SIG : U2.IN {source: function generator}")
+        .replace("net OUT : U2.OUT R1.2", "net OUT : U2.OUT R1.1 R1.2");
+      expect(codes({ main: external })).toEqual(["erc.single-pin-net"]);
+    });
+
+    it("warns about an open-collector output nothing pulls up", () => {
+      // U3's open-collector output drives U2.IN; R1 moves aside, across U2's output.
+      const oc = `${good}part U3 lib:OC\nnet INT : U3.OUT U2.IN\n`
+        .replace("net SIG : R1.1 U2.IN\n", "")
+        .replace("net OUT : U2.OUT R1.2", "net OUT : U2.OUT R1.1 R1.2")
+        .replace("net VDD : U1.OUT U2.VDD", "net VDD : U1.OUT U2.VDD U3.VCC")
+        .replace("U2.GND C1.2", "U2.GND C1.2 U3.GND");
+      const issues = validate({ main: oc }).issues;
+      expect(issues.map((i) => i.code)).toEqual(["erc.no-pull"]);
+      expect(issues[0]?.message).toBe(
+        "INT: U3.OUT is open-collector and nothing pulls the net up; add a pull-up resistor, or {source: ...} if one is outside the design",
+      );
+      // A pull-up from the supply clears it.
+      const pulled = `${oc}part R9 res(10k)\n`
+        .replace("net INT : U3.OUT U2.IN", "net INT : U3.OUT U2.IN R9.2")
+        .replace("U3.VCC", "U3.VCC R9.1");
+      expect(codes({ main: pulled })).toEqual([]);
+    });
+
+    it("warns about a datasheet NC pin on a net", () => {
       expect(
-        codes({ main: good.replace("-> port GND", "").replace("port GND : ground", "") }),
-      ).toEqual(["erc.unsourced-power"]);
+        codes({ main: good.replace("net SIG : R1.1 U2.IN", "net SIG : R1.1 U2.IN U2.NC") }),
+      ).toEqual(["erc.nc-pin-connected"]);
+    });
+
+    it("warns about a supply output on ground", () => {
+      const shorted = good
+        .replace("net VDD : U1.OUT U2.VDD", "net VDD : U2.VDD {source: x}")
+        .replace("U1.GND U2.GND", "U1.GND U1.OUT U2.GND");
+      const issue = validate({ main: shorted }).issues.find(
+        (i) => i.code === "erc.power-out-on-ground",
+      );
+      expect(issue?.message).toBe(
+        "GND: U1.OUT is a supply output on ground net GND, which shorts it",
+      );
+      expect(issue?.severity).toBe("warning");
+    });
+
+    it("refuses a port bound to two nets", () => {
+      expect(
+        codes({ main: good.replace("net SIG : R1.1 U2.IN", "net SIG : R1.1 U2.IN -> port GND") }),
+      ).toContain("elab.port-bound-twice");
     });
 
     it("warns about single-pin nets and undriven inputs", () => {

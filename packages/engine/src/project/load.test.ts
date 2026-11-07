@@ -31,9 +31,13 @@ describe("loadProject", () => {
     );
     expect([...new Set(result.issues.map((i) => i.code))].sort()).toEqual([
       "elab.bad-generic",
+      "elab.duplicate-ref",
+      "elab.nc-connected",
+      "elab.pin-multiple-nets",
       "elab.unknown-part",
       "elab.unknown-pin",
       "erc.output-conflict",
+      "erc.power-out-on-ground",
       "erc.single-pin-net",
       "erc.unconnected-pin",
       "erc.undriven-input",

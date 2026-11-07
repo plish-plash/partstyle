@@ -23,6 +23,8 @@ export interface PartInfo {
   /** The block declaring it, and the refdes there when this is an extra copy of the block. */
   block: string;
   local?: string;
+  /** The instance it is in, which picks the sheet that draws it: `""` for main, `PWR/`. */
+  prefix: string;
   spec: string;
   value: string;
   intent?: string;
@@ -219,6 +221,7 @@ export function buildViewerModel(
       ref: p.path,
       block: p.block,
       ...(p.local !== p.path && { local: p.local }),
+      prefix: p.prefix,
       spec: printSpec(p.spec),
       value: entry?.value ?? printSpec(p.spec),
       ...(p.intent !== undefined && { intent: p.intent }),

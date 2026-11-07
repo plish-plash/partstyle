@@ -11,16 +11,21 @@ const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.met
 // Round-trip and ERC need kicad-cli; those tests are skipped without it.
 const kicad = await findKicad();
 
+/** Copies leave out .partstyle/: local state left by running a project is not part of it. */
+const noState = (src: string) => path.basename(src) !== ".partstyle";
+
 let tmp: string;
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), "partstyle-export-"));
   await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
   await cp(repo("examples/bench-sensor"), path.join(tmp, "examples/bench-sensor"), {
     recursive: true,
+    filter: noState,
   });
   // Fixtures sit four levels below the repo, like their library path expects.
   await cp(repo("packages/engine/test-fixtures"), path.join(tmp, "packages/engine/test-fixtures"), {
     recursive: true,
+    filter: noState,
   });
 });
 afterEach(async () => {

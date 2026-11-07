@@ -248,12 +248,12 @@ The global part library is versioned separately; `parts.lock` pins each project 
 
 Checks split by who can do them: the engine runs deterministic checks on every change, limited to ERC-style connectivity and numeric datasheet limits; the AI handles broad design judgement, during the design and in review, using the same data.
 
-| Layer          | Run by                         | Examples                                                                                                                                                  |
-| -------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Structural ERC | Engine, every `apply`          | Unconnected required pins, output-to-output conflicts, power pins with no source, single-pin nets, undriven inputs                                        |
-| Part-aware     | Engine, every `apply`          | Net voltage vs part ratings (incl. capacitor derating), unverified part records, footprint/pin-table mismatch, datasheet `requirements` not yet satisfied |
-| Temperature    | Engine, on `validate`          | Parts outside the stated temperature range                                                                                                                |
-| Design review  | AI, via `design_review` prompt | Protection against each interface's hazards, topology sanity, values against stated intent, missing decoupling, stability, test points, manufacturability |
+| Layer          | Run by                         | Examples                                                                                                                                                                                                 |
+| -------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structural ERC | Engine, every `apply`          | Unconnected required pins, output-to-output conflicts, power pins with no source, single-pin nets, undriven inputs, open-collector nets with no pull-up, wired no-connect pins, supply outputs on ground |
+| Part-aware     | Engine, every `apply`          | Net voltage vs part ratings (incl. capacitor derating), unverified part records, footprint/pin-table mismatch, datasheet `requirements` not yet satisfied                                                |
+| Temperature    | Engine, on `validate`          | Parts outside the stated temperature range                                                                                                                                                               |
+| Design review  | AI, via `design_review` prompt | Protection against each interface's hazards, topology sanity, values against stated intent, missing decoupling, stability, test points, manufacturability                                                |
 
 Datasheet requirements are checked as reminders rather than proofs: "U1 requires 0.33 µF on IN — C1 on net +12V, confirm placement in pcb.md". The engine can verify presence and value; proximity is passed to the PCB notes.
 

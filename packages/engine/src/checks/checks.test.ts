@@ -125,6 +125,18 @@ describe("part checks", () => {
     expect(at12("cap(1u, 25V, 0603)", "checks: {cap_derating: 2.5}\n")).toHaveLength(1);
   });
 
+  it("errors when a polarized capacitor is certainly reversed, and only then", () => {
+    const board = (plus: string, minus: string) =>
+      `block main "t"\npart C1 cap(100u, 25V, polarized)\nnet +5V : C1.${plus} {source: bench}\nnet GND : C1.${minus}\n`;
+    expect(codes(check(board("+", "-")), "part.cap-polarity")).toEqual([]);
+    expect(codes(check(board("-", "+")), "part.cap-polarity")).toEqual([
+      "error part.cap-polarity C1 is polarized, but + is on GND (0V), below - on +5V (5V)",
+    ]);
+    // A net with no known voltage proves nothing.
+    const unknown = board("-", "+").replace("net +5V", "net SIG");
+    expect(codes(check(unknown), "part.cap-polarity")).toEqual([]);
+  });
+
   it("checks requirements that carry a check, and names what it found", () => {
     expect(codes(check(ldo("+5V", "cap(1u, 16V, 0603)")), "part.requirement")).toEqual([]);
     expect(codes(check(ldo("+5V", "cap(100n, 16V, 0603)")), "part.requirement")).toEqual([
@@ -145,6 +157,33 @@ net SDA : U1.SDA R1.2
       'warning part.requirement U1: "EN tied to VCC": EN is on EN, not VCC (+3V3)',
     ]);
   });
+});
+
+it("resolves a net a requirement names in the part's own block instance", () => {
+  const tie = `id: TIE
+summary: needs EN on its block's VREF
+pins:
+  1: { name: EN, type: input }
+requirements:
+  - text: EN to VREF
+    tie: { from: EN, to: VREF }
+`;
+  const issues = validateProject({
+    project: { file: "partstyle-project.yaml", text: "name: t\n" },
+    circuits: [
+      {
+        file: "circuit/main.ckt",
+        text: "block main\nuse ch as A\npart R9 res(1k)\nnet VREF : R9.1 R9.2\n",
+      },
+      {
+        file: "circuit/ch.ckt",
+        text: "block ch\npart U1 lib:TIE\npart R1 res(1k)\nnet VREF : U1.EN R1.1 R1.2\n",
+      },
+    ],
+    parts: [{ file: "parts/TIE.yaml", text: tie, layer: "project" }],
+  }).issues;
+  // main's VREF is another net: the requirement means A/VREF, where EN is.
+  expect(issues.filter((i) => i.code === "part.requirement")).toEqual([]);
 });
 
 it("reports a tie requirement on an unconnected pin, which ERC may leave alone", () => {

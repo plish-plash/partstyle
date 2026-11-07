@@ -1,3 +1,4 @@
+import { cpSync, mkdtempSync } from "node:fs";
 import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,7 +12,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
 
 const repo = (p: string) => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
-const example = repo("examples/bench-sensor");
+// A copy, as every call records history in the project's .partstyle/.
+const example = path.join(
+  mkdtempSync(path.join(tmpdir(), "partstyle-mcp-example-")),
+  "bench-sensor",
+);
+cpSync(repo("examples/bench-sensor"), example, {
+  recursive: true,
+  filter: (src) => path.basename(src) !== ".partstyle",
+});
+afterAll(() => rm(path.dirname(example), { recursive: true, force: true }));
 const ws = new Workspace(example);
 
 let client: Client;
@@ -171,7 +181,10 @@ describe("MCP server", () => {
   it("records decisions, and catches up from the previous diff by default", async () => {
     const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-mcp-"));
     try {
-      await cp(example, tmp, { recursive: true });
+      await cp(example, tmp, {
+        recursive: true,
+        filter: (src) => path.basename(src) !== ".partstyle",
+      });
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
       await createServer(new Workspace(tmp)).connect(serverSide);
       const local = new Client({ name: "test", version: "0" });

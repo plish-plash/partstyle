@@ -12,8 +12,11 @@ part C2 cap(1uH)
 
 net +12V : U1.IN C1.1 U5.VIN                   @ no source attribute
 net +5V  : U1.OUT U2.OUT U3.VDD
-net GND  : U1.GND U2.GND U3.VSS C1.2 -> port GND
+net GND  : U1.GND U2.GND U3.VSS C1.2 U5.VOUT -> port GND   @ U5's output shorted to ground
 net SIG  : U3.VINA+ U3.VINB+
 net LONE : C2.1
 net BAD  : U3.OUTX
 net NOCOLON U3.VDD
+net SHORT : U5.VIN U5.GND                      @ U5.VIN is already on +12V
+nc U3.VDD                                      @ marked open but on +5V
+part C2 cap(1u)                                @ C2 declared twice

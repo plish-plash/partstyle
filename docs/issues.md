@@ -8,6 +8,10 @@ An unconnected pin is reported unless it may stay open: an `nc` statement or `un
 part record says so, and a `bidir`, output-type or `nc` pin needs nothing unless the record says
 `unused: required`. A `power_in` pin is always reported.
 
+A net is ground when it crosses a `ground` port or its name says so (`GND`, `AGND`, `VSS`, `0V`);
+ground needs no source. A `{source: ...}` attribute says a net is driven or supplied from outside
+the design, which also answers `undriven-input` and `no-pull`.
+
 | Code                                                            | Severity                           | Meaning                                                                |
 | --------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------- |
 | `parse.syntax`, `parse.missing-block`                           | error                              | malformed statement                                                    |
@@ -19,8 +23,11 @@ part record says so, and a `bidir`, output-type or `nc` pin needs nothing unless
 | `elab.unbound-port`, `elab.bad-generic`, `elab.recursive-use`   | error                              |                                                                        |
 | `erc.unconnected-pin`                                           | error for `power_in`, else warning | pin on no net that must not be open                                    |
 | `erc.output-conflict`                                           | error                              | outputs of two parts on one net                                        |
-| `erc.unsourced-power`                                           | error                              | `power_in` pins, no `power_out`, no `source`, no ground port           |
-| `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`   | warning                            |                                                                        |
+| `erc.unsourced-power`                                           | error                              | `power_in` pins, no `power_out`, no `source`, and not ground           |
+| `erc.single-pin-net`, `erc.undriven-input`, `erc.unused-port`   | warning                            | `undriven-input`: only inputs on the net, and no `source`              |
+| `erc.no-pull`                                                   | warning                            | open-collector (or open-emitter) output with no resistor or `source`   |
+| `erc.nc-pin-connected`                                          | warning                            | a pin of type `nc` (datasheet no-connect) is on a net                  |
+| `erc.power-out-on-ground`                                       | warning                            | a `power_out` pin on a ground net: a short, unless a virtual ground    |
 | `elab.unused-block`, `elab.attr-conflict`, `waive.unused`       | warning                            |                                                                        |
 | `patch.error`                                                   | error                              | patch rejected; nothing was applied                                    |
 | `layout.connectivity`, `layout.failed`                          | error                              | auto-layout bug: the drawing does not match the design                 |
@@ -28,6 +35,7 @@ part record says so, and a `bidir`, output-type or `nc` pin needs nothing unless
 | `part.footprint-missing`, `kicad.no-footprint`                  | warning                            | KiCad has no such footprint; a part has no footprint                   |
 | `part.format`                                                   | warning                            | a record in use has a field the engine cannot read                     |
 | `part.schema`, `part.yaml`                                      | warning                            | a library file is unusable; a design using it gets `elab.unknown-part` |
+| `part.duplicate-id`                                             | warning                            | two records in one library layer share an id; the later file is used   |
 | `kicad.symbol-fallback`                                         | warning                            | a record's `kicad_symbol` does not fit; a symbol was generated         |
 | `part.draft`                                                    | warning                            | a KiCad import draft record is in use; complete or replace it          |
 | `part.overvoltage`                                              | error                              | a pin's `vmax` is below its net's voltage                              |

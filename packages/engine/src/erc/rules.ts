@@ -1,3 +1,4 @@
+import { isGroundNet } from "../checks/nets.js";
 import type { Issue } from "../diagnostics.js";
 import { type FlatNet, type FlatPin, isOpenByDesign, type Netlist } from "../netlist/elaborate.js";
 import type { PinType } from "../parts/schema.js";
@@ -88,11 +89,11 @@ export function runErc(netlist: Netlist): Issue[] {
       );
     }
 
+    const ground = isGroundNet(net);
+    const external = net.attrs.source !== undefined;
     const powerIn = pins.filter((p) => p.type === "power_in");
-    const sourced =
-      pins.some((p) => p.type === "power_out") ||
-      net.attrs.source !== undefined ||
-      net.portKinds.includes("ground");
+    // Ground needs no source: a net named GND is ground whether or not it crosses a port.
+    const sourced = pins.some((p) => p.type === "power_out") || external || ground;
     if (powerIn.length > 0 && !sourced) {
       issues.push(
         netIssue(
@@ -108,7 +109,7 @@ export function runErc(netlist: Netlist): Issue[] {
     }
 
     const inputs = pins.filter((p) => p.type === "input");
-    if (inputs.length > 0 && !pins.some((p) => signalSources.has(p.type))) {
+    if (inputs.length > 0 && !external && !pins.some((p) => signalSources.has(p.type))) {
       issues.push(
         netIssue(
           net,
@@ -116,6 +117,56 @@ export function runErc(netlist: Netlist): Issue[] {
           "warning",
           `${inputs.map(pinLabel).join(", ")} ${inputs.length > 1 ? "are" : "is"} not driven by anything`,
           inputs,
+        ),
+      );
+    }
+
+    // An open-collector (or open-emitter) output only pulls one way: something must pull the
+    // other. A resistor, a supply on the net, or a stated source will do.
+    for (const [type, way] of [
+      ["open_collector", "up"],
+      ["open_emitter", "down"],
+    ] as const) {
+      const open = pins.filter((p) => p.type === type);
+      const pulled = external || pins.some((p) => p.type === "passive" || p.type === "power_out");
+      if (open.length === 0 || pulled) continue;
+      issues.push(
+        netIssue(
+          net,
+          "erc.no-pull",
+          "warning",
+          `${open.map(pinLabel).join(", ")} ${open.length > 1 ? "are" : "is"} ${type.replace("_", "-")} and nothing pulls the net ${way}; ` +
+            `add a pull-${way} resistor, or {source: ...} if one is outside the design`,
+          open,
+        ),
+      );
+    }
+
+    // A datasheet NC pin may be bonded to something inside the part.
+    const ncPins = pins.filter((p) => p.type === "nc");
+    if (ncPins.length > 0) {
+      issues.push(
+        netIssue(
+          net,
+          "erc.nc-pin-connected",
+          "warning",
+          `${ncPins.map(pinLabel).join(", ")} ${ncPins.length > 1 ? "are" : "is"} a no-connect pin; ` +
+            "leave it open, or make it passive in the part record if the datasheet allows wiring it",
+          ncPins,
+        ),
+      );
+    }
+
+    // A supply output on ground is almost always a short (a virtual-ground IC is the exception).
+    const supplies = pins.filter((p) => p.type === "power_out");
+    if (ground && supplies.length > 0) {
+      issues.push(
+        netIssue(
+          net,
+          "erc.power-out-on-ground",
+          "warning",
+          `${supplies.map(pinLabel).join(", ")} ${supplies.length > 1 ? "are supply outputs" : "is a supply output"} on ground net ${net.name}, which shorts it`,
+          supplies,
         ),
       );
     }

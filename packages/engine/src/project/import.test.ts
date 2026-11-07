@@ -11,14 +11,19 @@ const repo = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.met
 // Import runs kicad-cli to resolve KiCad's connectivity; these tests are skipped without it.
 const kicad = await findKicad();
 
+/** Copies leave out .partstyle/: local state left by running a project is not part of it. */
+const noState = (src: string) => path.basename(src) !== ".partstyle";
+
 let tmp: string;
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), "partstyle-import-"));
   await cp(repo("examples/bench-sensor"), path.join(tmp, "examples/bench-sensor"), {
     recursive: true,
+    filter: noState,
   });
   await cp(repo("packages/engine/test-fixtures"), path.join(tmp, "packages/engine/test-fixtures"), {
     recursive: true,
+    filter: noState,
   });
 });
 afterEach(async () => {

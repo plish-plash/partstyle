@@ -137,8 +137,11 @@ function show(subjects: string[]) {
     const owner = model.parts[first]
       ? first
       : Object.keys(model.parts).find((p) => first.startsWith(`${p}.`));
-    const path = owner ?? first;
-    const target = path.slice(0, path.lastIndexOf("/") + 1);
+    // A part knows its instance; a net's name carries it (`PWR/VIN_RAW`).
+    const target =
+      owner !== undefined
+        ? (model.parts[owner]?.prefix ?? "")
+        : first.slice(0, first.lastIndexOf("/") + 1);
     if (pages.some((p) => p.prefix === target)) prefix = target;
   }
   select(subjects, false);

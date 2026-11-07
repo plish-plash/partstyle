@@ -16,7 +16,11 @@ let viewer: ViewerServer;
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), "partstyle-server-"));
   project = path.join(tmp, "examples/bench-sensor");
-  await cp(repo("examples/bench-sensor"), project, { recursive: true });
+  // Without .partstyle/: local state left by running the example is not part of it.
+  await cp(repo("examples/bench-sensor"), project, {
+    recursive: true,
+    filter: (src) => path.basename(src) !== ".partstyle",
+  });
   await cp(repo("library"), path.join(tmp, "library"), { recursive: true });
   // The viewer can verify records, so the settings list this copy of the library.
   await writeFile(path.join(tmp, "settings.yaml"), "libraries: [library]\n");
@@ -115,6 +119,8 @@ describe("viewer server", () => {
   it("adds version state to the model, and reverts changesets", async () => {
     const ckt = path.join(project, "circuit/power.ckt");
     const before = await readFile(ckt, "utf8");
+    // Read once first, as an open viewer would have, so the edit becomes a changeset.
+    await new Workspace(project, { stateDir: tmp }).validate();
     await writeFile(ckt, before.replace("part C2  cap(100n", "part C2  cap(220n"));
     const model = (await (await fetch(new URL("api/model", viewer.url))).json()) as {
       versions: { git: boolean; changesets: { id: string }[]; changed: unknown[] };
