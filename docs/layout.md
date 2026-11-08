@@ -53,10 +53,17 @@ line up on stems of different lengths. A grid router connects whatever the rows 
 - **Rails that current runs along**, such as a regulator's input and output, are drawn as wires
   with their parts hanging from them.
 - **Other nets** are wires. A net becomes labels instead when its wires would cross three or more
-  others, wander far out of their way, or cannot be routed at all.
+  others, wander far out of their way, take one wire more than 55 grid units long (bends
+  included), or cannot be routed at all.
 - **Labels** sit straight out from a side pin, or on a short step then sideways just past the part
-  for a top or bottom pin. On a piece with wires of its own, a label hangs off the wire on a short
-  stub so that the wire stays straight.
+  for a top or bottom pin. Each anchor pin gets its own label, neighbouring pins sharing one; a
+  two-terminal part joins the nearest pin of the net, so parts that sit together, such as a
+  divider, are wired to each other and share a label. On a piece with wires of its own, a label
+  hangs off the wire on a short stub so that the wire stays straight.
+- **Pins off the 100 mil grid**, which some KiCad symbols have (`Device:R_Potentiometer`'s wiper),
+  get a short wire straight out to the next grid point. The symbol is placed so that as many of
+  its pins as possible can do this: a side pin needs its height on the grid, and a top or bottom
+  pin its position across. A pin that still cannot reach the grid straight out takes a small jog.
 - **Ports** that are not power nets become sheet pins on the parent's sheet symbol. In the child
   sheet, the row ends in a hierarchical label, right beside the part where it fits.
 - **Junction dots** mark every point where three or more things meet: pins, wires, power symbols
@@ -76,8 +83,8 @@ than the viewer's, so text may sit slightly differently in the KiCad export.
 
 ## Preferences
 
-The Layout tab in the viewer's sidebar adjusts the spacing and the wire routing weights, and which
-side decoupling prefers. These apply to the whole design, and the KiCad export follows them.
+The Layout tab in the viewer's sidebar adjusts the spacing, the wire routing weights, when a net
+turns into labels (crossings, detour and wire length), and which side decoupling prefers. These apply to the whole design, and the KiCad export follows them.
 They are saved in the project file, leaving out anything still at its default:
 
 ```yaml

@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+import { kicadSymbol } from "../kicad/libsym.js";
+import { type SExpr, sym } from "../kicad/sexpr.js";
 import { applyPatch } from "../patch.js";
 import type { ProjectConfig } from "../project/config.js";
 import { loadProject } from "../project/load.js";
@@ -189,6 +191,68 @@ pins:
     expect(await draw("")).toEqual(["1", "3"]);
     // ERC warns about a wired no-connect pin, but the drawing must still show the wire.
     expect(await draw("net X : D1.2 D1.1\n")).toEqual(["1", "2", "3"]);
+  });
+
+  it("wires a KiCad symbol whose pins are off the grid, placing it so they run straight", async () => {
+    // Device:R_Potentiometer: the wiper is 1.5 grid units from both ends.
+    const pin = (n: string, x: number, y: number, angle: number): SExpr[] => [
+      "pin",
+      sym("passive"),
+      sym("line"),
+      ["at", x, y, angle],
+      ["length", 1.27],
+      ["name", n],
+      ["number", n],
+    ];
+    const symbol = kicadSymbol("Device:R_Potentiometer", [
+      "symbol",
+      "R_Potentiometer",
+      ["property", "Reference", "RV"],
+      [
+        "symbol",
+        "R_Potentiometer_1_1",
+        pin("1", 0, 3.81, 270),
+        pin("2", 3.81, 0, 180),
+        pin("3", 0, -3.81, 90),
+      ],
+    ]);
+    const pot =
+      "id: POT\nsummary: pot\npins:\n  1: { name: CCW }\n  2: { name: WIPER }\n  3: { name: CW }\n";
+    const r = validateProject({
+      project: { file: "partstyle-project.yaml", text: "name: t" },
+      circuits: [
+        {
+          file: "circuit/main.ckt",
+          text: [
+            "block main",
+            "part RV1 lib:POT",
+            "part R1 res(1k)",
+            "part R2 res(1k)",
+            "part R3 res(1k)",
+            "net A : RV1.CCW R1.1",
+            "net B : RV1.WIPER R2.1",
+            "net C : RV1.CW R3.1",
+            "net D : R1.2 R2.2 R3.2",
+          ].join("\n"),
+        },
+      ],
+      parts: [{ file: "parts/POT.yaml", text: pot, layer: "project" }],
+    });
+    const candidates = new Map([["lib:POT", [{ libId: "Device:R_Potentiometer", symbol }]]]);
+    const d = await prepareDrawing(r, { symbolCandidates: candidates });
+    const main = sheetOf(d, "main");
+    expect(d.issues.filter((i) => i.code.startsWith("layout."))).toEqual([]);
+    expect(checkConnectivity(main)).toEqual([]);
+    // Its origin on the grid: then every pin can run straight out to a grid point.
+    const onGrid = (v: number) => Math.abs(v / 2.54 - Math.round(v / 2.54)) < 1e-6;
+    const rv = main.units.find((u) => u.ref === "RV1") as PlacedUnit;
+    expect([onGrid(rv.at.x), onGrid(rv.at.y)]).toEqual([true, true]);
+    for (const p of rv.pins) {
+      const stub = main.wires.find(
+        (w) => (w.a.x === p.at.x && w.a.y === p.at.y) || (w.b.x === p.at.x && w.b.y === p.at.y),
+      );
+      expect(stub && (stub.a.x === stub.b.x || stub.a.y === stub.b.y)).toBe(true);
+    }
   });
 
   it("draws a block used twice once, for both instances", async () => {

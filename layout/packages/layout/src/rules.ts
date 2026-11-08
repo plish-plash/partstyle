@@ -310,7 +310,7 @@ export const RULES: RuleDef[] = [
     id: "label-fallback",
     title: "Net labels for tangled nets",
     description:
-      "A net is drawn with labels instead when its wires would cross too many others or wander far out of their way. Off: every net stays a wire.",
+      "A net is drawn with labels instead when its wires would cross too many others, wander far out of their way, or take one very long wire from pin to pin. Off: every net stays a wire.",
     group: "Wiring",
     enabled: true,
     params: [
@@ -333,6 +333,17 @@ export const RULES: RuleDef[] = [
         step: 2,
         default: 20,
         preference: "How far out of its way a net may run before it is drawn with labels.",
+      },
+      {
+        key: "lengthLimit",
+        label: "Length limit",
+        type: "number",
+        min: 10,
+        max: 120,
+        step: 5,
+        default: 55,
+        preference:
+          "How long one wire may run, bends included, before its net is drawn with labels. Higher keeps long wires.",
       },
     ],
   },

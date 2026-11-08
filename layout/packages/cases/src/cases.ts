@@ -573,6 +573,67 @@ export const CASES: TestCase[] = [
     },
   ),
   make(
+    "sheet-triangle-synth",
+    "Whole sheets",
+    "Triangle/square synth on one sheet",
+    "From the triangle-synth project: a quad op amp (four units and a power unit) as integrator, Schmitt trigger, buffer and VREF, two pots, and two jacks. The square output's divider sits far from its jack, which once took a wire right across the sheet.",
+    (c) => {
+      const amp = (ref: string) =>
+        c.ic(ref, "TL074", { left: ["+:input", null, "-:input"], right: [null, "OUT"] }, "opamp");
+      const pot = (ref: string, value: string) =>
+        c.ic(ref, value, {
+          top: ["CCW:passive"],
+          right: ["WIPER:passive"],
+          bottom: ["CW:passive"],
+        });
+      c.conn("J1", "12V", ["PIN:power_out", "SLEEVE:power_in", "SWITCH:power_in"]);
+      c.diode("D1", "schottky").cap("C1", "100n").cap("C2", "22u");
+      c.res("R1", "10k").res("R2", "10k").cap("C3", "10u");
+      amp("U1A");
+      amp("U1B");
+      amp("U1C");
+      amp("U1D");
+      c.ic("U1E", "TL074", { top: ["V+"], bottom: ["V-"] });
+      pot("RV1", "100k");
+      c.res("R3", "3.3k").cap("C5", "330n").res("R4", "10k").res("R5", "47k").res("R6", "4.7k");
+      pot("RV2", "10k");
+      c.cap("C6", "10u").res("R7", "470").res("R8", "100k");
+      c.conn("J2", "SJ1-3523N", ["T", "R", "S"]);
+      c.cap("C7", "10u").res("R9", "22k").res("R10", "3.3k");
+      c.conn("J3", "SJ1-3523N", ["T", "R", "S"]);
+      c.net("+12V_IN", "J1.PIN", "D1.1");
+      c.rail("+12V", "D1.2", "U1E.V+", "C1.1", "C2.1", "R1.1");
+      c.gnd(
+        "GND",
+        "J1.SLEEVE",
+        "J1.SWITCH",
+        "U1E.V-",
+        "C1.2",
+        "C2.2",
+        "R2.2",
+        "C3.2",
+        "R8.2",
+        "J2.S",
+        "R10.2",
+        "J3.S",
+      );
+      c.net("VREF_DIV", "R1.2", "R2.1", "C3.1", "U1D.+");
+      c.net("VREF", "U1D.OUT", "U1D.-", "U1A.+", "U1B.-", "RV2.CCW");
+      c.net("SQUARE", "U1B.OUT", "R5.2", "RV1.CW", "C7.1");
+      c.net("PITCH", "RV1.WIPER", "RV1.CCW", "R3.1");
+      c.net("INT_IN", "R3.2", "U1A.-", "C5.1");
+      c.net("TRI", "U1A.OUT", "C5.2", "R4.1", "R6.1");
+      c.net("SCHMITT_IN", "R4.2", "R5.1", "U1B.+");
+      c.net("VOL_TOP", "R6.2", "RV2.CW");
+      c.net("VOL", "RV2.WIPER", "U1C.+");
+      c.net("BUF_OUT", "U1C.OUT", "U1C.-", "C6.1");
+      c.net("OUT_AC", "C6.2", "R7.1");
+      c.net("LINE_OUT", "R7.2", "R8.1", "J2.T", "J2.R");
+      c.net("SQ_AC", "C7.2", "R9.1");
+      c.net("SQUARE_OUT", "R9.2", "R10.1", "J3.T", "J3.R");
+    },
+  ),
+  make(
     "sheet-disconnected-groups",
     "Whole sheets",
     "Disconnected groups on one sheet",

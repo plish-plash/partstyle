@@ -103,7 +103,7 @@ interface UnitInfo {
   path: string;
   libId: string;
   unit: number;
-  /** Where the layout's origin (the first pin) sits relative to the symbol's own. */
+  /** Where the layout's origin (see `gridOrigin`) sits relative to the symbol's own. */
   origin: Pt;
   /** Pins relative to the symbol's origin, in sheet directions, by pin number. */
   pins: Map<string, Pt & { open: boolean | undefined }>;
@@ -139,7 +139,79 @@ function gridBox(symbol: Rect, origin: Pt, pins: LayoutPin[]): Rect {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/** Describes a block to the layout engine, in grid units from each part's first pin. */
+interface SymbolPin {
+  /** Connection point relative to the symbol's origin, in sheet directions (y down), in mm. */
+  x: number;
+  y: number;
+  outward: Direction;
+}
+
+const EPS = 1e-3;
+const horizontal = (d: Direction) => d === 0 || d === 180;
+
+/**
+ * Where a unit's layout origin goes, relative to the symbol's origin: a grid point that lets as
+ * many pins as possible reach the grid by running straight out. Some KiCad symbols have pins off
+ * the 100 mil grid (`Device:R_Potentiometer`'s wiper). A pin pointing left or right can run out to
+ * a grid line if its y is on the grid, and one pointing up or down if its x is; each axis is
+ * chosen separately. With every pin on the grid this is the first pin, as it always was.
+ */
+function gridOrigin(pins: SymbolPin[]): Pt {
+  const first = pins[0] ?? { x: 0, y: 0 };
+  const frac = (v: number) => {
+    const f = v / GRID - Math.floor(v / GRID);
+    return f > 1 - EPS ? 0 : f;
+  };
+  /** The coordinate, nearest the first pin's, that puts the most of `values` on the grid. */
+  const pick = (values: number[], fallback: number): number => {
+    const groups: { f: number; v: number; n: number }[] = [];
+    for (const v of values) {
+      const g = groups.find((x) => Math.abs(x.f - frac(v)) < EPS);
+      if (g) g.n++;
+      else groups.push({ f: frac(v), v, n: 1 });
+    }
+    const most = Math.max(0, ...groups.map((g) => g.n));
+    const own = groups.find((g) => g.n === most && Math.abs(g.f - frac(fallback)) < EPS);
+    const best = own ?? groups.find((g) => g.n === most);
+    if (!best) return fallback;
+    return best.v + GRID * Math.round((fallback - best.v) / GRID);
+  };
+  return {
+    x: pick(
+      pins.filter((p) => !horizontal(p.outward)).map((p) => p.x),
+      first.x,
+    ),
+    y: pick(
+      pins.filter((p) => horizontal(p.outward)).map((p) => p.y),
+      first.y,
+    ),
+  };
+}
+
+/**
+ * The grid point a pin connects at, relative to the layout origin, in grid units: the pin itself
+ * when it is on the grid, else the next grid point straight out from it. A pin that cannot reach
+ * the grid that way takes the nearest grid line across, and `pinStub` draws the jog.
+ */
+function gridEnd(pin: SymbolPin, origin: Pt): GridPt {
+  const x = (pin.x - origin.x) / GRID;
+  const y = (pin.y - origin.y) / GRID;
+  const out = (v: number, up: boolean) => (up ? Math.ceil(v - EPS) : Math.floor(v + EPS));
+  if (horizontal(pin.outward)) return { x: out(x, pin.outward === 0), y: Math.round(y) };
+  return { x: Math.round(x), y: out(y, pin.outward === 270) };
+}
+
+/** Wires from a pin off the grid to the grid point layout connected it at: out, then across. */
+function pinStub(net: string, pin: Pt, end: Pt, outward: Direction) {
+  const corner = horizontal(outward) ? { x: end.x, y: pin.y } : { x: pin.x, y: end.y };
+  const same = (a: Pt, b: Pt) => Math.abs(a.x - b.x) < EPS && Math.abs(a.y - b.y) < EPS;
+  return [
+    { net, a: pin, b: corner },
+    { net, a: corner, b: end },
+  ].filter((w) => !same(w.a, w.b));
+}
+
+/** Describes a block to the layout engine, in grid units from each unit's grid origin. */
 function toLayoutInput(
   block: CktFile,
   plan: DrawingPlan,
@@ -178,8 +250,12 @@ function toLayoutInput(
     if (!part || !symbol) continue;
     for (const [index, libUnit] of symbol.units.entries()) {
       const visible = [...libUnit.pins].filter(([, a]) => !a.hidden);
-      const first = visible[0]?.[1] ?? { x: 0, y: 0 };
-      const origin = { x: first.x, y: -first.y };
+      const local = (a: (typeof visible)[number][1]): SymbolPin => ({
+        x: a.x,
+        y: -a.y,
+        outward: a.outward as Direction,
+      });
+      const origin = gridOrigin(visible.map(([, a]) => local(a)));
       const id = `${decl.ref}:${libUnit.unit}`;
       const pins: LayoutPin[] = [];
       const info: UnitInfo = {
@@ -202,8 +278,7 @@ function toLayoutInput(
         pins.push({
           id: number,
           name: own?.name ?? number,
-          x: Math.round((a.x - origin.x) / GRID),
-          y: Math.round((-a.y - origin.y) / GRID),
+          ...gridEnd(local(a), origin),
           outward: a.outward as Direction,
           type: pinType(own?.type ?? a.type),
           ...(net !== undefined && { net }),
@@ -321,6 +396,7 @@ function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan):
   const units: PlacedUnit[] = [];
   const sheets: PlacedSheet[] = [];
   const noConnects: Pt[] = [];
+  const stubs: SheetLayout["wires"] = [];
   for (const part of result.parts) {
     const sheet = t.sheets.get(part.id);
     if (sheet) {
@@ -349,6 +425,7 @@ function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan):
       const placed = { x: round(at.x + o.x), y: round(at.y + o.y) };
       // A pin left open by mistake gets no flag, so that KiCad's ERC reports it.
       if (p.net === undefined && local.open !== false) noConnects.push(placed);
+      if (p.net !== undefined) stubs.push(...pinStub(p.net, placed, toMm(p.at), p.outward));
       return {
         number: p.id,
         at: placed,
@@ -444,7 +521,7 @@ function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan):
     sheets,
     labels,
     power,
-    wires: result.wires.map((w) => ({ net: w.net, a: toMm(w.a), b: toMm(w.b) })),
+    wires: [...result.wires.map((w) => ({ net: w.net, a: toMm(w.a), b: toMm(w.b) })), ...stubs],
     junctions: result.junctions.map((j) => ({ net: j.net, at: toMm(j.at) })),
     noConnects,
   };

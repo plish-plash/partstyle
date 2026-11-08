@@ -597,6 +597,51 @@ class Router {
   }
 }
 
+/**
+ * The longest single wire in a net, bends included: the longest stretch between pins, branches
+ * and loose ends, so a wire that wanders across the sheet counts in full however it turns.
+ */
+export function longestWire(wires: Wire[], terminals: Pt[]): number {
+  // Unit steps between grid points, so that a branch partway along a wire is seen.
+  const links = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    if (!links.has(a)) links.set(a, new Set());
+    links.get(a)?.add(b);
+  };
+  for (const w of wires) {
+    const n = manhattan(w.a, w.b);
+    const sx = Math.sign(w.b.x - w.a.x);
+    const sy = Math.sign(w.b.y - w.a.y);
+    for (let i = 0; i < n; i++) {
+      const a = pointKey({ x: w.a.x + sx * i, y: w.a.y + sy * i });
+      const b = pointKey({ x: w.a.x + sx * (i + 1), y: w.a.y + sy * (i + 1) });
+      link(a, b);
+      link(b, a);
+    }
+  }
+  const pins = new Set(terminals.map(pointKey));
+  const stop = (k: string) => pins.has(k) || links.get(k)?.size !== 2;
+  const seen = new Set<string>();
+  let best = 0;
+  for (const [start, next] of links) {
+    if (!stop(start)) continue;
+    for (const first of next) {
+      if (seen.has(`${start}>${first}`)) continue;
+      let [prev, at, length] = [start, first, 1];
+      seen.add(`${prev}>${at}`);
+      while (!stop(at)) {
+        const onward = [...(links.get(at) as Set<string>)].find((k) => k !== prev) as string;
+        [prev, at] = [at, onward];
+        seen.add(`${prev}>${at}`);
+        length++;
+      }
+      seen.add(`${at}>${prev}`);
+      best = Math.max(best, length);
+    }
+  }
+  return best;
+}
+
 /** Crossings of different nets, counted per net. */
 export function crossingsByNet(wires: Wire[], exempt: (net: string) => boolean) {
   const counts = new Map<string, number>();
@@ -674,6 +719,7 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
   if (ctx.rules.on("label-fallback")) {
     const limit = ctx.rules.num("label-fallback", "crossingLimit");
     const detourLimit = ctx.rules.num("label-fallback", "detourLimit");
+    const lengthLimit = ctx.rules.num("label-fallback", "lengthLimit");
     /** How much further a net's wires run than the box around its pins calls for. */
     const detour = (n: RouteRequest["nets"][number]) => {
       const length = r.of(n.net).reduce((s, w) => s + manhattan(w.a, w.b), 0);
@@ -739,22 +785,25 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
           return c >= limit && !done.has(net) && ctx.role(net) === "signal" && !isRailWire(net);
         })
         .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
-      const wandering = req.nets.find(
-        (n) =>
-          !done.has(n.net) &&
-          ctx.role(n.net) === "signal" &&
-          !isRailWire(n.net) &&
-          detour(n) > detourLimit,
-      );
+      const open = (n: RouteRequest["nets"][number]) =>
+        !done.has(n.net) && ctx.role(n.net) === "signal" && !isRailWire(n.net);
+      const wandering = req.nets.find((n) => open(n) && detour(n) > detourLimit);
+      const longest = (n: RouteRequest["nets"][number]) => longestWire(r.of(n.net), n.terminals);
+      const long = req.nets.find((n) => open(n) && longest(n) > lengthLimit);
       const next =
-        [...failed.keys()].find((net) => !done.has(net)) ?? candidates[0]?.[0] ?? wandering?.net;
+        [...failed.keys()].find((net) => !done.has(net)) ??
+        candidates[0]?.[0] ??
+        wandering?.net ??
+        long?.net;
       if (next === undefined) break;
       const c = counts.get(next) ?? 0;
       const why = failed.has(next)
         ? "no route found"
         : c >= limit
           ? `would cross ${c} wires`
-          : "would take a long way round";
+          : next === wandering?.net
+            ? "would take a long way round"
+            : `would take a wire ${longest(long as RouteRequest["nets"][number])} units long`;
       convert(next, why);
     }
   }
@@ -780,28 +829,48 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
 }
 
 /**
- * Splits a net for labelling. Each anchor pin keeps a piece of its own; two-terminal parts stay
- * with the nearest anchor pin.
+ * Splits a net for labelling. Each anchor pin keeps a piece of its own, except that neighbouring
+ * pins (one step apart) share one. A two-terminal part's pin joins the nearest pin of the net, so
+ * parts that sit together far from any anchor, such as a divider, form a piece of their own
+ * instead of being wired back to a distant anchor.
  */
 function splitPieces(pins: PlacedPin[], anchored: Set<string>): PlacedPin[][] {
   const isAnchorPin = (p: PlacedPin) => anchored.has(pointKey(p.at));
-  const leaders = pins.filter(isAnchorPin);
-  if (leaders.length <= 1) return [pins];
-  const pieces = leaders.map((p) => [p]);
-  for (const p of pins) {
-    if (isAnchorPin(p)) continue;
-    let best = 0;
-    let dist = Number.POSITIVE_INFINITY;
-    leaders.forEach((l, i) => {
-      const d = manhattan(l.at, p.at);
-      if (d < dist) {
-        dist = d;
-        best = i;
-      }
+  if (pins.filter(isAnchorPin).length <= 1) return [pins];
+  const root = pins.map((_, i) => i);
+  const find = (i: number): number => {
+    while (root[i] !== i) i = root[i] as number;
+    return i;
+  };
+  const join = (i: number, j: number) => {
+    root[find(i)] = find(j);
+  };
+  pins.forEach((p, i) => {
+    if (isAnchorPin(p)) {
+      pins.forEach((q, j) => {
+        if (j < i && isAnchorPin(q) && manhattan(p.at, q.at) === 1) join(i, j);
+      });
+      return;
+    }
+    // Nearest first; an anchor pin wins a tie, then declaration order.
+    let best = -1;
+    pins.forEach((q, j) => {
+      if (j === i) return;
+      const d = manhattan(p.at, q.at);
+      const b = pins[best];
+      const bd = b ? manhattan(p.at, b.at) : Number.POSITIVE_INFINITY;
+      if (d < bd || (d === bd && b && isAnchorPin(q) && !isAnchorPin(b))) best = j;
     });
-    pieces[best]?.push(p);
-  }
-  return pieces;
+    if (best >= 0) join(i, best);
+  });
+  const pieces = new Map<number, PlacedPin[]>();
+  pins.forEach((p, i) => {
+    pieces.set(find(i), [...(pieces.get(find(i)) ?? []), p]);
+  });
+  // Anchor-led pieces first, in pin order, as before.
+  return [...pieces.values()].sort(
+    (a, b) => Number(b.some(isAnchorPin)) - Number(a.some(isAnchorPin)),
+  );
 }
 
 /**
