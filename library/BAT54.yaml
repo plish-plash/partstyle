@@ -1,0 +1,42 @@
+id: BAT54
+summary: Single Schottky diode 30 V 200 mA, VF 320 mV at 1 mA / 800 mV at 100
+  mA, 10 pF, SOT-23
+manufacturer: onsemi
+preferred_mpn: BAT54LT1G
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Device:D_Schottky
+generic: diode(schottky, SOT-23)
+pins:
+  1: { name: A }
+  2: { name: NC, type: nc }
+  3: { name: K }
+ratings:
+  vr: 30V
+  v_br_min: 30V (IR 10 uA)
+  if: 200mA (DC)
+  ifrm: 300mA
+  ifsm: 600mA (t < 1 s)
+  pd: 200mW (TA 25 C)
+  vf:
+    {
+      at_0.1mA: "0.22 typ / 0.24 max V",
+      at_1mA: "0.29 / 0.32 V",
+      at_10mA: "0.35 / 0.40 V",
+      at_30mA: "0.41 / 0.50 V",
+      at_100mA: "0.52 / 0.80 V",
+    }
+  ir: { typ: 0.5uA, max: 2uA, at: 25V }
+  ct: { typ: 7.6pF, max: 10pF, at: "1 V, 1 MHz" }
+  trr_max: 5ns
+  tj: { min: -55C, max: 125C }
+temp_c: [-55, 125]
+notes:
+  - Pin 1 anode, pin 3 cathode, pin 2 not connected.
+  - SBAT54LT1G is the AEC-Q101 version. Family - BAT54ALT1G (common anode),
+    BAT54CLT1G (common cathode), BAT54SLT1G (series).
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.onsemi.com/pdf/datasheet/bat54lt1-d.pdf
+  extracted_by: ai
+  verified_by: human

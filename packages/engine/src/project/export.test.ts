@@ -59,8 +59,8 @@ describe("kicadExport", () => {
     expect(r.text).toContain(
       "KiCad symbols: Amplifier_Operational:MCP6002-xSN, Connector:Barrel_Jack_Switch, " +
         "Connector_Generic:Conn_01x03, Connector_Generic:Conn_02x03_Odd_Even, Device:C, " +
-        "Device:D_TVS, Device:LED, Device:R, Diode:1N5819, MCU_Microchip_ATmega:ATmega328P-A, " +
-        "Regulator_Linear:L7805, Regulator_Linear:MCP1700x-330xxTT",
+        "Device:D_Schottky, Device:D_TVS, Device:LED, Device:R, " +
+        "MCU_Microchip_ATmega:ATmega328P-A, Regulator_Linear:AP2112K-3.3, Regulator_Linear:L7805",
     );
     expect(r.text).not.toContain("generated symbol");
     // kicad-cli adds its own bench-sensor.kicad_prl (local settings) when it runs ERC.

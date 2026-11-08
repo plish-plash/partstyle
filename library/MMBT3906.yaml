@@ -1,0 +1,41 @@
+id: MMBT3906
+summary: PNP general-purpose BJT, -40 V VCEO, -200 mA, hFE 100-300 at 10 mA, fT
+  250 MHz, SOT-23
+manufacturer: onsemi
+preferred_mpn: MMBT3906LT1G
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Transistor_BJT:MMBT3906
+pins:
+  1: { name: B, type: input }
+  2: { name: E, type: passive }
+  3: { name: C, type: passive }
+ratings:
+  vceo: -40V
+  vcbo: -40V
+  vebo: -5V
+  ic: -200mA
+  icm: -800mA
+  pd: { fr5: 225mW, alumina: 300mW }
+  hfe: { at_0.1mA: 60 min, at_1mA: 80 min, at_10mA: "100-300", at_50mA: 60 min, at_100mA: 30 min }
+  vce_sat_max: { at_10mA: -0.25V, at_50mA: -0.4V }
+  vbe_sat: { at_10mA: "-0.65 to -0.85 V", at_50mA: -0.95V max }
+  ft_min: 250MHz
+  cobo_max: 4.5pF
+  cibo_max: 10pF
+  noise_figure_max: 4dB
+  icex_max: -50nA
+  tj: { min: -55C, max: 150C }
+temp_c: [-55, 150]
+notes:
+  - Complement of MMBT3904.
+  - Switching max - td 35 ns, tr 35 ns, ts 225 ns, tf 75 ns.
+  - SMMBT3906LT1G is the AEC-Q101 automotive version.
+sourcing: { lifecycle: active, lcsc: C53444 }
+provenance:
+  datasheet: https://www.onsemi.com/pdf/datasheet/mmbt3906lt1-d.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { rth_ja_fr5: 556C/W, rth_ja_alumina: 417C/W }
+marking: 2A
+h_parameters: { hie: "2-12 kohm", hfe: "100-400", hoe: "3-60 umho", hre: "0.1-10 x 10^-4" }

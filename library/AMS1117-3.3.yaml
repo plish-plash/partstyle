@@ -1,0 +1,49 @@
+id: AMS1117-3.3
+summary: 3.3 V 1 A low-dropout linear regulator, 1.3 V dropout, 15 V max in
+  (typ. versions), needs 10 uF+ output cap, SOT-223
+preferred_mpn: AMS1117-3.3
+package: SOT-223-3 (tab = VOUT)
+footprint: Package_TO_SOT_SMD:SOT-223-3_TabPin2
+kicad_symbol: Regulator_Linear:AMS1117-3.3
+pins:
+  1: { name: GND, type: power_in }
+  2: { name: VO, type: power_out, note: "Also the tab" }
+  3: { name: VI, type: power_in, vmax: 15V }
+ratings:
+  vout: { min: 3.234V, typ: 3.3V, max: 3.366V }
+  iout_max: 1A
+  dropout: { typ: 1.3V, max: 1.4V, at: 1A }
+  current_limit_min: 1A
+  quiescent_current: { typ: 3mA, max: 10mA }
+  line_regulation: { typ: 0.15%, max: 0.3% }
+  load_regulation: { typ: 0.2%, max: 0.5% }
+  ripple_rejection: { min: 60dB, typ: 70dB, at: 120 Hz }
+  vin_abs_max: "15 V (AMS original); some second-source datasheets state 30 V"
+  pd_max_sot223: 600mW
+  tj: { min: -40C, max: 125C }
+  thermal_shutdown: 150C
+temp_c: [-40, 125]
+requirements:
+  - text: Output capacitor at least 10 uF tantalum (or 22 uF), ESR at most 0.5 ohm,
+      within 4 cm of VOUT
+    cap: { from: VO, to: GND, min: 10u }
+  - text: 10 uF on the input
+    cap: { from: VI, to: GND, min: 10u }
+  - Keep VIN at least ~1.3 V above 3.3 V at full load (4.6 V+ for 1 A)
+notes:
+  - Stability depends on output capacitor ESR; very low ESR MLCC-only outputs
+    can oscillate on some vendors' parts - add a tantalum or a small series
+    resistance if needed.
+  - Made by many vendors (AMS, SLKOR, UMW, etc.) with slightly different specs;
+    check the chosen vendor's datasheet.
+  - Dissipation - (VIN-3.3 V) x I; at 5 V in, 600 mW limit allows only ~350 mA
+    continuous in SOT-223 without extra copper (theta_ja 150 C/W).
+  - Fixed versions need no minimum load; ADJ version needs 10 mA via the divider.
+sourcing: { lifecycle: active, lcsc: C6186 }
+provenance:
+  datasheet: https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/8122/AMS11173.3SOT223.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { theta_ja: 150C/W, theta_jc: 15C/W }
+noise: 0.003% of VOUT rms (10 Hz-10 kHz)
+long_term_stability: 0.3% typ / 1000 h at 125 C

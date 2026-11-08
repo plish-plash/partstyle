@@ -1,0 +1,59 @@
+id: LM358
+summary: Dual general-purpose op amp, 3-32 V single supply, inputs include
+  ground, 0.7 MHz GBW, 0.3 V/us, SOIC-8
+manufacturer: Texas Instruments
+preferred_mpn: LM358DR
+package: SOIC-8 3.9 mm
+footprint: Package_SO:SOIC-8_3.9x4.9mm_P1.27mm
+kicad_symbol: Amplifier_Operational:LM358
+pins:
+  1: { name: 1OUT, type: output }
+  2:
+    {
+      name: 1IN-,
+      type: input,
+      unused: required,
+      note: "Unused section - wire as a follower with + input at mid-rail or ground",
+    }
+  3: { name: 1IN+, type: input, unused: required }
+  4: { name: GND, type: power_in, note: "V- (GND for single supply)" }
+  5: { name: 2IN+, type: input, unused: required }
+  6: { name: 2IN-, type: input, unused: required }
+  7: { name: 2OUT, type: output }
+  8: { name: VCC, type: power_in, vmax: 32V }
+ratings:
+  vs: { min: 3V, max: 32V, abs_max: 32V, dual: "+/-1.5 to +/-16 V" }
+  vid_max: 32V (differential input)
+  vin: { min: -0.3V, max: 32V }
+  vcm_range: "0 V to VCC - 1.5 V (VCC - 2 V over temperature)"
+  vos: { typ: 3mV, max: 7mV }
+  iib: { typ: 20nA, max: 250nA }
+  iio: { typ: 2nA, max: 50nA }
+  avol_typ: 100V/mV
+  gbw_typ: 0.7MHz
+  slew_rate_typ: 0.3V/us
+  icc: { typ: 0.7mA, max: 1.2mA, note: "both amplifiers, VCC 5 V, no load" }
+  output_swing: "~0 V to VCC - 1.5 V; not rail-to-rail high"
+  isc_typ: 40mA (source, to GND)
+temp_c: [0, 70]
+requirements:
+  - text: 100 nF decoupling on VCC
+    cap: { from: VCC, to: GND, min: 100n }
+  - Tie unused amplifier inputs to a defined level (follower to ground or a
+    divider) so the output does not rail and draw extra current
+notes:
+  - Inputs work down to ground, so it suits single-supply sensing; output cannot
+    reach VCC.
+  - Class-AB output stage shows crossover distortion at light loads; a pull-down
+    from output to GND reduces it.
+  - LM358B (3-36 V, 1.2 MHz, better offset) and LM2904 (-40..125 C) are
+    pin-compatible upgrades.
+  - Inputs can tolerate voltages up to 32 V even with VCC lower, but going below
+    -0.3 V forward-biases input clamps (phase reversal risk).
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.ti.com/lit/ds/symlink/lm358.pdf
+  extracted_by: ai
+  verified_by: human
+second_sources: LM358 is made by TI, onsemi, ST, Diodes Inc and many Chinese
+  vendors; specs are broadly equivalent

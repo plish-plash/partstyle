@@ -1,0 +1,30 @@
+id: SS14
+summary: Schottky rectifier 40 V 1 A, VF 0.5 V at 1 A, 40 A surge, SMA (DO-214AC)
+preferred_mpn: SS14
+package: SMA (DO-214AC)
+footprint: Diode_SMD:D_SMA
+kicad_symbol: Device:D_Schottky
+generic: diode(schottky, SMA)
+pins:
+  1: { name: K }
+  2: { name: A }
+ratings:
+  vrrm: 40V
+  if_avg: 1A
+  vf_max: 0.5V (1 A)
+  ir_max: 0.2mA (40 V, 25 C)
+  ifsm: 40A (8.3 ms half-sine; some vendors 30 A)
+  tj: { min: -65C, max: 125C }
+temp_c: [-65, 125]
+notes:
+  - Made by many vendors (onsemi/Fairchild, Vishay SS14-E3, MDD, Slkor, KUU...);
+    leakage and surge ratings differ - reverse leakage rises steeply with
+    temperature (mA range at 100 C).
+  - Typical uses - USB VBUS OR-ing / reverse protection, buck catch diode, relay
+    flyback.
+  - Equivalent to 1N5819 in SMA; marking SS14 or S4.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.onsemi.com/pdf/datasheet/ss19-d.pdf
+  extracted_by: ai
+  verified_by: human

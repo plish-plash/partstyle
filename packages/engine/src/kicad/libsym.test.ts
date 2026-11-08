@@ -281,7 +281,7 @@ describe("export with KiCad symbols", () => {
           },
         ],
       ],
-      ["lib:1N5819", [{ libId: "Diode:NOPE", explicit: false }]],
+      ["lib:SS14", [{ libId: "Diode:NOPE", explicit: false }]],
     ]);
     const x = await exportKicad(result, { symbolCandidates: candidates });
     expect(x.symbols.find((s) => s.key === "lib:L7805CV")).toMatchObject({
@@ -289,7 +289,7 @@ describe("export with KiCad symbols", () => {
       generated: true,
       rejected: [expect.stringMatching(/^L:DUAL: pin numbers differ/)],
     });
-    expect(x.symbols.find((s) => s.key === "lib:1N5819")?.rejected).toEqual([
+    expect(x.symbols.find((s) => s.key === "lib:SS14")?.rejected).toEqual([
       "Diode:NOPE: not found in the KiCad libraries",
     ]);
     expect(x.issues.map((i) => i.code)).toContain("kicad.symbol-fallback");

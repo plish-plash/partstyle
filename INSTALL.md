@@ -23,8 +23,8 @@ The extension is not signed, so Claude Desktop shows it as unverified when insta
 ## Seed part library
 
 Optional: `partstyle-library.zip` on the releases page holds the starter part records from this
-repository's `library/` (20 records: regulators, an MCU, an op-amp, diodes, connectors,
-passives and LEDs), released under CC0 1.0 (public domain; see `library/LICENSE`). Unzip it
+repository's `library/` (22 records: MCUs, flash, regulators, op-amps, transistors and
+MOSFETs, diodes, ESD protection and connectors), released under CC0 1.0 (public domain; see `library/LICENSE`). Unzip it
 in the projects folder (`Documents/partstyle` by default): it unpacks as `library/`, the shared
 library every project the MCP server opens uses (and the CLI too, once the server has run).
 Records added later with `part_put` go there too. To use a library elsewhere, add its folder

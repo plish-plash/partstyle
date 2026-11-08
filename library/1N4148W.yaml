@@ -1,0 +1,33 @@
+id: 1N4148W
+summary: Fast switching signal diode, 75 V VR (100 V VRRM), 150 mA avg, 4 ns
+  trr, 2 pF, SOD-123
+manufacturer: Vishay
+preferred_mpn: 1N4148W-E3-18
+package: SOD-123
+footprint: Diode_SMD:D_SOD-123
+kicad_symbol: Device:D
+generic: diode(signal, SOD-123)
+pins:
+  1: { name: K }
+  2: { name: A }
+ratings:
+  vr: 75V
+  vrrm: 100V
+  if_avg: 150mA
+  ifsm: 500mA (t < 1 s)
+  ptot: 400mW
+  trr_max: 4ns (IF 10 mA, VR 6 V, RL 100 ohm)
+  ct_max: 2pF (VR 0 V, 1 MHz)
+  tj: { min: -65C, max: 150C }
+temp_c: [-65, 150]
+notes:
+  - Cathode band marks pin 1. Marking code A2 (Vishay); W1/T4 on other vendors.
+  - Forward voltage and current ratings vary by vendor (Diodes Inc and evvo list
+    300 mA); check the chosen vendor's datasheet.
+  - Same die as 1N4148 (DO-35), LL4148 (MiniMELF); 1N4148WS is the SOD-323
+    version.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.vishay.com/docs/85748/1n4148w.pdf
+  extracted_by: ai
+  verified_by: human

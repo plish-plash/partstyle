@@ -1,0 +1,50 @@
+id: AO3401A
+summary: P-channel 30 V 4.3 A trench MOSFET, RDS(on) 44 mohm at -10 V / 55 mohm
+  at -4.5 V / 80 mohm at -2.5 V, SOT-23
+manufacturer: Alpha & Omega Semiconductor
+preferred_mpn: AO3401A
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Device:Q_PMOS
+pins:
+  1: { name: G, type: input, vmax: 12V, note: "VGS limit is +/-12 V relative to source" }
+  2: { name: S, type: passive }
+  3: { name: D, type: passive }
+ratings:
+  vds_max: -30V
+  vgs_max: +/-12V
+  id: { ta_25c: -4.3A, ta_70c: -3.8A, note: "t <= 10 s rating" }
+  idm: -25A
+  pd: { ta_25c: 1.4W, ta_70c: 0.9W }
+  vgs_th: { min: -0.6V, typ: -1V, max: -1.3V }
+  rds_on:
+    {
+      vgs_10v: "36 mohm typ / 44 mohm max at -4.3 A",
+      vgs_4v5: "44 typ / 55 max mohm at -3.5 A",
+      vgs_2v5: "62 typ / 80 max mohm at -2.5 A",
+    }
+  idss_max: -1uA (-5 uA at 55 C)
+  igss_max: 100nA
+  ciss: { typ: 933pF, max: 1200pF }
+  coss_typ: 108pF
+  crss_typ: 81pF
+  qg: { typ: 9.3nC, max: 12.2nC, at: -4.5 V }
+  rg_typ: 6ohm
+  body_diode: { vsd_typ: -0.75V, vsd_max: -1V, is_max: -2A, trr_typ: 21ns }
+  tj: { min: -55C, max: 150C }
+temp_c: [-55, 150]
+requirements:
+  - Keep |VGS| at or below 12 V - when switching rails above 12 V, clamp the
+    gate (zener) or use a divider
+notes:
+  - Typical use is a high-side load switch or reverse-polarity protection on
+    3.3-5 V rails; fully on with 2.5 V gate drive.
+  - Current rating depends on board copper (1 in^2, 2 oz); steady-state RthJA is
+    125 C/W max.
+sourcing: { lifecycle: active, lcsc: C15127 }
+provenance:
+  datasheet: https://www.aosmd.com/res/datasheets/AO3401A.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { rth_ja_10s: 90C/W max, rth_ja_steady: 125C/W max, rth_jl: 80C/W max }
+switching: { td_on: 5.2ns, tr: 6.8ns, td_off: 42ns, tf: 15ns }

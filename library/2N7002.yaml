@@ -1,0 +1,62 @@
+id: 2N7002
+summary: N-channel 60 V 115 mA small-signal MOSFET, RDS(on) 7.5 ohm max at 10 V
+  and 5 V, VGS(th) 1-2.5 V, SOT-23
+manufacturer: onsemi
+preferred_mpn: 2N7002
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Transistor_FET:2N7002
+pins:
+  1:
+    {
+      name: G,
+      type: input,
+      vmax: 20V,
+      note: "+/-20 V continuous, +/-40 V non-repetitive (tp < 50 ms)",
+    }
+  2: { name: S, type: passive }
+  3: { name: D, type: passive, vmax: 60V }
+ratings:
+  vdss: 60V
+  vdgr: 60V (RGS >= 1 Mohm)
+  vgss: { continuous: 20V, non_repetitive: 40V }
+  id_continuous: 115mA
+  id_pulsed: 800mA
+  pd: 200mW (derate 1.6 mW/C above 25 C)
+  vgs_th: { min: 1V, typ: 2.1V, max: 2.5V, at: "VDS = VGS, 250 uA" }
+  rds_on:
+    {
+      vgs_10v_500mA: "1.2 ohm typ / 7.5 ohm max (13.5 ohm max at 100 C)",
+      vgs_5v_50mA: "1.7 ohm typ / 7.5 ohm max (13.5 ohm max at 100 C)",
+    }
+  vds_on: { vgs_10v_500mA: "0.6 typ / 3.75 max V", vgs_5v_50mA: "0.09 typ / 1.5 max V" }
+  idss_max: 1uA (60 V; 0.5 mA at 125 C)
+  igss_max: 100nA (+/-20 V)
+  gfs: { min: 80mS, typ: 320mS }
+  ciss: { typ: 20pF, max: 50pF }
+  coss: { typ: 11pF, max: 25pF }
+  crss: { typ: 4pF, max: 5pF }
+  t_on_max: 20ns
+  t_off_max: 20ns
+  body_diode: { is_max: 115mA, ism: 0.8A, vsd_typ: 0.88V, vsd_max: 1.5V }
+  tj: { min: -65C, max: 150C }
+temp_c: [-65, 150]
+requirements:
+  - Gate is unprotected - treat as ESD sensitive; a series gate resistor and
+    gate-source pull-down (100k) are customary
+notes:
+  - RDS(on) is specified at 5 V gate drive (50 mA) but not at 3.3 V; at 3.3 V
+    logic it only switches light loads (LEDs, level shifting). For heavier loads
+    from 3.3 V use AO3400A.
+  - Classic bidirectional I2C/UART level shifter (gate to low-side rail, source
+    to low side, drain to high side, pull-ups both sides).
+  - Same family datasheet covers 2N7000 (TO-92) and NDS7002A (280 mA, 2 ohm);
+    other vendors' 2N7002 parts differ (Nexperia 300 mA / 5 ohm).
+  - Complement is BSS84.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.onsemi.com/pdf/datasheet/nds7002a-d.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { rth_ja: 625C/W }
+marking: "702"

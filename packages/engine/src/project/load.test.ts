@@ -15,9 +15,11 @@ describe("loadProject", () => {
       "circuit/power.ckt",
       "circuit/sensor_afe.ckt",
     ]);
-    expect(
-      source.parts.every((p) => p.layer === "global" && p.file.startsWith("../../library/")),
-    ).toBe(true);
+    // Its own records in parts/, and the rest from the seed library.
+    const files = (layer: string) =>
+      source.parts.filter((p) => p.layer === layer).map((p) => p.file.replace(/[^/]*$/, ""));
+    expect(new Set(files("project"))).toEqual(new Set(["parts/"]));
+    expect(new Set(files("global"))).toEqual(new Set(["../../library/"]));
     expect(source.project.file).toBe("partstyle-project.yaml");
 
     const result = validateProject(source);

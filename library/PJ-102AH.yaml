@@ -1,0 +1,44 @@
+id: PJ-102AH
+summary: DC barrel power jack, 2.0 mm center pin (5.5 mm plug), 24 V 5 A,
+  right-angle through-hole with switch contact
+manufacturer: Same Sky (CUI Devices)
+preferred_mpn: PJ-102AH
+package: Right-angle THT barrel jack, 3 terminals
+footprint: Connector_BarrelJack:BarrelJack_CUI_PJ-102AH_Horizontal
+kicad_symbol: Connector:Barrel_Jack_Switch
+pins:
+  1: { name: PIN, note: "Center pin (usually +)" }
+  2: { name: SLEEVE, note: "Sleeve (usually GND)" }
+  3:
+    {
+      name: SWITCH,
+      unused: open,
+      note: "Switch contact - touches the sleeve with no plug inserted, opens when a
+        plug is in",
+    }
+ratings:
+  voltage: 24V DC
+  current: 5A
+  center_pin_diameter: 2.0mm
+  plug: 5.5 mm OD x 2.0 mm ID (also accepts most 2.1 mm plugs loosely)
+  contact_resistance: 30mohm
+  insulation_resistance: 100Mohm at 500 V DC
+  dielectric_withstand: 500V AC, 1 min
+  life: 5000 cycles
+  insertion_force: 0.3-3 kg
+  plug_insertion_depth: 9.5mm
+temp_c: [-25, 85]
+requirements:
+  - Add reverse-polarity protection (Schottky such as SS14, or a P-MOSFET) -
+    wall adapters vary in polarity
+notes:
+  - Terminal-to-function mapping follows KiCad's Barrel_Jack_Switch symbol and
+    PJ-102AH footprint (pin 1 square pad at the rear = center pin). I couldn't
+    read the Same Sky drawing; check it before building.
+  - PJ-102A (non-H) is a different, lower-rated part (16 V, 2.5 A).
+  - PBT housing UL94V-0; wave solder 255-265 C for 5 s.
+sourcing: { lifecycle: active, lcsc: C3096093 }
+provenance:
+  datasheet: https://www.sameskydevices.com/product/resource/pj-102ah.pdf
+  extracted_by: ai
+  verified_by: human

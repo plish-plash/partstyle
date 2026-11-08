@@ -1,0 +1,48 @@
+id: USBLC6-2SC6
+summary: 2-line + VBUS ESD protection for USB 2.0, 3.5 pF max, 6 V breakdown,
+  IEC 61000-4-2 level 4 (15 kV air/8 kV contact), SOT-23-6
+manufacturer: STMicroelectronics
+preferred_mpn: USBLC6-2SC6
+package: SOT-23-6
+footprint: Package_TO_SOT_SMD:SOT-23-6
+kicad_symbol: Power_Protection:USBLC6-2SC6
+pins:
+  1:
+    {
+      name: I/O1,
+      note: "Line 1 (connect pins 1 and 6 in the line path: 1 = connector side, 6 =
+        chip side)",
+    }
+  2: { name: GND, type: power_in }
+  3: { name: I/O2, note: "Line 2 (pins 3 and 4 pass through)" }
+  4: { name: I/O2 }
+  5: { name: VBUS, type: passive, vmax: 6V, note: "Rail clamp; tie to VBUS/VCC with 100 nF to GND" }
+  6: { name: I/O1 }
+ratings:
+  vrm: 5.25V
+  vbr_min: 6V (VBUS to GND, IR 1 mA)
+  leakage: { typ: 10nA, max: 150nA, at: 5.25V }
+  vf_max: 1.1V (10 mA)
+  vcl: { max_1A: 12V, max_5A: 17V, waveform: 8/20 us }
+  c_io_gnd: { typ: 2.5pF, max: 3.5pF }
+  c_io_io: { typ: 1.2pF, max: 1.7pF }
+  esd_iec61000_4_2: { air: 15kV, contact: 8kV }
+  esd_mil883: 25kV
+temp_c: [-40, 125]
+requirements:
+  - text: 100 nF from VBUS pin to GND, close to the device
+    cap: { from: VBUS, to: GND, min: 100n }
+  - Place as close as possible to the connector; keep connector-to-I/O, VBUS and
+    GND traces short to minimise parasitic inductance
+notes:
+  - Rail-to-rail topology - positive surges clamp through the internal 6 V Zener
+    on VBUS, negative through the low-side diodes.
+  - Suitable to 480 Mbit/s; also usable on Ethernet 10/100, SIM, video lines.
+  - Junction range -40..150 C (operating junction); ambient spec not separate.
+sourcing: { lifecycle: active, lcsc: C7519 }
+provenance:
+  datasheet: https://www.st.com/resource/en/datasheet/usblc6-2.pdf
+  extracted_by: ai
+  verified_by: human
+marking: UL26
+datasheet_ref: DS4260 Rev 7

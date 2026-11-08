@@ -1,0 +1,60 @@
+id: AP2112K-3.3
+summary: 3.3 V 600 mA CMOS LDO with enable, 250 mV dropout, 55 uA Iq, VIN 2.5-6
+  V, SOT-23-5
+manufacturer: Diodes Incorporated
+preferred_mpn: AP2112K-3.3TRG1
+package: SOT-23-5 (SOT25)
+footprint: Package_TO_SOT_SMD:SOT-23-5
+kicad_symbol: Regulator_Linear:AP2112K-3.3
+pins:
+  1: { name: VIN, type: power_in, vmax: 6.5V }
+  2: { name: GND, type: power_in }
+  3:
+    {
+      name: EN,
+      type: input,
+      vmax: 6.5V,
+      unused: required,
+      note: "High = on (>1.5 V), low = off (<0.4 V); 3 Mohm internal pull-down, tie to
+        VIN for always-on",
+    }
+  4: { name: NC, type: nc }
+  5: { name: VOUT, type: power_out }
+ratings:
+  vin: { min: 2.5V, max: 6.0V, abs_max: 6.5V }
+  vout: 3.3V
+  vout_accuracy: 1.5%
+  iout_max: 600mA
+  dropout: { typ: 250mV, max: 400mV, at: 600mA }
+  iq: { typ: 55uA, max: 80uA }
+  shutdown_current: { typ: 0.01uA, max: 1uA }
+  short_circuit_current: 50mA (foldback)
+  en_vih_min: 1.5V
+  en_vil_max: 0.4V
+  psrr: 65dB at 100 Hz and 1 kHz
+  noise: 50uVrms (10 Hz-100 kHz)
+  thermal_shutdown: 160C (25C hysteresis)
+temp_c: [-40, 85]
+requirements:
+  - text: 1 uF X5R/X7R ceramic on VIN
+    cap: { from: VIN, to: GND, min: 1u }
+  - text: 1 uF X5R/X7R ceramic on VOUT
+    cap: { from: VOUT, to: GND, min: 1u }
+  - EN must be driven or tied to VIN; the internal 3 Mohm pull-down keeps it off
+    if floating
+notes:
+  - Foldback current limit may prevent start-up if a current-source-like load is
+    present before enable.
+  - Output auto-discharges through 60 ohm when disabled.
+  - SOT-23-5 theta_ja 184 C/W - at 5 V in, 3.3 V out, 600 mA dissipates ~1 W,
+    far more than the package handles; budget ~300 mW max in practice.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.diodes.com/assets/Datasheets/AP2112.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { theta_ja: 184C/W, theta_jc: 96C/W }
+regulation: { load: 0.2 %/A typ, line: 0.02 %/V typ }
+startup_time_typ: 20us
+esd: { hbm: 4kV, mm: 400V }
+marking: G3P

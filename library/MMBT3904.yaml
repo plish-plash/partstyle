@@ -1,0 +1,43 @@
+id: MMBT3904
+summary: NPN general-purpose BJT, 40 V VCEO, 200 mA, hFE 100-300 at 10 mA, fT
+  300 MHz, SOT-23
+manufacturer: onsemi
+preferred_mpn: MMBT3904LT1G
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Device:Q_NPN
+pins:
+  1: { name: B, type: input }
+  2: { name: E, type: passive }
+  3: { name: C, type: passive }
+ratings:
+  vceo: 40V
+  vcbo: 60V
+  vebo: 6V
+  ic: 200mA
+  icm: 900mA
+  pd: { fr5: 225mW, alumina: 300mW }
+  hfe: { at_0.1mA: 40 min, at_1mA: 70 min, at_10mA: "100-300", at_50mA: 60 min, at_100mA: 30 min }
+  vce_sat_max: { at_10mA: 0.2V, at_50mA: 0.3V }
+  vbe_sat: { at_10mA: "0.65-0.85 V", at_50mA: 0.95V max }
+  ft_min: 300MHz
+  cobo_max: 4pF
+  cibo_max: 8pF
+  noise_figure_max: 5dB
+  tj: { min: -55C, max: 150C }
+temp_c: [-55, 150]
+notes:
+  - Complement is MMBT3906 (PNP).
+  - SOT-23 dissipation is low (225 mW on FR-5, RthJA 556 C/W); keep saturated
+    switch currents in the tens of mA.
+  - Switching - td/tr 35 ns, ts 200 ns, tf 50 ns max at 10 mA.
+  - Common for LED drivers, level inversion, and the DTR/RTS auto-reset circuit
+    used with USB-UART bridges.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.onsemi.com/pdf/datasheet/mmbt3904lt1-d.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { rth_ja_fr5: 556C/W, rth_ja_alumina: 417C/W }
+marking: 1AM
+h_parameters: { hie: "1-10 kohm", hfe: "100-400", hoe: "1-40 umho", at: "VCE 10 V, IC 1 mA, 1 kHz" }

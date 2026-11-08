@@ -1,0 +1,105 @@
+id: W25Q128JV-SOIC8
+summary: 128 Mbit (16 MB) 3 V serial NOR flash, SPI/Dual/Quad, 133 MHz, 4 KB
+  sectors, 2.7-3.6 V, SOIC-8 208 mil
+manufacturer: Winbond
+preferred_mpn: W25Q128JVSIQ
+package: SOIC-8 208 mil (5.3 mm body)
+footprint: Package_SO:SOIC-8_5.3x5.3mm_P1.27mm
+kicad_symbol: Memory_Flash:W25Q128JVS
+pins:
+  1:
+    {
+      name: ~CS,
+      type: input,
+      vmax: 4.6V,
+      unused: required,
+      note: "Chip select, active low. Must track VCC during power-up/down - add a
+        pull-up to VCC if the host pin can float",
+    }
+  2: { name: DO, type: bidir, note: "IO1" }
+  3: { name: ~WP, type: bidir, note: "IO2 in quad mode; write-protect input in standard/dual SPI" }
+  4: { name: GND, type: power_in }
+  5: { name: DI, type: bidir, note: "IO0" }
+  6: { name: CLK, type: input, vmax: 4.6V }
+  7:
+    {
+      name: ~HOLD,
+      type: bidir,
+      note: "IO3 in quad mode; /HOLD or /RESET in standard/dual SPI (selectable by
+        HOLD/RST bit). On IQ parts (QE=1 fixed) the /HOLD function is disabled",
+    }
+  8: { name: VCC, type: power_in, vmax: 4.6V }
+ratings:
+  vcc: { min: 2.7V, max: 3.6V, abs_max: 4.6V, abs_min: -0.6V }
+  vio: { min: -0.6V, max: VCC + 0.4V, transient_20ns: "-2.0 V to VCC + 2.0 V" }
+  capacity: 128Mbit (16 MB)
+  clock: { fast_read_3v0_to_3v6: 133MHz, fast_read_2v7_to_3v0: 104MHz, read_data_03h: 50MHz }
+  page_size: 256 B
+  erase_granularity: 4 KB sector / 32 KB / 64 KB block / chip
+  endurance_min: 100k program/erase cycles per sector
+  retention: more than 20 years
+  icc_standby: { typ: 10uA, max: 60uA }
+  icc_power_down: { typ: 1uA, max: 20uA }
+  icc_read:
+    {
+      at_50MHz: "8 typ / 15 max mA",
+      at_80MHz: "10 typ / 18 max mA",
+      at_104MHz: "12 typ / 20 max mA",
+    }
+  icc_program_erase: { typ: 20mA, max: 25mA }
+  input_leakage_max: 2uA
+  vil_max: 0.3 x VCC
+  vih_min: 0.7 x VCC
+  vol_max: 0.2V (100 uA)
+  voh_min: VCC - 0.2V (100 uA)
+  cin_max: 6pF
+  cout_max: 8pF
+  esd_hbm: 2kV
+temp_c: [-40, 85]
+requirements:
+  - text: 100 nF on VCC close to the pin
+    cap: { from: VCC, to: GND, min: 100n }
+  - /CS must track VCC during power ramp; wait tVSL (20 us) after VCC reaches
+    2.7 V before selecting, and tPUW (5 ms) before write/erase commands
+  - Keep QSPI traces short and direct to the MCU (RP2040/RP2350 reference
+    designs place it adjacent)
+notes:
+  - Reference boot flash for RP2040/RP2350 (Raspberry Pi minimal designs use
+    W25Q128JVSIQ).
+  - Ordering suffix - IQ/JQ ship with QE=1 fixed in Status Register-2, so
+    IO2/IO3 are always data pins and /HOLD is disabled (quad works with no user
+    setup). IM/JM parts have QE programmable (0 by default) and support DTR/QPI
+    (separate DTR datasheet).
+  - I = -40..85 C industrial, J = -40..105 C industrial plus (W25Q128JVSJQ).
+  - Writes are ignored below the write-inhibit threshold VWI (1.0-2.0 V).
+  - In read, VCC should not differ from the programming voltage by more than
+    +/-10 %.
+  - The SOIC-8 208-mil part has no dedicated /RESET pin (only SOIC-16 and TFBGA
+    do); pin 7 can act as /RESET in non-quad mode.
+  - Top-side marking 25Q128JVSQ (IQ) or Q128JVSJQ (JQ). JEDEC ID, SFDP, 64-bit
+    unique ID and 3 x 256 B security registers are available.
+sourcing: { lifecycle: active, lcsc: C97521 }
+provenance:
+  datasheet: https://www.winbond.com/resource-files/w25q128jv%20revf%2003272018%20plus.pdf
+  extracted_by: ai
+  verified_by: human
+timing:
+  page_program: { typ: 0.4ms, max: 3ms }
+  sector_erase_4k: { typ: 45ms, max: 400ms }
+  block_erase_32k: { typ: 120ms, max: 1600ms }
+  block_erase_64k: { typ: 150ms, max: 2000ms }
+  chip_erase: { typ: 40s, max: 200s }
+  write_status_register: { typ: 10ms, max: 15ms }
+  t_vsl_min: 20us (VCC min to /CS low)
+  t_puw_min: 5ms (before write instruction)
+  t_clqv_max: 6ns (clock low to output valid)
+  t_slch_min: 3ns (/CS setup)
+  t_dvch_min: 1ns (data setup)
+  t_chdx_min: 2ns (data hold)
+  t_shsl_min: "10 ns read, 50 ns erase/program/write (/CS deselect)"
+  t_dp_max: 3us (to power-down)
+  t_res1_max: 3us (release power-down)
+  t_sus_max: 20us (after suspend)
+  t_rst_max: 30us (after software reset)
+organization: 65,536 pages of 256 B; 4,096 sectors of 4 KB; 256 blocks of 64 KB
+datasheet_ref: W25Q128JV Rev F, 27 March 2018

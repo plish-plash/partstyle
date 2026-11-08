@@ -69,7 +69,7 @@ describe("Workspace review", () => {
     expect((await ws.focus()).text.split("\n")).toEqual([
       "selected in the viewer (viewing sheet PWR):",
       "  U1 lib:L7805CV 5 V 1.5 A linear regulator, TO-220 [unverified]",
-      "  net +5V {voltage: 5V} (joins PWR/+5V, AFE/+5V): 7 pins",
+      "  net +5V {voltage: 5V} (joins PWR/+5V, AFE/+5V): 8 pins",
       "  pin U1.IN (pin 1, power_in) on net PWR/+12V",
       "  sheet MCU",
       "open comments (1):",
@@ -89,9 +89,9 @@ describe("Workspace review", () => {
   it("marks a part record verified in place", async () => {
     expect(await ws.verifyPart("L7805CV")).toEqual({
       ok: true,
-      text: "marked L7805CV verified in ../../library/L7805CV.yaml",
+      text: "marked L7805CV verified in parts/L7805CV.yaml",
     });
-    expect(await readFile(path.join(tmp, "library/L7805CV.yaml"), "utf8")).toContain(
+    expect(await readFile(path.join(project, "parts/L7805CV.yaml"), "utf8")).toContain(
       "verified_by: human",
     );
     expect((await ws.verifyPart("L7805CV")).text).toBe("L7805CV is already verified");
@@ -99,11 +99,11 @@ describe("Workspace review", () => {
   });
 
   it("sets a record's inventory flag in place, keeping its comments and style", async () => {
-    const file = path.join(tmp, "library/L7805CV.yaml");
+    const file = path.join(project, "parts/L7805CV.yaml");
     const original = await readFile(file, "utf8");
     await writeFile(file, `# keep this comment\n${original}`);
     const on = await ws.setInInventory("L7805CV", true);
-    expect(on.text).toBe("marked L7805CV in inventory in ../../library/L7805CV.yaml");
+    expect(on.text).toBe("marked L7805CV in inventory in parts/L7805CV.yaml");
     const text = await readFile(file, "utf8");
     expect(text).toContain("# keep this comment");
     expect(text).toMatch(/sourcing: \{.*in_inventory: true/);
@@ -116,7 +116,7 @@ describe("Workspace review", () => {
   });
 
   it("creates sourcing when setting the flag on a record without it", async () => {
-    const file = path.join(tmp, "library/L7805CV.yaml");
+    const file = path.join(project, "parts/L7805CV.yaml");
     await writeFile(file, (await readFile(file, "utf8")).replace(/^sourcing:.*\n/m, ""));
     await ws.setInInventory("L7805CV", true);
     expect((await ws.viewerModel()).parts.U1?.record?.inInventory).toBe(true);

@@ -79,20 +79,20 @@ parent net get path names (`PWR/VIN_RAW`). The top block is always `main`, in `c
 ## Example block
 
 ```
-block power "12 V barrel input, 5 V linear rail"
+block power "5 V barrel input, 3.3 V LDO rail"
 
-port +5V : power_out
-port GND : ground
+port +3V3 : power_out
+port GND  : ground
 
-part J1 lib:barrel_jack_2.1mm       @ 12 V wall adapter input
-part D1 lib:1N5819                  @ reverse-polarity protection
-part U1 lib:L7805CV
-part C1 cap(330n, 50V, X7R, 0603)   @ per U1 datasheet input cap
-part C2 cap(100n, 16V, X7R, 0603)   @ per U1 datasheet output cap
+part J1 lib:PJ-102AH                @ 5 V wall adapter input
+part D1 lib:SS14                    @ reverse-polarity protection
+part U1 lib:AP2112K-3.3
+part C1 cap(1u, 16V, X7R, 0603)     @ per U1 datasheet input cap
+part C2 cap(1u, 10V, X7R, 0603)     @ per U1 datasheet output cap
 
-net VIN_RAW : J1.TIP D1.A           {voltage: 12V ±10%}
-net +12V    : D1.K U1.IN C1.1       {voltage: 11.5V, source: J1 through D1}
-net +5V     : U1.OUT C2.1           -> port +5V {voltage: 5V}
+net VIN_RAW : J1.PIN D1.A             {voltage: 5V ±5%}
+net VIN     : D1.K U1.VIN U1.EN C1.1  {voltage: 4.6V, source: J1 through D1}
+net +3V3    : U1.VOUT C2.1            -> port +3V3 {voltage: 3.3V}
 net GND     : J1.SLEEVE J1.SWITCH U1.GND C1.2 C2.2 -> port GND
 ```
 
@@ -103,7 +103,7 @@ A patch is a batch of edits, one per line, applied all-or-nothing:
 ```
 in power                          # block to edit; optional if the project has one block
 + part C13 cap(47u, 25V) @ bulk   # add a statement (error if the key exists)
-= part U2 lib:MCP1700-3302   # replace the statement with the same kind and key
+= part U2 lib:AP2112K-3.3    # replace the statement with the same kind and key
 - part D2                         # remove; also drops D2's pins from nets (part|net|port|use|nc|waive)
 net +12V += C13.1 C13.2           # connect pins to an existing net
 net GND  -= C3.2                  # disconnect pins

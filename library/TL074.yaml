@@ -1,0 +1,71 @@
+id: TL074
+summary: Quad low-noise JFET-input op amp, 6-36 V (+/-3 to +/-18 V), 3 MHz GBW,
+  13 V/us, 15 nV/rtHz, pA input bias, SOIC-14
+manufacturer: STMicroelectronics
+preferred_mpn: TL074CDT
+package: SOIC-14 3.9 mm
+footprint: Package_SO:SOIC-14_3.9x8.7mm_P1.27mm
+kicad_symbol: Amplifier_Operational:TL074
+pins:
+  1: { name: OUT1, type: output }
+  2:
+    {
+      name: IN1-,
+      type: input,
+      unused: required,
+      note: "Unused section - wire as a follower with + input at mid-supply/ground",
+    }
+  3: { name: IN1+, type: input, unused: required }
+  4: { name: V+, type: power_in, vmax: 18V }
+  5: { name: IN2+, type: input, unused: required }
+  6: { name: IN2-, type: input, unused: required }
+  7: { name: OUT2, type: output }
+  8: { name: OUT3, type: output }
+  9: { name: IN3-, type: input, unused: required }
+  10: { name: IN3+, type: input, unused: required }
+  11: { name: V-, type: power_in }
+  12: { name: IN4+, type: input, unused: required }
+  13: { name: IN4-, type: input, unused: required }
+  14: { name: OUT4, type: output }
+ratings:
+  vs: { min: 6V, max: 36V, abs_max: "+/-18 V" }
+  vid_max: +/-30V
+  vin_max: "+/-15 V, never beyond the supplies"
+  vio: { typ: 3mV, max: 10mV, note: "TL074A 6 mV, TL074B 3 mV max" }
+  iio: { typ: 5pA, max: 100pA }
+  iib: { typ: 20pA, max: 200pA, note: "20 nA max over temperature" }
+  vicr: "+15 / -12 V typ at +/-15 V; +/-11 V guaranteed (input range does not
+    include V-)"
+  vom: "+/-12 V typ at RL 2 k, +/-13.5 V at 10 k (not rail-to-rail)"
+  avd: { typ: 200V/mV, min: 50V/mV }
+  gbw_typ: 3MHz
+  slew_rate: { typ: 13V/us, min: 8V/us }
+  noise_en: 15nV/rtHz (1 kHz)
+  cmrr: { typ: 86dB, min: 70dB }
+  svr_typ: 86dB
+  icc_per_amp: { typ: 1.4mA, max: 2.5mA }
+  ios_typ: 40mA
+  channel_separation: 120dB
+  ptot: 680mW
+temp_c: [0, 70]
+requirements:
+  - text: 100 nF decoupling on V+ to ground
+    cap: { from: V+, to: GND, min: 100n }
+  - Decouple V- to ground with 100 nF too when using split supplies
+  - Tie unused amplifiers as followers with the + input inside the common-mode
+    range
+notes:
+  - JFET input - common-mode range does not reach the negative rail, so it is a
+    poor choice for single-supply circuits near ground (use LM358 there);
+    driving inputs near V- can cause phase reversal.
+  - Classic audio and synth workhorse on +/-12 V or +/-15 V.
+  - C suffix (this part) is rated 0..70 C; TL074IDT is the -40..105 C grade.
+    TI's TL074 is pin-compatible (TI's newer TL074H runs from 4.5-40 V with
+    improved specs).
+  - Values are from the ST datasheet; ST's features list quotes 16 V/us slew
+    while its table gives 13 V/us typ.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.st.com/resource/en/datasheet/tl074.pdf
+  extracted_by: ai
+  verified_by: human

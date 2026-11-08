@@ -1,0 +1,282 @@
+id: RP2350A
+summary: Dual Cortex-M33 / Hazard3 RISC-V MCU, 150 MHz, 520 KB SRAM, external
+  QSPI flash, USB 1.1, 12 PIO SMs, 30 GPIO (5 V tolerant), on-chip 1.1 V buck,
+  QFN-60 7x7
+manufacturer: Raspberry Pi
+preferred_mpn: RP2350A
+package: QFN-60 7x7 mm, 0.4 mm pitch, 3.4x3.4 mm ePad
+footprint: Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm
+kicad_symbol: MCU_RaspberryPi:RP2350A
+pins:
+  1: { name: IOVDD, type: power_in, vmax: 3.63V }
+  2:
+    {
+      name: GPIO0,
+      type: bidir,
+      note: "FT. Also XIP_CS1n for a second QSPI flash/PSRAM (needs external 10k
+        pull-up; GPIO resets pulled down)",
+    }
+  3: { name: GPIO1, type: bidir, note: "FT" }
+  4: { name: GPIO2, type: bidir, note: "FT" }
+  5: { name: GPIO3, type: bidir, note: "FT" }
+  6: { name: DVDD, type: power_in, vmax: 1.21V, note: "Near the regulator: 100 nF" }
+  7: { name: GPIO4, type: bidir, note: "FT" }
+  8: { name: GPIO5, type: bidir, note: "FT" }
+  9: { name: GPIO6, type: bidir, note: "FT" }
+  10: { name: GPIO7, type: bidir, note: "FT" }
+  11: { name: IOVDD, type: power_in, vmax: 3.63V }
+  12: { name: GPIO8, type: bidir, note: "FT" }
+  13: { name: GPIO9, type: bidir, note: "FT" }
+  14: { name: GPIO10, type: bidir, note: "FT" }
+  15: { name: GPIO11, type: bidir, note: "FT" }
+  16: { name: GPIO12, type: bidir, note: "FT" }
+  17: { name: GPIO13, type: bidir, note: "FT" }
+  18: { name: GPIO14, type: bidir, note: "FT" }
+  19: { name: GPIO15, type: bidir, note: "FT" }
+  20: { name: IOVDD, type: power_in, vmax: 3.63V }
+  21:
+    {
+      name: XIN,
+      type: input,
+      vmax: IOVDD + 0.3V,
+      unused: open,
+      note: "12 MHz crystal (ABM8-272-T3), or 1-50 MHz CMOS square wave with XOUT
+        floating. USB boot needs 12 MHz unless OTP overrides",
+    }
+  22:
+    {
+      name: XOUT,
+      type: output,
+      unused: open,
+      note: "1 k series resistor to the crystal at IOVDD 3.3 V",
+    }
+  23: { name: DVDD, type: power_in, vmax: 1.21V, note: "Furthest from the regulator: 4.7 uF" }
+  24:
+    {
+      name: SWCLK,
+      type: input,
+      vmax: 5.5V,
+      unused: open,
+      note: "FT, pull-up at reset, up to 50 MHz",
+    }
+  25: { name: SWDIO, type: bidir, unused: open, note: "FT, pull-up at reset" }
+  26:
+    {
+      name: RUN,
+      type: input,
+      vmax: 5.5V,
+      unused: open,
+      note: "FT. Active-low global reset, internal pull-up",
+    }
+  27: { name: GPIO16, type: bidir, note: "FT" }
+  28: { name: GPIO17, type: bidir, note: "FT" }
+  29: { name: GPIO18, type: bidir, note: "FT" }
+  30: { name: IOVDD, type: power_in, vmax: 3.63V }
+  31: { name: GPIO19, type: bidir, note: "FT" }
+  32: { name: GPIO20, type: bidir, note: "FT" }
+  33: { name: GPIO21, type: bidir, note: "FT" }
+  34: { name: GPIO22, type: bidir, note: "FT" }
+  35: { name: GPIO23, type: bidir, note: "FT" }
+  36: { name: GPIO24, type: bidir, note: "FT" }
+  37: { name: GPIO25, type: bidir, note: "FT" }
+  38: { name: IOVDD, type: power_in, vmax: 3.63V }
+  39: { name: DVDD, type: power_in, vmax: 1.21V, note: "Near the regulator: 100 nF" }
+  40:
+    {
+      name: GPIO26/ADC0,
+      type: bidir,
+      note: "Not fault tolerant: max IOVDD + 0.5 V; analog input must not exceed
+        IOVDD",
+    }
+  41: { name: GPIO27/ADC1, type: bidir, note: "Not fault tolerant" }
+  42: { name: GPIO28/ADC2, type: bidir, note: "Not fault tolerant" }
+  43: { name: GPIO29/ADC3, type: bidir, note: "Not fault tolerant" }
+  44:
+    {
+      name: ADC_AVDD,
+      type: power_in,
+      vmax: 3.63V,
+      note: "1.62-3.63 V, ADC degraded below 2.97 V; 100 nF",
+    }
+  45: { name: IOVDD, type: power_in, vmax: 3.63V }
+  46:
+    {
+      name: VREG_AVDD,
+      type: power_in,
+      vmax: 3.63V,
+      note: "3.135-3.63 V regulator analogue supply, also powers POR/brownout - always
+        required. Noise sensitive: 33 ohm + 4.7 uF RC filter",
+    }
+  47:
+    {
+      name: VREG_PGND,
+      type: power_in,
+      note: "Regulator power ground; switching currents return here, join main GND at
+        one point",
+    }
+  48: { name: VREG_LX, type: power_out, note: "Switch node (3 MHz) to 3.3 uH inductor" }
+  49:
+    {
+      name: VREG_VIN,
+      type: power_in,
+      vmax: 5.5V,
+      note: "2.7-5.5 V regulator input; power up together with VREG_AVDD",
+    }
+  50:
+    {
+      name: VREG_FB,
+      type: input,
+      note: "Feedback; connect to the 1.1 V output at the output capacitor",
+    }
+  51: { name: USB_DM, type: bidir, unused: open, note: "27 ohm series resistor near the chip" }
+  52: { name: USB_DP, type: bidir, unused: open, note: "27 ohm series resistor near the chip" }
+  53:
+    {
+      name: USB_OTP_VDD,
+      type: power_in,
+      vmax: 3.63V,
+      note: "3.135-3.63 V USB PHY and OTP supply; required even if USB is unused; 100
+        nF",
+    }
+  54:
+    { name: QSPI_IOVDD, type: power_in, vmax: 3.63V, note: "1.62-3.63 V; match the flash voltage" }
+  55: { name: QSPI_SD3, type: bidir, note: "Pull-up at reset" }
+  56: { name: QSPI_SCLK, type: bidir, note: "Pull-down at reset" }
+  57: { name: QSPI_SD0, type: bidir, note: "Pull-down at reset" }
+  58: { name: QSPI_SD2, type: bidir, note: "Pull-up at reset" }
+  59: { name: QSPI_SD1, type: bidir, note: "Pull-down at reset" }
+  60:
+    {
+      name: ~QSPI_SS,
+      type: bidir,
+      note: "Flash CS and BOOTSEL strap, pull-up at reset: low at reset enters USB
+        boot; button to GND via 1 k",
+    }
+  61: { name: GND, type: power_in, note: "Exposed pad, the only main ground" }
+ratings:
+  iovdd: { min: 1.62V, typ: 3.3V, max: 3.63V, abs_max: 3.63V, abs_min: -0.5V }
+  qspi_iovdd: { min: 1.62V, typ: 3.3V, max: 3.63V }
+  dvdd: { min: 1.05V, typ: 1.1V, max: 1.16V, abs_max: 1.21V, note: "transients within +/-100 mV" }
+  vreg_vin: { min: 2.7V, typ: 3.3V, max: 5.5V }
+  vreg_avdd: { min: 3.135V, typ: 3.3V, max: 3.63V }
+  usb_otp_vdd: { min: 3.135V, typ: 3.3V, max: 3.63V }
+  adc_avdd: { min: 1.62V, typ: 3.3V, max: 3.63V }
+  vpin_standard: { min: -0.5V, max: IOVDD + 0.5V }
+  vpin_ft: { iovdd_3v3: 5.5V, iovdd_2v5: 4.2V, iovdd_1v8: 3.63V, iovdd_0v: 3.63V }
+  tj: { min: -40C, max: 125C }
+  clock_max: 150MHz
+  sram: 520KB
+  otp: 8KB
+  flash_external_max: 16MB per chip select (2 chip selects)
+  gpio_count: 30
+  gpio_drive_ma: [2, 4, 8, 12]
+  gpio_default_drive: 4mA
+  iovdd_total_source_max: 100mA
+  iovss_total_sink_max: 100mA
+  qspi_total_max: 20mA (source and sink)
+  input_leakage_max: 1uA
+  pull_up_3v3: { min: 32k, max: 86k }
+  pull_down_3v3: { min: 36k, max: 113k }
+  esd_hbm: 2kV (4 kV on FT pins)
+  esd_cdm: 500V
+temp_c: [-40, 85]
+requirements:
+  - text: 100 nF per IOVDD pin, close to the pin
+    cap: { from: IOVDD, to: GND, min: 100n, each: true }
+  - text: DVDD decoupling - 100 nF on the two DVDD pins near the regulator (6, 39),
+      4.7 uF on the far one (23)
+    cap: { from: DVDD, to: GND, min: 100n, each: true }
+  - text: 4.7 uF between VREG_VIN and ground close to the pin, with its own GND via
+      to the pad
+    cap: { from: VREG_VIN, to: GND, min: 4.7u }
+  - text: VREG_AVDD fed through 33 ohm with 4.7 uF to GND (RC filter)
+    cap: { from: VREG_AVDD, to: GND, min: 4.7u }
+  - text: 100 nF on USB_OTP_VDD
+    cap: { from: USB_OTP_VDD, to: GND, min: 100n }
+  - text: 100 nF on ADC_AVDD
+    cap: { from: ADC_AVDD, to: GND, min: 100n }
+  - text: 100 nF on QSPI_IOVDD (Minimal design shares one cap between pins 53 and 54)
+    cap: { from: QSPI_IOVDD, to: GND, min: 100n }
+  - 3.3 uH inductor VREG_LX -> 1.1 V (Abracon AOTA-B201610S3R3-101-T,
+    polarity-marked, orientation matters), 4.7 uF output cap, VREG_FB to the 1.1
+    V node; copy the Pico 2 / Minimal layout exactly, all regulator parts on the
+    same side
+  - USB_DP/USB_DM need 27 ohm series resistors near the chip
+  - 12 MHz ABM8-272-T3 crystal, 15 pF load caps, 1 k series on XOUT (tuned for
+    IOVDD 3.3 V; re-tune at other IOVDD)
+  - QSPI flash on QSPI pins (W25Q128JVS reference); flash must support 03h read
+    with 24-bit address, 02h/05h/06h/20h
+  - Provide BOOTSEL (QSPI_SS to GND via 1 k) and optionally a RUN reset button
+notes:
+  - Not pin-compatible with RP2040 despite the same 7x7 body.
+  - GPIO0-25 are fault tolerant - up to 5.5 V when IOVDD is 3.3 V and powered;
+    ADC pins GPIO26-29 are not.
+  - If IOVDD or QSPI_IOVDD is 1.8 V, set VOLTAGE_SELECT=1; running above 1.8 V
+    with VOLTAGE_SELECT=1 can damage the chip.
+  - Power sequencing - only VREG_VIN and VREG_AVDD must come up together; DVDD
+    before or with ADC_AVDD avoids small transient currents.
+  - The regulator output can be software-set up to 3.3 V, above the DVDD limit;
+    keep the voltage limit enabled.
+  - Erratum RP2350-E9 (A2 stepping) - a Bank 0 input in the undefined region
+    leaks ~120 uA and sits near 2.2 V; internal pull-down can't hold it low (use
+    8.2k or lower external pull-down). Fixed in stepping A3.
+  - RP2354A is the same package with 2 MB stacked flash (QSPI_IOVDD must then be
+    3.3 V).
+  - The datasheet's power-pin table lists IOVDD as 11, 20, 30, 38, 45, 54 for
+    QFN-60, omitting pin 1 and repeating 54 (QSPI_IOVDD); the pinout figure,
+    product brief and KiCad symbol all show pin 1 as IOVDD, which this record
+    follows.
+sourcing: { lifecycle: active, lcsc: C42411118 }
+provenance:
+  datasheet: https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf
+  extracted_by: ai
+  verified_by: human
+regulator:
+  vout_range: "0.55-3.3 V normal mode, 0.55-1.3 V low-power mode"
+  accuracy: "+/-3 % normal, +/-9 % low power"
+  iout_max: "200 mA normal, 1 mA low power"
+  current_limit: "240-300 mA at startup; 260/500/800 mA min/typ/max normal"
+  switching_frequency: 3MHz
+  efficiency_1v1: "~70-72 % at 100 mA (2.7-5.5 V in); 59-74 % at 10 mA"
+io_characteristics_3v3:
+  vih_min: 2V
+  vil_max: 0.8V
+  hysteresis: 0.2V
+  voh_min: 2.62V
+  vol_max: 0.5V
+adc:
+  resolution: 12 bit
+  sample_rate: 500 ksps
+  enob: "9 min, 9.5 typ"
+  input_range: 0..ADC_AVDD (not above IOVDD)
+  input_impedance_min: 100k
+  channels: 4 external + temperature sensor
+oscillator:
+  {
+    xin_frequency: "1-50 MHz (12 typ)",
+    square_wave_vih: 0.65 x IOVDD,
+    square_wave_vil: 0.35 x IOVDD,
+  }
+usb_io: { pull_down: 14.25k-15.75k, pull_up_rpu1and2: 1.4k-3.06k }
+thermal: { theta_ja_still_air: 40.5C/W, theta_ja_1ms: 32C/W, theta_jb: 12.6C/W, theta_jc: 14.3C/W }
+power_consumption_typ:
+  usb_boot_idle: "25 mW total (VREG_VIN 6.5 mA)"
+  hello_usb: "52.7 mW total (VREG_VIN 14.7 mA)"
+  coremark_150MHz_one_core: 38.7mW
+  run_low: 1.17mW
+  deepest_sleep_P1.7: 188uW
+reference_design: https://datasheets.raspberrypi.com/rp2350/hardware-design-with-rp2350.pdf
+  (RP2350A Minimal R4-S1; NCP1117 3.3 V LDO, 10 uF in/out)
+package_dimensions:
+  {
+    body: 7x7 mm,
+    height: 0.85 mm typ,
+    pitch: 0.4 mm,
+    ep: 3.4x3.4 mm,
+    lead_width: 0.18 mm typ,
+    lead_length: 0.4 mm typ,
+  }
+peripherals: 2x UART, 2x SPI, 2x I2C, 24 PWM, USB 1.1 host/device, 3 PIO blocks
+  (12 SMs), HSTX, SHA-256, TRNG, TrustZone, signed boot, glitch detectors
+production_lifetime: until at least January 2045
+datasheet_ref: RP-008373-DS-3 (RP2350 datasheet)

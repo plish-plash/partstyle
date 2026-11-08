@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Tests never read or write the real ~/.partstyle. Their settings list a copy of the repo's seed
-// library (which the example project and the fixtures use), so a test that verifies or writes a
+// library (which the example project uses beside its own parts/), so a test that writes a seed
 // record cannot change the repo; a test that needs other settings passes its own state folder.
+// A test that writes the example's or a fixture's own records works on a copy of the project.
 const state = mkdtempSync(path.join(tmpdir(), "partstyle-state-"));
 const library = path.join(state, "library");
 cpSync(fileURLToPath(new URL("./library", import.meta.url)), library, { recursive: true });

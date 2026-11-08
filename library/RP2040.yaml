@@ -1,0 +1,179 @@
+id: RP2040
+summary: Dual Cortex-M0+ MCU, 133 MHz, 264 KB SRAM, external QSPI flash, USB
+  1.1, 8 PIO SMs, 30 GPIO, IOVDD 1.8-3.3 V, QFN-56 7x7
+manufacturer: Raspberry Pi
+preferred_mpn: RP2040
+package: QFN-56 7x7 mm, 0.4 mm pitch, 3.2x3.2 mm ePad
+footprint: Package_DFN_QFN:QFN-56-1EP_7x7mm_P0.4mm_EP3.2x3.2mm
+kicad_symbol: MCU_RaspberryPi:RP2040
+pins:
+  1: { name: IOVDD, type: power_in, vmax: 3.63V }
+  2: { name: GPIO0, type: bidir }
+  3: { name: GPIO1, type: bidir }
+  4: { name: GPIO2, type: bidir }
+  5: { name: GPIO3, type: bidir }
+  6: { name: GPIO4, type: bidir }
+  7: { name: GPIO5, type: bidir }
+  8: { name: GPIO6, type: bidir }
+  9: { name: GPIO7, type: bidir }
+  10: { name: IOVDD, type: power_in, vmax: 3.63V }
+  11: { name: GPIO8, type: bidir }
+  12: { name: GPIO9, type: bidir }
+  13: { name: GPIO10, type: bidir }
+  14: { name: GPIO11, type: bidir }
+  15: { name: GPIO12, type: bidir }
+  16: { name: GPIO13, type: bidir }
+  17: { name: GPIO14, type: bidir }
+  18:
+    {
+      name: GPIO15,
+      type: bidir,
+      note: "Used by the SDK USB enumeration workaround (erratum E5) on B0/B1 silicon
+        if enabled",
+    }
+  19: { name: TESTEN, type: input, unused: required, note: "Factory test enable; tie to GND" }
+  20:
+    {
+      name: XIN,
+      type: input,
+      unused: open,
+      note: "12 MHz crystal, or square-wave clock 0..IOVDD with XOUT floating. USB
+        bootloader needs 12 MHz",
+    }
+  21: { name: XOUT, type: output, unused: open }
+  22: { name: IOVDD, type: power_in, vmax: 3.63V }
+  23: { name: DVDD, type: power_in, vmax: 1.16V, note: "Core 1.1 V; normally from VREG_VOUT" }
+  24: { name: SWCLK, type: input, unused: open, note: "Internal pull-up" }
+  25: { name: SWDIO, type: bidir, unused: open, note: "Internal pull-up" }
+  26:
+    {
+      name: RUN,
+      type: input,
+      unused: open,
+      note: "Active-low reset/enable, internal pull-up; tie to IOVDD if no reset
+        needed",
+    }
+  27: { name: GPIO16, type: bidir }
+  28: { name: GPIO17, type: bidir }
+  29: { name: GPIO18, type: bidir }
+  30: { name: GPIO19, type: bidir }
+  31: { name: GPIO20, type: bidir }
+  32: { name: GPIO21, type: bidir }
+  33: { name: IOVDD, type: power_in, vmax: 3.63V }
+  34: { name: GPIO22, type: bidir }
+  35: { name: GPIO23, type: bidir }
+  36: { name: GPIO24, type: bidir }
+  37: { name: GPIO25, type: bidir }
+  38: { name: GPIO26/ADC0, type: bidir }
+  39: { name: GPIO27/ADC1, type: bidir }
+  40: { name: GPIO28/ADC2, type: bidir }
+  41: { name: GPIO29/ADC3, type: bidir }
+  42: { name: IOVDD, type: power_in, vmax: 3.63V }
+  43: { name: ADC_AVDD, type: power_in, vmax: 3.63V, note: "ADC performance degraded below 2.97 V" }
+  44: { name: VREG_VIN, type: power_in, vmax: 3.63V }
+  45: { name: VREG_VOUT, type: power_out, note: "1.1 V nominal, 100 mA max; feeds DVDD" }
+  46: { name: USB_DM, type: bidir, unused: open, note: "27 ohm series resistor required for USB" }
+  47: { name: USB_DP, type: bidir, unused: open, note: "27 ohm series resistor required for USB" }
+  48:
+    {
+      name: USB_VDD,
+      type: power_in,
+      vmax: 3.63V,
+      note: "3.135-3.63 V; supply it even if USB is unused",
+    }
+  49: { name: IOVDD, type: power_in, vmax: 3.63V }
+  50: { name: DVDD, type: power_in, vmax: 1.16V }
+  51: { name: QSPI_SD3, type: bidir }
+  52: { name: QSPI_SCLK, type: bidir, note: "Pull-down at reset" }
+  53: { name: QSPI_SD0, type: bidir }
+  54: { name: QSPI_SD2, type: bidir }
+  55: { name: QSPI_SD1, type: bidir }
+  56:
+    {
+      name: ~QSPI_SS,
+      type: bidir,
+      note: "Flash chip select, pull-up at reset. Pull low at reset (via
+        button/resistor) to enter USB BOOTSEL mode",
+    }
+  57: { name: GND, type: power_in, note: "Exposed pad is the only ground connection" }
+ratings:
+  iovdd: { min: 1.62V, typ: 3.3V, max: 3.63V, abs_max: 3.63V, abs_min: -0.5V }
+  dvdd: { min: 1.05V, typ: 1.1V, max: 1.16V, note: "1.15 V for 200 MHz operation" }
+  vreg_vin: { min: 1.62V, max: 3.63V }
+  vreg_vout_max_current: 100mA
+  usb_vdd: { min: 3.135V, typ: 3.3V, max: 3.63V }
+  adc_avdd: { min: 1.62V, typ: 3.3V, max: 3.63V }
+  vpin: { min: -0.5V, max: IOVDD + 0.5V }
+  fault_tolerant_gpio: "GPIO0-25, SWCLK, SWDIO, RUN draw very little current below
+    3.63 V when IOVDD is 0 V (not 5 V tolerant)"
+  clock: { max: 133MHz, note: "200 MHz qualified at DVDD 1.15 V" }
+  sram: 264KB
+  flash_external_max: 16MB
+  gpio_drive_ma: [2, 4, 8, 12]
+  gpio_default_drive: 4mA
+  iovdd_total_source_max: 50mA
+  iovss_total_sink_max: 50mA
+  pull_up: { min: 50k, max: 80k }
+  pull_down: { min: 50k, max: 80k }
+  input_leakage_max: 1uA
+  esd_hbm: 2kV (4 kV on FT pins)
+  esd_cdm: 500V
+temp_c: [-40, 85]
+requirements:
+  - text: Decouple each IOVDD pin with 100 nF close to the pin (minimal design)
+    cap: { from: IOVDD, to: GND, min: 100n, each: true }
+  - text: Decouple each DVDD pin with 100 nF
+    cap: { from: DVDD, to: GND, min: 100n, each: true }
+  - text: 1 uF on VREG_VIN
+    cap: { from: VREG_VIN, to: GND, min: 1u }
+  - text: 1 uF on VREG_VOUT
+    cap: { from: VREG_VOUT, to: GND, min: 1u }
+  - text: TESTEN must be tied to GND
+    tie: { from: TESTEN, to: GND }
+  - USB_DP and USB_DM each need a 27 ohm series resistor; pull-ups are internal
+  - Boot code runs from external QSPI flash (up to 16 MB); W25Q-series 3.3 V NOR
+    is the reference choice
+  - 12 MHz crystal on XIN/XOUT with ~1 k series resistor on XOUT per the
+    reference design (ABM8-272-T3 recommended); the USB bootloader requires 12
+    MHz
+  - Expose a way to pull QSPI_SS low at reset (BOOTSEL button through ~1 k) to
+    reach the USB bootloader
+notes:
+  - GND is only the exposed pad; the ePad is smaller than common QFN-56
+    footprints, so the generic KiCad footprint may need its EP adjusted.
+  - GPIO26-29 ADC inputs; ADC ENOB 8.7 bits, DNL spikes at codes
+    512/1536/2560/3584 (erratum E11).
+  - All GPIO reset to pull-down; QSPI_SS resets pulled up.
+  - Watchdog decrements twice per tick (E1); USB enumeration on busy hubs needs
+    SDK fix on B0/B1 (E5).
+  - If IOVDD < 2.5 V set GPIO VOLTAGE_SELECT accordingly.
+sourcing: { lifecycle: active, lcsc: C2040 }
+provenance:
+  datasheet: https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf
+  extracted_by: ai
+  verified_by: human
+io_characteristics_3v3:
+  vih_min: 2V
+  vil_max: 0.8V
+  hysteresis: 0.2V
+  voh_min: 2.62V
+  vol_max: 0.5V
+adc:
+  resolution: 12 bit
+  sample_rate: 500 ksps
+  enob: 8.7
+  input_range: 0..ADC_AVDD
+  input_impedance_min: 100k
+  channels: 4 external + temperature sensor
+usb_io:
+  pull_down: 14.25k-15.75k
+  pull_up: 1.4k-3.06k (RPU1&2)
+thermal: { theta_ja: 48C/W, theta_jc: 19C/W, theta_jb: 29C/W }
+power_consumption_typ:
+  bootsel_active: { dvdd: 9.4mA, iovdd: 1.2mA, usb_vdd: 1.4mA }
+  dormant_dvdd: 0.18mA
+  sleep_dvdd: 0.39mA
+peripherals: 2x UART, 2x SPI, 2x I2C, 16 PWM channels, USB 1.1 host/device, 2
+  PIO blocks (8 state machines), RTC, 12-ch DMA, interpolators, SWD multidrop
+ordering: { reel_500: SC0914(7), reel_3400: SC0914(13) }
+moisture_sensitivity: MSL1

@@ -1,0 +1,56 @@
+id: USB4105-GF-A
+summary: USB 2.0 Type-C receptacle, 16 contacts, horizontal top-mount SMT with
+  through-hole shell stakes, 5 A VBUS, 48 V, 20k cycles
+manufacturer: GCT
+preferred_mpn: USB4105-GF-A
+package: USB-C receptacle 16P, top mount, horizontal
+footprint: Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal
+kicad_symbol: Connector:USB_C_Receptacle_USB2.0_16P
+pins:
+  A1: { name: GND }
+  A4: { name: VBUS }
+  A5: { name: CC1, type: bidir, note: "Sink - 5.1k pull-down to GND (separate resistor from CC2)" }
+  A6: { name: D+, type: bidir, note: "Tie to B6" }
+  A7: { name: D-, type: bidir, note: "Tie to B7" }
+  A8: { name: SBU1, unused: open }
+  A9: { name: VBUS }
+  A12: { name: GND }
+  B1: { name: GND }
+  B4: { name: VBUS }
+  B5: { name: CC2, type: bidir, note: "Sink - its own 5.1k pull-down to GND" }
+  B6: { name: D+, type: bidir }
+  B7: { name: D-, type: bidir }
+  B8: { name: SBU2, unused: open }
+  B9: { name: VBUS }
+  B12: { name: GND }
+  SH:
+    {
+      name: SHIELD,
+      note: "Four plated shell stakes; tie to GND directly or through an RC (e.g. 1 M
+        || 4.7 nF)",
+    }
+ratings:
+  voltage: 48V DC
+  current: { vbus_total: 5A, gnd_total: 6.25A, b5: 1.25A, other_pins: 0.25A each }
+  contact_resistance: 40mohm max initial (50 mohm after test)
+  insulation_resistance: 100Mohm min
+  dielectric_withstand: 100V AC, 1 min
+  durability: 20000 cycles
+  mating_force: 5-20 N
+temp_c: [-40, 85]
+requirements:
+  - CC1 and CC2 each need their own 5.1k pull-down to GND for a sink to get 5 V
+    from a USB-C source; a single shared resistor breaks with e-marked cables
+  - Join A6/B6 (D+) and A7/B7 (D-) on the board so either plug orientation works
+notes:
+  - USB 2.0 only - no SuperSpeed pairs; SBU pins usually left open.
+  - The footprint's VBUS and GND pads are paired (A1/B12, A4/B9, A9/B4, A12/B1
+    share pads), so they are connected by the land pattern.
+  - 3.31 mm profile; contacts gold flash over nickel (15/30 uin gold options);
+    stainless shell; LCP housing UL94V-0. Reflow peak 255 C, 5 s max.
+  - Add USBLC6-2SC6 near the connector for ESD.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://gct.co/files/specs/usb4105-spec.pdf
+  extracted_by: ai
+  verified_by: human

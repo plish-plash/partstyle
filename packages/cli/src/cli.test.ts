@@ -77,8 +77,8 @@ describe("partstyle read commands", () => {
   });
 
   it("query joins its arguments", async () => {
-    expect((await inExample(["query", "parts", "where", "vin_max", "<", "15V"])).stdout).toBe(
-      "1 part\nU2  lib:MCP1700-3302  vin_max=6V",
+    expect((await inExample(["query", "parts", "where", "vin.max", "<", "15V"])).stdout).toBe(
+      "1 part\nU2  lib:AP2112K-3.3  vin.max=6.0V",
     );
     expect((await inExample(["query", "help"])).stdout).toMatch(/^queries:/);
   });
@@ -124,7 +124,7 @@ describe("partstyle init", () => {
       expect(await readFile(path.join(dir, "partstyle-project.yaml"), "utf8")).toContain(
         'name: "My Board"',
       );
-      expect((await cli(["-p", dir, "part", "search", "7805"])).stdout).toMatch(/^L7805CV: /);
+      expect((await cli(["-p", dir, "part", "search", "SS14"])).stdout).toMatch(/^SS14: /);
       expect(await cli(["validate", dir])).toEqual({
         stdout: "My Board: 0 errors, 0 warnings",
         exitCode: 0,

@@ -4,21 +4,21 @@ port +5V  : power_out
 port +3V3 : power_out
 port GND  : ground
 
-part J1  lib:barrel_jack_2.1mm
-part D1  lib:1N5819                 @ reverse-polarity protection
+part J1  lib:PJ-102AH
+part D1  lib:SS14                   @ reverse-polarity protection
 part U1  lib:L7805CV
 part C1  cap(330n, 50V, X7R, 0603)  @ per U1 datasheet input cap
 part C2  cap(100n, 16V, X7R, 0603)  @ per U1 datasheet output cap
 part C3  cap(10u, 16V, X7R, 0805)   @ bulk for load steps
-part U2  lib:MCP1700-3302      @ 3.3 V for op-amp and MCU, fed from 5 V to stay under its 6 V limit
+part U2  lib:AP2112K-3.3       @ 3.3 V for op-amp and MCU, fed from 5 V to stay under its 6 V limit
 part C4  cap(1u, 16V, X7R, 0603)    @ per U2 datasheet input cap
 part C5  cap(1u, 10V, X7R, 0603)    @ per U2 datasheet output cap
 part R1  res(1k, 1%, 0603)          @ ~3 mA through D2
 part D2  led(green, 0603)           @ power indicator
 
-net VIN_RAW : J1.TIP D1.A                      {voltage: 12V ±10%}
+net VIN_RAW : J1.PIN D1.A                      {voltage: 12V ±10%}
 net +12V    : D1.K U1.IN C1.1                  {voltage: 11.5V, source: J1 through D1}
-net +5V     : U1.OUT C2.1 C3.1 U2.VIN C4.1 R1.1 -> port +5V  {voltage: 5V}
+net +5V     : U1.OUT C2.1 C3.1 U2.VIN U2.EN C4.1 R1.1 -> port +5V  {voltage: 5V}
 net +3V3    : U2.VOUT C5.1                     -> port +3V3 {voltage: 3.3V}
 net PWR_LED : R1.2 D2.A
 net GND     : J1.SLEEVE J1.SWITCH U1.GND C1.2 C2.2 C3.2 U2.GND C4.2 C5.2 D2.K -> port GND

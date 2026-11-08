@@ -45,8 +45,8 @@ describe("runQuery", () => {
   });
 
   it("filters parts by rating with numeric comparison", () => {
-    expect(q("parts where vin_max < 15V").text).toBe("1 part\nU2  lib:MCP1700-3302  vin_max=6V");
-    expect(q("parts where vin_max >= 6V").text.split("\n")[0]).toBe("2 parts");
+    expect(q("parts where vin.max < 15V").text).toBe("1 part\nU2  lib:AP2112K-3.3  vin.max=6.0V");
+    expect(q("parts where vin_max >= 6V").text).toBe("1 part\nU1  lib:L7805CV  vin_max=35V");
   });
 
   it("combines conditions", () => {
@@ -58,7 +58,7 @@ describe("runQuery", () => {
 
   it("filters nets by attribute and pin count", () => {
     expect(q("nets where voltage ~ 12V").text).toBe(
-      "1 net\nPWR/VIN_RAW {voltage: 12V ±10%}: J1.TIP D1.A",
+      "1 net\nPWR/VIN_RAW {voltage: 12V ±10%}: J1.PIN D1.A",
     );
     expect(q("nets where pins > 20").text).toMatch(/^1 net\nGND: /);
   });
@@ -111,8 +111,9 @@ describe("runQuery", () => {
 
   it("lists unconnected pins, including ones that may stay open", () => {
     const lines = q("unconnected").text.split("\n");
-    expect(lines[0]).toBe("17 unconnected pins");
+    expect(lines[0]).toBe("18 unconnected pins");
     expect(lines).toContain("  U4.PB0 (pin 12, bidir)");
+    expect(lines).toContain("  U2.NC (pin 4, nc)");
   });
 
   it.each([
@@ -160,7 +161,7 @@ describe("overview and readBlock", () => {
       "  interface J2: remote sensor on 2 m cable (0-3.3 V analog, sensor powered from +5V); hazards: ESD, miswiring to 12 V (accepted: on a bench tool; it may destroy D3, but R2 keeps it out of U3)",
     );
     expect(text).toContain("  power (circuit/power.ckt): 11 parts; ports +5V +3V3 GND");
-    expect(text).toContain("parts: 30 (10 library, 20 generic; 9 of 9 records unverified)");
+    expect(text).toContain("parts: 30 (10 library, 20 generic; 6 of 9 records unverified)");
     expect(text).toContain("issues: 0 errors, 0 warnings");
     // Rough budget check: ~4 characters per token.
     expect(text.length / 4).toBeLessThan(800);
@@ -182,10 +183,14 @@ describe("overview and readBlock", () => {
 
 describe("part search and get", () => {
   it("ranks id and MPN matches above summary matches", () => {
-    const text = searchParts(result.library, "regulator").text;
-    expect(text).toBe(
+    expect(searchParts(result.library, "L7805").text).toBe(
       "L7805CV: STMicroelectronics L7805CV, 5 V 1.5 A linear regulator, TO-220 [unverified]",
     );
+    const ids = searchParts(result.library, "3.3")
+      .text.split("\n")
+      .map((l) => l.split(":")[0]);
+    expect(ids.slice(0, 2).sort()).toEqual(["AMS1117-3.3", "AP2112K-3.3"]);
+    expect(ids.length).toBeGreaterThan(2);
     expect(searchParts(result.library, "tsw").text.split("\n")).toHaveLength(2);
     expect(searchParts(result.library, "op-amp missing").text).toBe(
       "no parts match 'op-amp missing'",
@@ -205,7 +210,7 @@ describe("part search and get", () => {
       "requires: tie unused amplifier halves off (e.g. follower with input at a defined level)",
     );
     expect(describePart(result.library, "L7805CV", "full").text).toMatch(
-      /^# \.\.\/\.\.\/library\/L7805CV\.yaml\nid: L7805CV\n/,
+      /^# parts\/L7805CV\.yaml\nid: L7805CV\n/,
     );
     expect(describePart(result.library, "NOPE", "full").ok).toBe(false);
   });

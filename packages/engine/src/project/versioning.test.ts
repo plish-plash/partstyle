@@ -47,7 +47,7 @@ describe("versioning", () => {
     expect(r.ok).toBe(true);
     expect(r.text).toMatch(/^checkpoint [0-9a-f]{7} "initial design"/);
     // The library beside the project is not part of it.
-    expect(await changedFiles(path.join(tmp, "library"))).toContain("L7805CV.yaml");
+    expect(await changedFiles(path.join(tmp, "library"))).toContain("SS14.yaml");
     expect((await ws.overview()).text).toMatch(/\nchanges: none(\n|$)/);
     expect((await ws.checkpoint("again")).text).toMatch(/^nothing to checkpoint/);
   });

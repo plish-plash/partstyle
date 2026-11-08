@@ -1,0 +1,45 @@
+id: BSS84
+summary: P-channel -50 V -130 mA small-signal MOSFET, RDS(on) 10 ohm max at -5
+  V, VGS(th) -0.8 to -2 V, SOT-23
+manufacturer: onsemi
+preferred_mpn: BSS84
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Transistor_FET:BSS84
+pins:
+  1: { name: G, type: input, vmax: 20V, note: "+/-20 V relative to source" }
+  2: { name: S, type: passive }
+  3: { name: D, type: passive }
+ratings:
+  vdss: -50V
+  vgss: +/-20V
+  id: { continuous: -0.13A, pulsed: -0.52A }
+  pd: 0.36W (derate 2.9 mW/C)
+  vgs_th: { min: -0.8V, typ: -1.7V, max: -2V, at: "VDS = VGS, -1 mA" }
+  rds_on: { vgs_5v_100mA: "1.2 ohm typ / 10 ohm max (17 ohm max at 125 C)" }
+  id_on_min: -0.6A (VGS -5 V, VDS -10 V)
+  idss_max: -15uA (-50 V; -60 uA at 125 C)
+  igss_max: +/-10nA
+  gfs: { min: 0.05S, typ: 0.6S }
+  ciss_typ: 73pF
+  coss_typ: 10pF
+  crss_typ: 5pF
+  rg_typ: 9ohm
+  qg_typ: 0.9nC (-5 V)
+  body_diode: { is_max: -0.13A, vsd_typ: -0.8V, vsd_max: -1.2V, trr_typ: 10ns }
+  tj: { min: -55C, max: 150C }
+temp_c: [-55, 150]
+notes:
+  - Complement of 2N7002 for small-signal high-side switching and level shifting.
+  - Only rated at -5 V gate drive; at 3.3 V drive RDS(on) is high and
+    uncharacterised. Use AO3401A for real load switching.
+  - Switching typ - td(on) 2.5 ns, tr 6.3 ns, td(off) 10 ns, tf 4.8 ns (VDD -30
+    V, -0.27 A).
+  - Nexperia, Diodes Inc and others make BSS84 with different ratings.
+sourcing: { lifecycle: active, lcsc: C266796 }
+provenance:
+  datasheet: https://www.onsemi.com/pdf/datasheet/bss84-d.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { rth_ja: 350C/W (minimum pad) }
+marking: SP

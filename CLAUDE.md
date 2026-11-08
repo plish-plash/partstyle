@@ -27,8 +27,9 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   manifest template `packages/cli/mcpb/manifest.json` (tools filled in from the server). Building
   it runs the bundle under the current Node first; `node scripts/standalone.mjs --check-mcpb`
   repeats that (the manifest promises Node >= 22, the oldest Node CI checks it under). The smoke test also runs the bundle.
-- The example and the fixtures get their parts from the libraries in `~/.partstyle/settings.yaml`
-  (list this repo's `library/` there for the CLI); tests use `vitest.setup.ts`, which points
+- The example and the fixtures keep their own records in `parts/` and get the rest from the
+  libraries in `~/.partstyle/settings.yaml` (list this repo's `library/` there for the CLI; the
+  example uses its seed records); tests use `vitest.setup.ts`, which points
   `PARTSTYLE_STATE_DIR` at a temporary copy, so they never touch the repo's records.
 - `pnpm partstyle -p examples/bench-sensor overview` (after a build); see
   [docs/cli.md](docs/cli.md), and keep it updated when commands change. cli.md is a man page:

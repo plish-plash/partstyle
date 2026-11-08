@@ -364,7 +364,7 @@ describe("Workspace.init", () => {
     expect(overview).toContain("context: TODO one or two sentences");
     expect(overview).toContain("parts: 0 (0 library, 0 generic; 0 of 0 records unverified)");
     // The seed library is reachable from the new project.
-    expect((await fresh.partSearch("L7805CV")).text).toMatch(/^L7805CV: /);
+    expect((await fresh.partSearch("SS14")).text).toMatch(/^SS14: /);
   });
 
   it("refuses an existing project", async () => {
@@ -648,7 +648,7 @@ it("the grammar's example block validates clean against the seed library", async
   await writeFile(path.join(dir, "circuit/power.ckt"), block);
   await writeFile(
     path.join(dir, "circuit/main.ckt"),
-    "block main\nuse power as PWR\nnet +5V : PWR.+5V\nnet GND : PWR.GND\n",
+    "block main\nuse power as PWR\nnet +3V3 : PWR.+3V3\nnet GND : PWR.GND\n",
   );
   expect((await fresh.validate()).text).toBe("template-check: 0 errors, 0 warnings");
 });

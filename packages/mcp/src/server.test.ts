@@ -260,22 +260,21 @@ describe("MCP server for many projects", () => {
       isError: false,
     });
     await cp(repo("library"), shelf.libraryDir, { recursive: true });
-    expect((await text("part_search", { q: "7805" })).text).toMatch(/^L7805CV: STMicro/);
-    const record = await text("part_get", { id: "L7805CV", tier: "full" });
-    expect(record.text).toMatch(/^# library\/L7805CV\.yaml\n/);
+    expect((await text("part_search", { q: "PJ-102" })).text).toMatch(/^PJ-102AH: Same Sky/);
+    const record = await text("part_get", { id: "SS14", tier: "full" });
+    expect(record.text).toMatch(/^# library\/SS14\.yaml\n/);
     expect((await text("part_get", { id: "nope" })).isError).toBe(true);
 
     // New records go to the shared library too; there are no project parts/ yet.
-    const yaml = (await readFile(repo("library/1N5819.yaml"), "utf8")).replace(
-      "id: 1N5819",
-      "id: TEST-D1",
-    );
+    const yaml = (await readFile(repo("library/SS14.yaml"), "utf8"))
+      .replace("id: SS14", "id: TEST-D1")
+      .replace("verified_by: human", "verified_by: null");
     const put = await text("part_put", { record: yaml });
     expect(put.text).toMatch(/^created library\/TEST-D1\.yaml \(lib:TEST-D1\)\n/);
     expect(put.text).toContain("unverified until a human checks it");
     expect(await readFile(path.join(shelf.libraryDir, "TEST-D1.yaml"), "utf8")).toBe(yaml);
     expect((await text("part_put", { record: yaml })).text).toMatch(/^updated library\/TEST-D1/);
-    expect((await text("part_search", { q: "TEST-D1" })).text).toMatch(/^TEST-D1: onsemi/);
+    expect((await text("part_search", { q: "TEST-D1" })).text).toMatch(/^TEST-D1: SS14, Schottky/);
     expect((await text("part_put", { record: "id: x" })).isError).toBe(true);
     expect((await text("part_put", { record: yaml, scope: "project" })).text).toMatch(
       /^no project open, so no project parts\/ to write to/,
@@ -313,8 +312,8 @@ describe("MCP server for many projects", () => {
     );
     expect((await text("validate")).text).toBe("psu: 0 errors, 0 warnings");
     // Records written from the project go to the shared library listed in the settings.
-    const yaml = (await readFile(repo("library/1N5819.yaml"), "utf8")).replace(
-      "id: 1N5819",
+    const yaml = (await readFile(repo("library/SS14.yaml"), "utf8")).replace(
+      "id: SS14",
       "id: TEST-D2",
     );
     expect((await text("part_put", { record: yaml })).text).toMatch(

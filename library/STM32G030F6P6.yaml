@@ -1,0 +1,133 @@
+id: STM32G030F6P6
+summary: Arm Cortex-M0+ MCU, 64 MHz, 32 KB flash, 8 KB SRAM, 2x USART, 2x I2C,
+  2x SPI, 12-bit ADC, 17 GPIO (5 V tolerant), 2.0-3.6 V, TSSOP-20
+manufacturer: STMicroelectronics
+preferred_mpn: STM32G030F6P6
+package: TSSOP-20 4.4x6.5 mm, 0.65 mm pitch
+footprint: Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm
+kicad_symbol: MCU_ST_STM32G0:STM32G030F6Px
+pins:
+  1:
+    {
+      name: PB7/PB8,
+      type: bidir,
+      note: "PB7 FT_fa (USART1_RX, I2C1_SDA, ADC_IN11) bonded with PB8 FT_f (I2C1_SCL,
+        SPI2_SCK); configure only one as output",
+    }
+  2:
+    {
+      name: PB9/PC14,
+      type: bidir,
+      note: "PB9 FT_f (I2C1_SDA) bonded with PC14-OSC32_IN/OSC_IN (HSE/LSE input)",
+    }
+  3:
+    {
+      name: PC15,
+      type: bidir,
+      note: "PC15-OSC32_OUT / OSC_EN; PC13-15 sink only, max 2 MHz/30 pF, never source
+        current (LED)",
+    }
+  4: { name: VDD, type: power_in, vmax: 4.0V, note: "VDD/VDDA/VBAT bonded" }
+  5: { name: VSS, type: power_in, note: "VSS/VSSA" }
+  6: { name: NRST, type: input, unused: open, note: "Reset, active low, internal weak pull-up" }
+  7: { name: PA0, type: bidir, note: "FT_a; SPI2_SCK, USART2_CTS, ADC_IN0, WKUP1" }
+  8: { name: PA1, type: bidir, note: "FT_ea; SPI1_SCK, USART2_RTS, ADC_IN1" }
+  9: { name: PA2, type: bidir, note: "FT_a; USART2_TX, SPI1_MOSI, ADC_IN2 (bootloader USART2)" }
+  10: { name: PA3, type: bidir, note: "FT_ea; USART2_RX, SPI2_MISO, ADC_IN3 (bootloader USART2)" }
+  11: { name: PA4, type: bidir, note: "FT_a; SPI1_NSS, SPI2_MOSI, TIM14_CH1, ADC_IN4" }
+  12: { name: PA5, type: bidir, note: "FT_ea; SPI1_SCK, ADC_IN5" }
+  13: { name: PA6, type: bidir, note: "FT_ea; SPI1_MISO, TIM3_CH1, TIM16_CH1, ADC_IN6" }
+  14: { name: PA7, type: bidir, note: "FT_a; SPI1_MOSI, TIM3_CH2, TIM1_CH1N, TIM17_CH1, ADC_IN7" }
+  15:
+    {
+      name: PA8/PB0/PB1/PB2,
+      type: bidir,
+      note: "Four pads bonded: PB0/PB1/PB2 (ADC_IN8-10, TIM3_CH3/4) and PA8 (MCO,
+        TIM1_CH1)",
+    }
+  16:
+    {
+      name: PA9/PA11,
+      type: bidir,
+      note: "PA11 by default, remappable to PA9 (USART1_TX, I2C1_SCL); FT_fa,
+        ADC_IN15",
+    }
+  17:
+    {
+      name: PA10/PA12,
+      type: bidir,
+      note: "PA12 by default, remappable to PA10 (USART1_RX, I2C1_SDA); FT_fa,
+        ADC_IN16",
+    }
+  18: { name: PA13, type: bidir, note: "SWDIO after reset, internal pull-up" }
+  19:
+    {
+      name: PA14/PA15,
+      type: bidir,
+      note: "PA14-BOOT0 = SWCLK after reset (internal pull-down), also BOOT0 when
+        nBOOT_SEL option bit cleared; bonded with PA15",
+    }
+  20:
+    {
+      name: PB3/PB4/PB5/PB6,
+      type: bidir,
+      note: "Four pads bonded: PB3 SPI1_SCK, PB4 SPI1_MISO, PB5 SPI1_MOSI/WKUP6, PB6
+        USART1_TX/I2C1_SCL (FT_f)",
+    }
+ratings:
+  vdd: { min: 2.0V, max: 3.6V, abs_max: 4.0V, abs_min: -0.3V }
+  vin_ft:
+    {
+      max: "min(VDD + 3.6 V, 5.5 V) operating; VDD + 4.0 V abs (pull-ups/downs
+        disabled above VDD + 0.3 V)",
+    }
+  vin_ft_analog_max: 4.0V
+  clock_max: 64MHz
+  flash: 32KB
+  sram: 8KB
+  io_sink_max: 15mA (20 mA on FT_f)
+  io_source_max: 15mA
+  total_io_current_max: 80mA
+  vdd_current_max: 100mA
+  por_threshold_typ: 2.10V
+  pdr_threshold_typ: 2.00V
+  tj_max: 105C operating, 150C abs
+temp_c: [-40, 85]
+requirements:
+  - text: Decouple VDD/VDDA with 100 nF + 4.7 uF ceramic, as close as possible to
+      the pin pair
+    cap: { from: VDD, to: VSS, min: 100n }
+  - Optional 100 nF from NRST to GND for noise immunity (ST's recommended NRST
+    protection)
+  - Bonded pins (1, 2, 15, 19, 20) carry several GPIOs on one pad - configure
+    only one as an output at a time
+  - SWD on PA13 (SWDIO) and PA14 (SWCLK); bring them and NRST to a header for
+    programming
+notes:
+  - Factory-new parts boot from system memory if main flash is empty
+    (empty-check); BOOT0 on PA14 is only used if the nBOOT_SEL option bit is
+    cleared.
+  - System bootloader on USART PA9/PA10 or PA2/PA3, I2C PB6/PB7 (AN2606).
+  - 16 MHz internal RC with PLL to 64 MHz; HSE 4-48 MHz on PC14/PC15 (only pins
+    available on this package), LSE 32.768 kHz.
+  - No USB, no DAC, no CAN on this part.
+  - All I/Os reset to analog mode except PA13/PA14 (SWD).
+sourcing: { lifecycle: active, lcsc: C724040, digikey: 497-STM32G030F6P6-ND }
+provenance:
+  datasheet: https://www.st.com/resource/en/datasheet/stm32g030f6.pdf
+  extracted_by: ai
+  verified_by: human
+adc:
+  resolution: 12 bit (16 bit with oversampling)
+  sample_rate: ~2.5 Msps
+  external_channels_tssop20: 14
+  internal: temperature sensor, VREFINT (1.212 V typ), VBAT/3
+  range: 0..VDDA
+peripherals: TIM1 advanced, TIM3/14/16/17, IWDG, WWDG, RTC, 2x I2C (Fm+), 2x
+  USART, 2x SPI (SPI1 with I2S), 5-ch DMA, CRC
+supply_current_typ:
+  run_64MHz_flash: 5.7mA
+  sleep_64MHz: 1.4mA
+  stop1: 3.6uA
+  standby: 1.2uA
+datasheet_ref: DS12991 Rev 6 (STM32G030x6/x8); reference manual RM0454; errata ES0486

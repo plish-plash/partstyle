@@ -1,0 +1,42 @@
+id: AO3400A
+summary: N-channel 30 V 5.7 A trench MOSFET, RDS(on) 26.5 mohm at 10 V / 32 mohm
+  at 4.5 V / 48 mohm at 2.5 V, SOT-23
+manufacturer: Alpha & Omega Semiconductor
+preferred_mpn: AO3400A
+package: SOT-23
+footprint: Package_TO_SOT_SMD:SOT-23
+kicad_symbol: Device:Q_NMOS
+pins:
+  1: { name: G, type: input, vmax: 12V, note: "VGS limit +/-12 V" }
+  2: { name: S, type: passive }
+  3: { name: D, type: passive, vmax: 30V }
+ratings:
+  vds_max: 30V
+  vgs_max: +/-12V
+  id: { ta_25c: 5.7A, ta_70c: 4.7A, note: "t <= 10 s rating" }
+  idm: 30A
+  vgs_th: { min: 0.65V, typ: 1.05V, max: 1.45V }
+  rds_on_max: { vgs_10v: 26.5mohm, vgs_4v5: 32mohm, vgs_2v5: 48mohm }
+  gfs_typ: 33S (5.7 A)
+  ciss_typ: 630pF
+  coss_typ: 75pF
+  crss_typ: 50pF
+  body_diode: { vsd_typ: 0.7V, vsd_max: 1V, is_max: 2A }
+  tj: { min: -55C, max: 150C }
+temp_c: [-55, 150]
+requirements:
+  - Keep VGS at or below 12 V
+notes:
+  - Complement of AO3401A. Logic-level - fully on from 2.5 V gate drive, so 3.3
+    V GPIO can switch amp-level low-side loads.
+  - Current rating depends on board copper; steady-state RthJA 125 C/W max.
+  - Gate charge, Rg, switching times and reverse recovery were not legible in
+    the copy read; see the AOS datasheet.
+  - Widely second-sourced (UMW, Leiditech, etc.) under the same part number with
+    slightly different specs.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.aosmd.com/res/datasheets/AO3400A.pdf
+  extracted_by: ai
+  verified_by: human
+thermal: { rth_ja_10s: 90C/W max, rth_ja_steady: 125C/W max, rth_jl: 80C/W max }

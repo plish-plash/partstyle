@@ -1,0 +1,170 @@
+id: ESP32-S3-WROOM-1
+summary: Wi-Fi 802.11b/g/n + Bluetooth 5 LE module, ESP32-S3 dual LX7 240 MHz,
+  quad SPI flash (4-16 MB), optional PSRAM, 36 GPIO, PCB antenna, 3.0-3.6 V,
+  18x25.5 mm SMD
+manufacturer: Espressif
+preferred_mpn: ESP32-S3-WROOM-1-N8R2
+package: SMD module 18 x 25.5 x 3.1 mm, 40 castellated pads + EPAD
+footprint: RF_Module:ESP32-S3-WROOM-1
+kicad_symbol: RF_Module:ESP32-S3-WROOM-1
+pins:
+  1: { name: GND, type: power_in }
+  2: { name: 3V3, type: power_in, vmax: 3.6V }
+  3:
+    {
+      name: EN,
+      type: input,
+      unused: required,
+      note: "Chip enable, high = on. Never leave floating; 10k pull-up + 1 uF to GND
+        RC delay",
+    }
+  4: { name: IO4, type: bidir, note: "RTC_GPIO4, TOUCH4, ADC1_CH3" }
+  5: { name: IO5, type: bidir, note: "RTC_GPIO5, TOUCH5, ADC1_CH4" }
+  6: { name: IO6, type: bidir, note: "RTC_GPIO6, TOUCH6, ADC1_CH5" }
+  7: { name: IO7, type: bidir, note: "RTC_GPIO7, TOUCH7, ADC1_CH6" }
+  8: { name: IO15, type: bidir, note: "U0RTS, ADC2_CH4, XTAL_32K_P" }
+  9: { name: IO16, type: bidir, note: "U0CTS, ADC2_CH5, XTAL_32K_N" }
+  10: { name: IO17, type: bidir, note: "U1TXD, ADC2_CH6" }
+  11: { name: IO18, type: bidir, note: "U1RXD, ADC2_CH7, CLK_OUT3" }
+  12: { name: IO8, type: bidir, note: "TOUCH8, ADC1_CH7, SUBSPICS1" }
+  13: { name: USB_D-, type: bidir, note: "GPIO19, U1RTS, ADC2_CH8, CLK_OUT2; native USB D-" }
+  14: { name: USB_D+, type: bidir, note: "GPIO20, U1CTS, ADC2_CH9, CLK_OUT1; native USB D+" }
+  15:
+    {
+      name: IO3,
+      type: bidir,
+      note: "Strapping (JTAG source); no internal pull, must not float if JTAG strap
+        eFuse used. TOUCH3, ADC1_CH2",
+    }
+  16: { name: IO46, type: bidir, note: "Strapping: boot mode/ROM print; weak pull-down default 0" }
+  17: { name: IO9, type: bidir, note: "TOUCH9, ADC1_CH8, FSPIHD" }
+  18: { name: IO10, type: bidir, note: "TOUCH10, ADC1_CH9, FSPICS0" }
+  19: { name: IO11, type: bidir, note: "TOUCH11, ADC2_CH0, FSPID" }
+  20: { name: IO12, type: bidir, note: "TOUCH12, ADC2_CH1, FSPICLK" }
+  21: { name: IO13, type: bidir, note: "TOUCH13, ADC2_CH2, FSPIQ" }
+  22: { name: IO14, type: bidir, note: "TOUCH14, ADC2_CH3, FSPIWP" }
+  23: { name: IO21, type: bidir }
+  24: { name: IO47, type: bidir, note: "1.8 V domain on N16R16VA variants" }
+  25: { name: IO48, type: bidir, note: "1.8 V domain on N16R16VA variants" }
+  26:
+    {
+      name: IO45,
+      type: bidir,
+      note: "Strapping: VDD_SPI voltage; weak pull-down. Must not be pulled high at
+        power-up on non-PSRAM-eFused modules",
+    }
+  27:
+    {
+      name: IO0,
+      type: bidir,
+      note: "Strapping: boot mode, weak pull-up. Low at reset = download mode (BOOT
+        button to GND)",
+    }
+  28:
+    {
+      name: IO35,
+      type: bidir,
+      note: "Used by octal PSRAM on R8/R16V variants - not available there",
+    }
+  29: { name: IO36, type: bidir, note: "Used by octal PSRAM on R8/R16V variants" }
+  30: { name: IO37, type: bidir, note: "Used by octal PSRAM on R8/R16V variants" }
+  31: { name: IO38, type: bidir }
+  32: { name: IO39, type: bidir, note: "MTCK" }
+  33: { name: IO40, type: bidir, note: "MTDO" }
+  34: { name: IO41, type: bidir, note: "MTDI" }
+  35: { name: IO42, type: bidir, note: "MTMS" }
+  36: { name: RXD0, type: bidir, note: "U0RXD / GPIO44, download/console UART" }
+  37: { name: TXD0, type: bidir, note: "U0TXD / GPIO43, download/console UART" }
+  38: { name: IO2, type: bidir, note: "TOUCH2, ADC1_CH1" }
+  39: { name: IO1, type: bidir, note: "TOUCH1, ADC1_CH0" }
+  40: { name: GND, type: power_in }
+  41:
+    { name: GND, type: power_in, note: "EPAD; soldering optional but improves thermal performance" }
+ratings:
+  vdd33: { min: 3.0V, typ: 3.3V, max: 3.6V, abs_max: 3.6V, abs_min: -0.3V }
+  supply_current_capability_min: 0.5A
+  tx_peak_current: 355mA (802.11b 20.5 dBm)
+  rx_current: 95mA
+  deep_sleep_current_typ: 7-8uA
+  power_off_current: 1uA
+  cpu_clock_max: 240MHz
+  sram: 512KB
+  gpio_source_current_typ: 40mA (drive 3)
+  gpio_sink_current_typ: 28mA
+  pull_up_typ: 45k
+  pull_down_typ: 45k
+  esd_hbm: 2kV
+  esd_cdm: 500V
+temp_c: [-40, 85]
+requirements:
+  - text: Bulk 22 uF plus 100 nF on 3V3 at the module (peripheral schematic C1/C3)
+    cap: { from: 3V3, to: GND, min: 10u }
+  - text: EN needs a 10 k pull-up and 1 uF to GND RC delay so EN rises after 3V3 is
+      stable (>=50 us)
+    cap: { from: EN, to: GND, min: 1u }
+  - Supply must deliver at least 500 mA (RF TX bursts ~355 mA)
+  - Keep IO0 high at reset for normal boot; provide a BOOT button to GND for
+    download mode
+  - Do not pull IO45 high at power-up; do not leave IO3 floating if the JTAG
+    strap eFuse is used
+  - Antenna keep-out - no copper under or near the PCB antenna; place the
+    antenna at the board edge
+notes:
+  - Variant sets flash/PSRAM and temperature - N4/N8/N16 and R2 variants -40..85
+    C; R8/R16VA (octal PSRAM) -40..65 C (85 C with PSRAM ECC) and lose IO35-37;
+    H4 -40..105 C.
+  - ADC2 channels are unusable while Wi-Fi is active.
+  - Native USB on IO19/IO20 supports USB-Serial/JTAG (flash and debug without a
+    USB-UART bridge) and USB OTG FS.
+  - Touch sensor has not passed conducted susceptibility testing.
+  - MSL 3 - solder within 168 h of opening the bag. Single reflow, peak 235-250
+    C. Avoid ultrasonic cleaning.
+  - ESP32-S3-WROOM-1U is the same pinout with a U.FL connector (18 x 19.2 mm)
+    and needs its own footprint.
+sourcing: { lifecycle: active }
+provenance:
+  datasheet: https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf
+  extracted_by: ai
+  verified_by: human
+variants:
+  - { mpn: ESP32-S3-WROOM-1-N4, flash: 4MB, psram: none, temp: "-40..85" }
+  - { mpn: ESP32-S3-WROOM-1-N8, flash: 8MB, psram: none, temp: "-40..85" }
+  - { mpn: ESP32-S3-WROOM-1-N16, flash: 16MB, psram: none, temp: "-40..85" }
+  - { mpn: ESP32-S3-WROOM-1-H4, flash: 4MB, psram: none, temp: "-40..105" }
+  - { mpn: ESP32-S3-WROOM-1-N4R2, flash: 4MB, psram: 2MB quad, temp: "-40..85" }
+  - { mpn: ESP32-S3-WROOM-1-N8R2, flash: 8MB, psram: 2MB quad, temp: "-40..85" }
+  - { mpn: ESP32-S3-WROOM-1-N16R2, flash: 16MB, psram: 2MB quad, temp: "-40..85" }
+  - { mpn: ESP32-S3-WROOM-1-N4R8, flash: 4MB, psram: 8MB octal, temp: "-40..65" }
+  - { mpn: ESP32-S3-WROOM-1-N8R8, flash: 8MB, psram: 8MB octal, temp: "-40..65" }
+  - { mpn: ESP32-S3-WROOM-1-N16R8, flash: 16MB, psram: 8MB octal, temp: "-40..65" }
+  - { mpn: ESP32-S3-WROOM-1-N16R16VA, flash: 16MB, psram: 16MB octal 1.8V, temp: "-40..65" }
+strapping:
+  boot_mode: { SPI_boot: "GPIO0=1", download: "GPIO0=0 and GPIO46=0" }
+  defaults:
+    {
+      GPIO0: weak pull-up (1),
+      GPIO3: floating,
+      GPIO45: weak pull-down (0),
+      GPIO46: weak pull-down (0),
+    }
+  vdd_spi: GPIO45=0 -> 3.3 V flash supply (default)
+  timing: { t_setup_min: 0ms, t_hold_min: 3ms }
+dc_characteristics_3v3:
+  vih_min: 0.75 x VDD
+  vil_max: 0.25 x VDD
+  voh_min: 0.8 x VDD
+  vol_max: 0.1 x VDD
+  input_leakage_max: 50nA
+  en_reset_threshold: "VIL_nRST max 0.25 x VDD, hold low >= 50 us"
+current_consumption:
+  wifi_tx: { 11b_1M_20.5dBm: 355mA, 11g_54M_18dBm: 297mA, 11n_HT20_MCS7: 286mA }
+  ble_tx: { 20dBm: 344mA, 0dBm: 187mA }
+  modem_sleep_240MHz_dual_core: 66-81mA
+  light_sleep: 240uA
+rf:
+  wifi: 802.11b/g/n, 2412-2484 MHz, up to 20.5 dBm, sensitivity -98.2 dBm (11b 1M)
+  ble: Bluetooth 5 LE, -24..20 dBm, sensitivity -96.5 dBm (1M), -103.5 dBm (125k)
+peripherals: 3x UART, 2x I2C, 2x I2S, SPI2/SPI3, LCD/camera, TWAI (CAN), USB OTG
+  FS, USB Serial/JTAG, SD/MMC host, MCPWM, RMT, PCNT, LEDC, 2x 12-bit SAR ADC
+  (20 ch), 14 touch, temp sensor
+mechanical: { size: 18.0 x 25.5 x 3.1 mm, pitch: 1.27 mm, msl: 3 }

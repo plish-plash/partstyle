@@ -45,7 +45,9 @@ describe("kicadImport", () => {
       expect(r.text).toContain(
         "netlist check: the imported design connects exactly what KiCad's netlist does",
       );
-      expect(r.text).toContain("now: 0 errors, 0 warnings");
+      // The fixture's header record is its own, not the seed library's, so it comes back a draft.
+      expect(r.text).toContain("MPN TSW-103-07-G-S is not in the library");
+      expect(r.text).toContain("now: 0 errors, 1 warning");
       // The block has its first copy's refdes; the second copy keeps its KiCad ones. Export
       // carries no Partstyle spec, so a generic comes back from its value and footprint.
       expect(await readFile(at("fresh/circuit/filter.ckt"), "utf8")).toContain(
