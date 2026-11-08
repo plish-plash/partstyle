@@ -99,11 +99,22 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
   // Pan and zoom by editing the viewBox; fit the sheet whenever it changes.
   let view = $state({ x: 0, y: 0, w: 297, h: 210 });
   let svg: SVGSVGElement | undefined = $state();
+  const fitted = $derived({ w: Math.max(layout.width, 60), h: Math.max(layout.height, 40) });
   const fit = $derived(`${sheet.block} ${layout.width} ${layout.height}`);
   $effect(() => {
     void fit;
-    view = untrack(() => ({ x: 0, y: 0, w: Math.max(layout.width, 60), h: Math.max(layout.height, 40) }));
+    view = untrack(() => ({ x: 0, y: 0, ...fitted }));
   });
+  /** Zoom from a few pins across (mm) out to this many times the fitted view. */
+  const MIN_WIDTH = 15;
+  const MAX_ZOOM_OUT = 4;
+  const between = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  /** Keeps the middle of the view on the sheet, so it cannot be panned out of sight. */
+  function onSheet(v: typeof view) {
+    const cx = between(v.x + v.w / 2, 0, layout.width);
+    const cy = between(v.y + v.h / 2, 0, layout.height);
+    return { ...v, x: cx - v.w / 2, y: cy - v.h / 2 };
+  }
   function toView(e: { clientX: number; clientY: number }) {
     const r = svg?.getBoundingClientRect();
     if (!r) return { x: 0, y: 0 };
@@ -115,8 +126,9 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
   function wheel(e: WheelEvent) {
     e.preventDefault();
     const p = toView(e);
-    const k = Math.exp(e.deltaY * 0.0015);
-    view = { x: p.x - (p.x - view.x) * k, y: p.y - (p.y - view.y) * k, w: view.w * k, h: view.h * k };
+    const lo = Math.min(MIN_WIDTH, fitted.w) / view.w;
+    const k = between(Math.exp(e.deltaY * 0.0015), lo, (fitted.w * MAX_ZOOM_OUT) / view.w);
+    view = onSheet({ x: p.x - (p.x - view.x) * k, y: p.y - (p.y - view.y) * k, w: view.w * k, h: view.h * k });
   }
   let drag: { x: number; y: number; vx: number; vy: number; moved: boolean } | undefined;
   function down(e: PointerEvent) {
@@ -128,7 +140,7 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
     if (!r) return;
     const scale = Math.max(view.w / r.width, view.h / r.height);
     if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true;
-    view = { ...view, x: drag.vx - (e.clientX - drag.x) * scale, y: drag.vy - (e.clientY - drag.y) * scale };
+    view = onSheet({ ...view, x: drag.vx - (e.clientX - drag.x) * scale, y: drag.vy - (e.clientY - drag.y) * scale });
   }
   function up(e: PointerEvent) {
     if (drag && !drag.moved && e.target === svg) onselect([], false);

@@ -455,8 +455,8 @@ Serves the live viewer for the project at `http://127.0.0.1:7766/` (or the next 
 page shows each sheet laid out as described in [layout.md](layout.md), and updates within a
 moment of any change to the project's files or its part libraries.
 
-- **Navigate:** sheet buttons in the header, or double-click a sheet. Scroll to zoom, drag to
-  pan.
+- **Navigate:** sheet buttons in the header, or double-click a sheet. Scroll to zoom (from about 15 mm across
+  out to four times the fitted sheet), drag to pan (the middle of the view stays on the sheet).
 - **Point:** click a part, pin, wire, label or sheet to select it; shift-click adds to the
   selection. The selection is what `focus` reports to the AI.
 - **Inspect:** the side panel shows the part card (record, verification, datasheet, ratings,
