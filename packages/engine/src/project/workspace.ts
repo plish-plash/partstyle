@@ -90,7 +90,7 @@ import { loadProject, ProjectLoadError } from "./load.js";
 import { writePartRecord } from "./part-put.js";
 import { addPending, readPending, removePending } from "./pending.js";
 import { defaultStateDir, readSettings, type Settings } from "./settings.js";
-import { DECISIONS_FILE, DESIGN_FILE, noteTemplates, projectSkeleton } from "./skeleton.js";
+import { DESIGN_FILE, projectSkeleton, RECORD_FILE, RECORD_HEADER } from "./skeleton.js";
 import type { ProjectSource } from "./source.js";
 import {
   checkVariantName,
@@ -402,8 +402,8 @@ export class Workspace {
     return this.guard(async () => {
       const f = toPosix(file).replace(/^\.\//, "");
       if (!isDoc(f)) return fail(`docs are ${PROJECT_FILE} and notes/*.md (got ${file})`);
-      if (f === DECISIONS_FILE) {
-        return fail(`${f} is append-only: add entries with add_decision (partstyle decision)`);
+      if (f === RECORD_FILE) {
+        return fail(`${f} is append-only: add entries with record_change (partstyle record)`);
       }
       if (!(await exists(path.join(this.root, PROJECT_FILE)))) {
         return fail(`${this.root} is not a project (no ${PROJECT_FILE})`);
@@ -482,25 +482,25 @@ export class Workspace {
     });
   }
 
-  /** Adds an entry to notes/decisions.md, which is only ever added to. */
-  addDecision(text: string): Promise<TextResult> {
+  /** Adds an entry to the design record (notes/design-record.md), which is only ever added to. */
+  recordChange(text: string): Promise<TextResult> {
     return this.guard(async () => {
       const entry = text.trim().replace(/\s*\n\s*/g, " ");
-      if (entry === "") return fail("a decision needs text");
+      if (entry === "") return fail("an entry needs text");
       if (!(await exists(path.join(this.root, PROJECT_FILE)))) {
         return fail(`${this.root} is not a project (no ${PROJECT_FILE})`);
       }
-      const file = path.join(this.root, DECISIONS_FILE);
-      const existing = await this.readOptional(DECISIONS_FILE);
+      const file = path.join(this.root, RECORD_FILE);
+      const existing = await this.readOptional(RECORD_FILE);
       if (existing === "") {
         await mkdir(path.dirname(file), { recursive: true });
-        await writeFile(file, noteTemplates[DECISIONS_FILE], "utf8");
+        await writeFile(file, RECORD_HEADER, "utf8");
       }
       // Swedish dates read YYYY-MM-DD HH:MM:SS, in local time.
       const line = `- ${new Date().toLocaleString("sv").slice(0, 16)}: ${entry}`;
       const gap = existing === "" || existing.endsWith("\n") ? "" : "\n";
       await appendFile(file, `${gap}${line}\n`, "utf8");
-      return { ok: true, text: `added to ${DECISIONS_FILE}: ${line}` };
+      return { ok: true, text: `added to ${RECORD_FILE}: ${line}` };
     });
   }
 
@@ -555,24 +555,20 @@ export class Workspace {
     });
   }
 
-  /** The overview's line on notes: what exists, and whether the design overview is written. */
+  /**
+   * The overview's line on notes: whether the design overview is written, how many entries the
+   * design record has (both shown before they exist), then any other notes there are.
+   */
   private async noteLines(): Promise<string[]> {
     const found = (await this.docs()).filter((f) => f.startsWith("notes/"));
-    const planned = Object.keys(noteTemplates);
-    const notes = [...new Set([...planned.filter((f) => found.includes(f)), ...found])];
-    const missing = !found.includes(DESIGN_FILE);
-    const shown = await Promise.all(
-      notes.map(async (f) => {
-        const name = f.slice("notes/".length);
-        const text = await this.readOptional(f);
-        if (f === DESIGN_FILE && text === noteTemplates[DESIGN_FILE]) {
-          return `${name} (not written yet)`;
-        }
-        if (f === DECISIONS_FILE) return `${name} (${text.match(/^- /gm)?.length ?? 0})`;
-        return name;
-      }),
-    );
-    if (missing) shown.unshift("design.md (not written yet)");
+    const entries = (await this.readOptional(RECORD_FILE)).match(/^- /gm)?.length ?? 0;
+    const shown = [
+      found.includes(DESIGN_FILE) ? "design.md" : "design.md (not written yet)",
+      `design-record.md (${entries})`,
+      ...found
+        .filter((f) => f !== DESIGN_FILE && f !== RECORD_FILE)
+        .map((f) => f.slice("notes/".length)),
+    ];
     return [`notes: ${shown.join(", ")}`];
   }
 

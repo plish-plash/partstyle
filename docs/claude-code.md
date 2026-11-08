@@ -120,7 +120,7 @@ identical.
 | `apply(patch, dry_run)`                                                   | `partstyle apply [FILE\|-] [--dry-run]`                                                        |
 | `validate`                                                                | `partstyle validate [--json]`                                                                  |
 | `read_doc(file)`, `write_doc(file, text)`                                 | `partstyle doc read FILE`, `partstyle doc write FILE [SRC\|-]`                                 |
-| `add_decision(text)`                                                      | `partstyle decision TEXT...`                                                                   |
+| `record_change(text)`                                                     | `partstyle record TEXT...`                                                                     |
 | `approve(parts, undo)`                                                    | `partstyle approve\|unapprove ...`                                                             |
 | `part_search(q)`                                                          | `partstyle part search Q`                                                                      |
 | `part_get(id, tier)`                                                      | `partstyle part get ID --tier ...`                                                             |
@@ -161,7 +161,7 @@ says which variant the person is viewing. See
 
 `read_doc` and `write_doc` cover `partstyle-project.yaml` and Markdown files under `notes/`;
 writing the project file reports its issues, and a project file that would not load is refused.
-`notes/decisions.md` is append-only, so `write_doc` refuses it and `add_decision` adds to it.
+`notes/design-record.md` is append-only, so `write_doc` refuses it and `record_change` adds to it.
 `guide` and documents are tools because clients like Claude Desktop cannot read files, and prompts
 sit in a menu only the person can open, so `guide` is how Claude reaches a procedure by itself. Settings (`~/.partstyle/settings.yaml`) and the review mode
 (the viewer's switch) are the person's, so no tool writes them.

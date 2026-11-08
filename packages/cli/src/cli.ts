@@ -38,7 +38,7 @@ commands:
   validate [DIR] [--json]                  parse, connect and ERC-check (exit 1 on errors)
   apply [FILE|-] [--dry-run]               apply a .ckt patch from FILE or stdin
   doc read FILE | doc write FILE [SRC|-]   read or replace the project file or a notes/*.md file
-  decision TEXT...                         add a decision to notes/decisions.md
+  record TEXT...                           add a design change to notes/design-record.md
   approve | unapprove all|REF...|where COND  sign off parts, or take that back
   part search QUERY...                     search the part library
   part get ID [--tier summary|pins|full]   read a part record
@@ -297,9 +297,9 @@ export async function run(argv: string[], io: CliIO): Promise<CommandResult> {
         await ws.approve(args.join(" "), { by: "ai", undo: command === "unapprove" }),
       );
 
-    case "decision":
-      if (args.length === 0) return usageError("usage: decision TEXT...");
-      return fromText(await ws.addDecision(args.join(" ")));
+    case "record":
+      if (args.length === 0) return usageError("usage: record TEXT...");
+      return fromText(await ws.recordChange(args.join(" ")));
 
     case "checkpoint":
       if (args.length === 0) return usageError("usage: checkpoint MESSAGE...");

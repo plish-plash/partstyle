@@ -27,9 +27,9 @@ const designReview: PromptDef = {
     block,
   }) => `Review ${block ? `block ${block} of ` : ""}this Partstyle design. Report findings; do not change the circuit until the person agrees to each fix.
 
-1. Gather: overview, validate, ${PROJECT_FILE}, notes/design.md, notes/decisions.md, then ${
+1. Gather: overview, validate, ${PROJECT_FILE}, notes/design.md, notes/design-record.md, then ${
     block ? `read_block ${block}` : "each block with read_block"
-  }. For every library part, part_get with tier pins. A choice recorded in notes/decisions.md is
+  }. For every library part, part_get with tier pins. A choice in notes/design-record.md is
    not a finding unless something has changed since.
 2. Check, citing refdes and nets:
    - Each validate issue: its cause and a fix. Errors must be fixed; a warning may instead get a
@@ -102,15 +102,16 @@ const handoff: PromptDef = {
    record (ingest_part) if none fits. Apply the ones they agree to with
    \`= part REF lib:ID [layout] @ intent\`, keeping the line's layout and intent, since = replaces
    the whole statement. A generic stays only if they confirm it (the assembler chooses). Then
-   bom_export again, and list any part with no preferred MPN for the person.
-3. Update notes/pcb.md, keyed to refdes: placement from datasheet requirements (decoupling
+   bom_export again, and list any part with no preferred MPN for the person. Add the parts
+   chosen to the design record (record_change).
+3. Write notes/pcb.md (or update it), keyed to refdes: placement from datasheet requirements (decoupling
    close to its pins, regulator input and output caps), protection parts at their connectors
    (the project file's external interfaces), thermal relief for regulators, sensitive analog nets,
    suggested layer count and keep-outs.
-4. For a design with an MCU, update notes/firmware.md from the circuit and part records, keyed to
+4. For a design with an MCU, write notes/firmware.md (or update it) from the circuit and part records, keyed to
    nets: pin assignments, peripherals, clock source, programming and debug access, reset and boot
    requirements, power-up constraints.
-5. Check notes/design.md still describes the design.
+5. Check notes/design.md describes the design as it is now (write it if there is none).
 6. kicad_export: the netlist round trip and KiCad ERC must be clean.
 7. Summarise for the person: open \`kicad/<name>.kicad_pro\`, run Tools > Update PCB from
    Schematic, then follow notes/pcb.md; list any open risks.`,

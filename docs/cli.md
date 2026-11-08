@@ -32,12 +32,17 @@ overwritten.
 | `partstyle-project.yaml` | name, description, design context to fill in, settings (see below) |
 | `circuit/main.ckt`       | an empty top block                                                 |
 | `approvals.yaml`         | parts signed off (see `approve`), once there are any               |
-| `notes/design.md`        | how the design works now, kept up to date                          |
-| `notes/decisions.md`     | decisions made with the person; append-only (see `decision`)       |
-| `notes/pcb.md`           | layout notes, written at hand-off                                  |
-| `notes/firmware.md`      | what firmware needs to know, written at hand-off                   |
 | `CLAUDE.md`              | instructions for Claude Code: workflow and procedures              |
 | `.claude/commands/`      | Claude Code slash commands for the procedures (see `guide`)        |
+
+Notes are written once there is something to put in them:
+
+| File                     | Contents                                                |
+| ------------------------ | ------------------------------------------------------- |
+| `notes/design.md`        | how the design works now, kept up to date               |
+| `notes/design-record.md` | every design change and why; append-only (see `record`) |
+| `notes/pcb.md`           | layout notes, written at hand-off                       |
+| `notes/firmware.md`      | what firmware needs to know, written at hand-off        |
 
 Later commands add `bom.csv` and the generated KiCad project in `kicad/`, and a design that uses a
 block twice gets `annotation.lock` (commit it; see `kicad export`).
@@ -185,7 +190,7 @@ YAML, or no `name`) is refused and nothing is written; otherwise the issues it n
 (or `partstyle-project.yaml: no issues`). These exist for MCP clients without file tools
 (`read_doc`, `write_doc`); from a shell, editing the files directly is the same.
 
-`notes/decisions.md` is append-only, so `doc write` refuses it. A description over about 200
+`notes/design-record.md` is append-only, so `doc write` refuses it. A description over about 200
 characters or several lines long gets a note that the design overview belongs in
 `notes/design.md`.
 
@@ -198,13 +203,12 @@ covers the part's spec and the net on each pin, not its layout or intent. If eit
 part shows as changed since approved, and reverting the change restores the approval. A variant
 uses main's approvals until it makes its own.
 
-### `decision TEXT...`
+### `record TEXT...`
 
-Adds a line with the date and time to the end of `notes/decisions.md`: a decision made with the
-person, and why.
-Line breaks in the text become spaces. Earlier entries are never touched. It is `add_decision` in
-MCP.
-
+Adds a line with the date and time to the end of `notes/design-record.md`, the design's history:
+a design change (a function added or removed, a part, topology or value chosen, a risk accepted,
+a suggestion taken or overruled) and why. The file is created with its first entry. Line breaks
+in the text become spaces. Earlier entries are never touched. It is `record_change` in MCP.
 ### `apply [FILE|-] [--dry-run]`
 
 Applies a patch from FILE, or from stdin when FILE is `-` or omitted. Patches are all-or-nothing:

@@ -54,7 +54,7 @@ my-board/
   parts.lock              # exact part-record versions/hashes used
   notes/
     design.md             # how the design works now
-    decisions.md          # decisions made with the person; append-only
+    design-record.md      # every design change and why; append-only
     pcb.md                # layout notes, written at hand-off
     firmware.md           # what firmware needs to know, written at hand-off
 ```
@@ -159,7 +159,7 @@ External interfaces are the person's statement of what the outside world does at
 
 ### Notes
 
-Knowledge about a design has one home each, so none of it piles up in the project description, which stays a sentence or two. `notes/design.md` says how the design works now and is rewritten as it changes. `notes/decisions.md` is the record of what was decided with the person and why: append-only, through `add_decision`, so history can't be tidied away. `notes/pcb.md` (layout guidance) and `notes/firmware.md` (pin map, peripherals, clocks, programming) are written at hand-off, not kept up as the design moves.
+Knowledge about a design has one home each, so none of it piles up in the project description, which stays a sentence or two. `notes/design.md` says how the design works now and is rewritten as it changes. `notes/design-record.md` is the design's history, every design change and why (functions added or removed, parts, topologies and values chosen, risks accepted, suggestions taken or overruled): append-only, through `record_change`, so history can't be tidied away. Notes are created when there is something to put in them. `notes/pcb.md` (layout guidance) and `notes/firmware.md` (pin map, peripherals, clocks, programming) are written at hand-off, not kept up as the design moves.
 
 ## AI integration
 

@@ -42,7 +42,6 @@ describe("MCP server", () => {
   it("exposes a small tool surface", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
-      "add_decision",
       "apply",
       "approve",
       "bom_export",
@@ -59,6 +58,7 @@ describe("MCP server", () => {
       "query",
       "read_block",
       "read_doc",
+      "record_change",
       "validate",
       "variant",
       "write_doc",
@@ -72,7 +72,7 @@ describe("MCP server", () => {
   it("sends the workflow as instructions", () => {
     const text = client.getInstructions() ?? "";
     expect(text).toContain("Start each turn with diff");
-    expect(text).toContain("add_decision");
+    expect(text).toContain("record_change");
     expect(text).not.toContain("open_project");
     expect(text.toLowerCase()).not.toContain("checkpoint");
     expect(text.length / 4).toBeLessThan(600);
@@ -96,7 +96,7 @@ describe("MCP server", () => {
         "wrote notes/power.md (1 line)",
       );
       expect(await text("read_doc", { file: "notes/nope.md" })).toBe(
-        "no notes/nope.md; docs: partstyle-project.yaml, notes/decisions.md, notes/design.md, notes/firmware.md, notes/pcb.md, notes/power.md",
+        "no notes/nope.md; docs: partstyle-project.yaml, notes/power.md",
       );
       expect(await text("write_doc", { file: "../escape.md", text: "x" })).toMatch(
         /^docs are partstyle-project.yaml and notes\/\*.md/,
@@ -178,7 +178,7 @@ describe("MCP server", () => {
     expect((await call("guide", { topic: "nope" })).isError).toBe(true);
   });
 
-  it("records decisions, and catches up from the previous diff by default", async () => {
+  it("records design changes, and catches up from the previous diff by default", async () => {
     const tmp = await mkdtemp(path.join(tmpdir(), "partstyle-mcp-"));
     try {
       await cp(example, tmp, {
@@ -193,8 +193,8 @@ describe("MCP server", () => {
         const r = await local.callTool({ name, arguments: args });
         return ((r.content as { text: string }[])[0] as { text: string }).text;
       };
-      expect(await text("add_decision", { text: "Keep the LDO" })).toMatch(/: Keep the LDO$/);
-      expect(await text("write_doc", { file: "notes/decisions.md", text: "x" })).toContain(
+      expect(await text("record_change", { text: "Keep the LDO" })).toMatch(/: Keep the LDO$/);
+      expect(await text("write_doc", { file: "notes/design-record.md", text: "x" })).toContain(
         "append-only",
       );
       await text("diff", {});

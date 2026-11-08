@@ -3,29 +3,14 @@ import { PROJECT_FILE } from "./config.js";
 import type { TextFile } from "./source.js";
 
 export const DESIGN_FILE = "notes/design.md";
-export const DECISIONS_FILE = "notes/decisions.md";
+/** The design's history: every design change, and why. Append-only. */
+export const RECORD_FILE = "notes/design-record.md";
+/** How a design record starts, before its first entry. */
+export const RECORD_HEADER = `# Design record
 
-/** The notes a new project starts with: what each holds, and when it is written. */
-export const noteTemplates = {
-  [DESIGN_FILE]: `# Design
+Every change to the design, and why. Append-only: new entries go at the end.
 
-How the design works now, by block, kept up to date as it changes.
-`,
-  [DECISIONS_FILE]: `# Decisions
-
-Decisions made with the person, and why. Append-only: new entries go at the end.
-
-`,
-  "notes/pcb.md": `# PCB notes
-
-Layout guidance, written at hand-off: layer count, keep-outs, placement constraints.
-`,
-  "notes/firmware.md": `# Firmware notes
-
-What firmware needs to know, written at hand-off: pin assignments, peripherals, clocks,
-programming and debug access, reset and boot requirements.
-`,
-} as const;
+`;
 
 /**
  * A project's CLAUDE.md. It teaches the conventions an AI would otherwise copy from an example
@@ -126,10 +111,13 @@ Keep each thing in its place; the project file's description stays a short summa
 
 - \`notes/design.md\`: how the design works now, by block. Write it once the design takes shape,
   and rewrite it when its structure or approach changes.
-- \`notes/decisions.md\`: append-only. Whenever the person chooses between options, accepts a risk
-  or overrules a suggestion, add it with \`partstyle decision "what, and why"\`. Don't edit the
-  file.
-- \`notes/pcb.md\` and \`notes/firmware.md\`: written at hand-off, not as you go.
+- \`notes/design-record.md\`: the design's history, append-only. Whenever the design changes (a
+  function added or removed, a part, topology or value chosen, a risk accepted, a suggestion taken
+  or overruled), add what changed and why with \`partstyle record "what, and why"\`, in the same
+  turn. Fixes to your own mistakes and tidying are not design changes. Don't edit the file.
+- \`notes/pcb.md\` and \`notes/firmware.md\`: written at hand-off (\`/handoff\`), not as you go.
+
+Notes files are created when there is something to put in them.
 
 ## Procedures
 
@@ -190,11 +178,11 @@ ${start}## Workflow
    pin left open on purpose with 'nc U2.GAIN* @ why', not a waiver.
 6. The engine does not check interface hazards: handle them in the design. One the person
    accepts goes in the project file as {hazard: ESD, accepted: why}.
-7. Keep knowledge out of the description:
-   - notes/design.md: how the design works now, by block. Write it once the design takes
-     shape, and rewrite it when its structure changes.
-   - add_decision: when the person chooses between options, accepts a risk or overrules a
-     suggestion, record it and why.
+7. Notes, not the description:
+   - notes/design.md: how the design works now, by block, once it takes shape; rewritten as
+     it changes.
+   - record_change: each design change and why, as you make it (function added or removed;
+     part, topology or value chosen; risk accepted; suggestion taken), not your own fixes.
    - notes/pcb.md, notes/firmware.md: only at hand-off.
 8. "this", "here", "the selected part": call focus. Answer open comments; the person resolves
    them in the viewer.
@@ -247,7 +235,6 @@ checks:
       text: `block main "TODO: what this board does, in one line"
 `,
     },
-    ...Object.entries(noteTemplates).map(([file, text]) => ({ file, text })),
     { file: "CLAUDE.md", text: projectClaudeMd(name) },
     ...slashCommands(),
     {

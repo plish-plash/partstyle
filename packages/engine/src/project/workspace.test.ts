@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -342,10 +342,6 @@ describe("Workspace.init", () => {
       `created project new-board in ${dir}`,
       "  partstyle-project.yaml",
       "  circuit/main.ckt",
-      "  notes/design.md",
-      "  notes/decisions.md",
-      "  notes/pcb.md",
-      "  notes/firmware.md",
       "  CLAUDE.md",
       "  .claude/commands/design-review.md",
       "  .claude/commands/ingest-part.md",
@@ -580,28 +576,22 @@ describe("notes", () => {
     return { w, dir };
   };
 
-  it("appends decisions, dated, and refuses to rewrite them", async () => {
-    const { w, dir } = await fresh("decisions");
-    expect((await w.addDecision("Use an LDO:\n  quieter than a buck")).text).toMatch(
-      /^added to notes\/decisions\.md: - \d{4}-\d\d-\d\d \d\d:\d\d: Use an LDO: quieter than a buck$/,
+  it("starts with no notes, and creates the design record with its first entry", async () => {
+    const { w, dir } = await fresh("record");
+    expect(await readdir(dir)).not.toContain("notes");
+    expect((await w.recordChange("Use an LDO:\n  quieter than a buck")).text).toMatch(
+      /^added to notes\/design-record\.md: - \d{4}-\d\d-\d\d \d\d:\d\d: Use an LDO: quieter than a buck$/,
     );
-    await w.addDecision("Second");
-    const text = (await w.readDoc("notes/decisions.md")).text;
+    await w.recordChange("Second");
+    const text = (await w.readDoc("notes/design-record.md")).text;
     expect(text).toMatch(
-      /Append-only[^\n]*\n\n- \S+ \S+: Use an LDO: quieter than a buck\n- \S+ \S+: Second\n$/,
+      /^# Design record\n\n[^\n]*Append-only[^\n]*\n\n- \S+ \S+: Use an LDO: quieter than a buck\n- \S+ \S+: Second\n$/,
     );
-    const refused = await w.writeDoc("notes/decisions.md", "gone");
+    const refused = await w.writeDoc("notes/design-record.md", "gone");
     expect(refused.ok).toBe(false);
-    expect(refused.text).toContain("add_decision");
-    expect(await readFile(path.join(dir, "notes/decisions.md"), "utf8")).toBe(text);
-    expect((await w.addDecision("  ")).ok).toBe(false);
-  });
-
-  it("creates the decisions file if it is missing", async () => {
-    const { w, dir } = await fresh("decisions-gone");
-    await rm(path.join(dir, "notes"), { recursive: true });
-    expect((await w.addDecision("First")).ok).toBe(true);
-    expect((await w.readDoc("notes/decisions.md")).text).toMatch(/^# Decisions\n[\s\S]*: First\n$/);
+    expect(refused.text).toContain("record_change");
+    expect(await readFile(path.join(dir, "notes/design-record.md"), "utf8")).toBe(text);
+    expect((await w.recordChange("  ")).ok).toBe(false);
   });
 
   it("points a long description at the design notes", async () => {
@@ -621,13 +611,13 @@ describe("notes", () => {
   it("shows notes in the overview, flagging an unwritten design overview", async () => {
     const { w } = await fresh("overview-notes");
     expect((await w.overview()).text).toContain(
-      "notes: design.md (not written yet), decisions.md (0), pcb.md, firmware.md\n",
+      "notes: design.md (not written yet), design-record.md (0)\n",
     );
     await w.writeDoc("notes/design.md", "# Design\n\nA board.\n");
-    await w.addDecision("One");
+    await w.recordChange("One");
     await w.writeDoc("notes/review.md", "- [note] x");
     expect((await w.overview()).text).toContain(
-      "notes: design.md, decisions.md (1), pcb.md, firmware.md, review.md\n",
+      "notes: design.md, design-record.md (1), review.md\n",
     );
   });
 

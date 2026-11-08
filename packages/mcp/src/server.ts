@@ -265,14 +265,14 @@ export function createServer(fixed: Workspace | undefined, opts: ServerOptions =
   );
 
   server.registerTool(
-    "add_decision",
+    "record_change",
     {
       description:
-        "Record a decision made with the person, and why, at the end of notes/decisions.md (append-only).",
+        "Add a design change, and why, to the end of notes/design-record.md (append-only).",
       inputSchema: { text: z.string() },
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ text }) => run((w) => w.addDecision(text)),
+    async ({ text }) => run((w) => w.recordChange(text)),
   );
 
   server.registerTool(

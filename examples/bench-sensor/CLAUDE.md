@@ -92,10 +92,13 @@ Keep each thing in its place; the project file's description stays a short summa
 
 - `notes/design.md`: how the design works now, by block. Write it once the design takes shape,
   and rewrite it when its structure or approach changes.
-- `notes/decisions.md`: append-only. Whenever the person chooses between options, accepts a risk
-  or overrules a suggestion, add it with `partstyle decision "what, and why"`. Don't edit the
-  file.
-- `notes/pcb.md` and `notes/firmware.md`: written at hand-off, not as you go.
+- `notes/design-record.md`: the design's history, append-only. Whenever the design changes (a
+  function added or removed, a part, topology or value chosen, a risk accepted, a suggestion taken
+  or overruled), add what changed and why with `partstyle record "what, and why"`, in the same
+  turn. Fixes to your own mistakes and tidying are not design changes. Don't edit the file.
+- `notes/pcb.md` and `notes/firmware.md`: written at hand-off (`/handoff`), not as you go.
+
+Notes files are created when there is something to put in them.
 
 ## Procedures
 
