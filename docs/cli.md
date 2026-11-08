@@ -240,7 +240,8 @@ ratings), `pins` (plus the pin table, requirements and notes, with any other key
 
 Writes a YAML part record as `<id>.yaml`: to the first global library path when one is configured
 (`global`, the default), otherwise to `parts/` (`project`). Project records override global
-records with the same id. Leave `provenance.verified_by: null`; a human marks records verified.
+records with the same id. A human marks records verified in the viewer; `part put` always writes
+`provenance.verified_by: null`, so updating a verified record makes it unverified again.
 
 Only a record without a usable `id`, `summary` or `pins`, or with an unknown pin type, is refused.
 Everything else is written and reported: a field the engine can't use is a `warning:` line (and a

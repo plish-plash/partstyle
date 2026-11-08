@@ -190,6 +190,21 @@ describe("Workspace.partPut", () => {
     expect((await ws.partGet("X7", "summary")).text).not.toContain("[unverified]");
   });
 
+  it("makes a verified record unverified again when it is put, keeping comments", async () => {
+    await ws.partPut(record("X9"));
+    await ws.verifyPart("X9");
+    const put = await ws.partPut(
+      `# hand note\n${record("X9").replace("verified_by: null", "verified_by: human")}`,
+    );
+    expect(put.text.split("\n").at(-1)).toBe(
+      "was verified; unverified again until a human rechecks it",
+    );
+    const text = await readFile(path.join(tmp, "library/X9.yaml"), "utf8");
+    expect(text).toContain("# hand note");
+    expect(text).toContain("verified_by: null");
+    expect((await ws.partGet("X9", "summary")).text).toContain("[unverified]");
+  });
+
   it("rejects only what the engine cannot use", async () => {
     const r = await ws.partPut(record("bad/id"));
     expect(r.ok).toBe(false);

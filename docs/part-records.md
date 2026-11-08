@@ -74,7 +74,8 @@ thermal: { theta_ja: 107C/W }
 | `sourcing`      | `lcsc`, `digikey`, `mouser`: distributor part numbers; `lifecycle`; `in_inventory` |
 | `provenance`    | `datasheet` (a URL), `extracted_by` (`ai`), `verified_by: null`                    |
 
-Leave `verified_by: null`: only a person verifies a record. `in_inventory: true` says the person
+Leave `verified_by: null`: only a person verifies a record, and part_put writes it as null, so
+an update to a verified record needs checking again. `in_inventory: true` says the person
 has the part already, so leave it out unless they say so.
 
 **`generic`.** What the part offers, in the generic's form: `cap(100n, 50V, X7R, 10%, 0603)`,
