@@ -60,8 +60,21 @@ export interface Drawing {
 }
 
 /**
+ * Pins a part type's symbol can leave out: datasheet no-connect pins (type `nc`) that no part of
+ * the type has on a net. A symbol still shows one that is wired, so the drawing can show the wire.
+ */
+function unusedNcPins(group: FlatPart[]): Set<string> {
+  const first = group[0];
+  if (!first) return new Set();
+  const wired = new Set(group.flatMap((p) => p.pins.filter((q) => q.net).map((q) => q.number)));
+  return new Set(
+    first.pins.filter((p) => p.type === "nc" && !wired.has(p.number)).map((p) => p.number),
+  );
+}
+
+/**
  * Picks each part type's symbol: the first KiCad candidate whose pins fit every part using it,
- * else one generated from the part record or generic.
+ * else one generated from the part record or generic. Unused no-connect pins need no symbol pin.
  */
 function chooseSymbols(
   parts: FlatPart[],
@@ -78,10 +91,13 @@ function chooseSymbols(
     const rejected: string[] = [];
     let pick: SchSymbol | undefined;
     let adaptedFrom: string | undefined;
+    const omit = unusedNcPins(group);
     for (const c of candidates.get(key) ?? []) {
-      const adapted = c.symbol && adaptedSymbol(c.symbol, group[0] as FlatPart);
+      const adapted = c.symbol && adaptedSymbol(c.symbol, group[0] as FlatPart, omit);
       const symbol = adapted ?? c.symbol;
-      const why = symbol ? incompatibility(symbol, group) : "not found in the KiCad libraries";
+      const why = symbol
+        ? incompatibility(symbol, group, omit)
+        : "not found in the KiCad libraries";
       if (!why) {
         pick = symbol;
         if (adapted) adaptedFrom = c.libId;
@@ -103,7 +119,8 @@ function chooseSymbols(
       const part = group[0] as FlatPart;
       const g =
         part.spec.kind === "lib"
-          ? part.record && (symbolForRecordGeneric(part.record) ?? symbolForRecord(part.record))
+          ? part.record &&
+            (symbolForRecordGeneric(part.record, omit) ?? symbolForRecord(part.record, omit))
           : symbolForGeneric(part.spec.fn, part.spec.args);
       if (!g) continue;
       // Part types can share a generated symbol: `partstyle:cap` for generics and real capacitors.

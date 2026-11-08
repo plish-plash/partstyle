@@ -637,4 +637,37 @@ export const CASES: TestCase[] = [
       c.flag("+5V", "GND");
     },
   ),
+  make(
+    "power-enable-tied",
+    "Power",
+    "Regulator enable tied to its input",
+    "An always-on LDO: EN sits just below VIN on the same side and joins it on the input rail, which a diode feeds. The two pins should share one symbol or wire, and stay connected.",
+    (c) => {
+      c.ic("U1", "AP2112K", {
+        left: ["VIN:power_in", "EN"],
+        right: ["VOUT:power_out"],
+        bottom: ["GND"],
+      });
+      c.diode("D1", "BAT54").cap("C1", "1u").cap("C2", "1u").cap("C3", "1u");
+      c.net("VBUS", "D1.1", "C3.1");
+      c.rail("+5V", "D1.2", "U1.VIN", "U1.EN", "C1.1");
+      c.rail("+3V3", "U1.VOUT", "C2.1");
+      c.gnd("GND", "U1.GND", "C1.2", "C2.2", "C3.2");
+      c.flag("VBUS", "GND");
+    },
+  ),
+  make(
+    "sheet-loose-parts",
+    "Whole sheets",
+    "Parts not wired yet",
+    "A sheet part-way through: a regulator wired up, a resistor and two diodes connected to nothing, and a capacitor with only one end on a net. Every part must still be drawn, the loose ones set aside.",
+    (c) => {
+      c.ic("U1", "MCP1700", { left: ["VIN:power_in"], right: ["VOUT:power_out"], bottom: ["GND"] });
+      c.cap("C1", "1u").cap("C2", "1u").cap("C3", "10u");
+      c.res("R1", "10k").diode("D1", "1N4148").diode("D2", "SS14");
+      c.rail("+5V", "U1.VIN", "C1.1");
+      c.rail("+3V3", "U1.VOUT", "C2.1", "C3.1");
+      c.gnd("GND", "U1.GND", "C1.2", "C2.2");
+    },
+  ),
 ];

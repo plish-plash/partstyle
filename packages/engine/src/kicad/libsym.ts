@@ -253,14 +253,20 @@ function renumbered(node: SExpr[], numbers: Map<string, string>): SExpr[] {
  * one by pin name but not by number. Generic symbols number pins by role (`B C E` on
  * `Device:Q_NPN`, while a record's are pads) and pinout-specific ones may not suit the part
  * (`Q_NMOS_GSD` on a part whose pin 1 is S). It is a project symbol, as KiCad would flag an edited
- * copy of its own. Undefined when the names don't pair up, or the numbers already agree.
+ * copy of its own. Undefined when the names don't pair up, or the numbers already agree. Pins in
+ * `omit` (unused no-connect pins) need no symbol pin.
  */
-export function adaptedSymbol(sym: SchSymbol, part: FlatPart): SchSymbol | undefined {
+export function adaptedSymbol(
+  sym: SchSymbol,
+  part: FlatPart,
+  omit: ReadonlySet<string> = new Set(),
+): SchSymbol | undefined {
   if (part.spec.kind !== "lib") return undefined;
-  const padOf = new Map(part.pins.map((p) => [p.name, p.number]));
+  const pins = part.pins.filter((p) => !omit.has(p.number));
+  const padOf = new Map(pins.map((p) => [p.name, p.number]));
   const names = new Map<string, string>();
   for (const u of sym.units) for (const [n, p] of u.pins) names.set(n, p.name);
-  if (names.size !== part.pins.length || padOf.size !== part.pins.length) return undefined;
+  if (names.size !== pins.length || padOf.size !== pins.length) return undefined;
 
   const numbers = new Map<string, string>();
   for (const [number, name] of names) {
@@ -301,17 +307,23 @@ export function adaptedSymbol(sym: SchSymbol, part: FlatPart): SchSymbol | undef
 /**
  * Why a KiCad symbol cannot stand in for the given parts, or undefined if it can: pin numbers
  * must match exactly; hidden pins must sit under a visible pin on the same net (KiCad's stacked
- * pins), and hidden power inputs are refused because KiCad connects those globally by name.
+ * pins), and hidden power inputs are refused because KiCad connects those globally by name. Pins
+ * in `omit` (unused no-connect pins) may be on the symbol or not.
  */
-export function incompatibility(sym: SchSymbol, parts: FlatPart[]): string | undefined {
+export function incompatibility(
+  sym: SchSymbol,
+  parts: FlatPart[],
+  omit: ReadonlySet<string> = new Set(),
+): string | undefined {
   const all = new Map<string, UnitPin>();
   for (const u of sym.units) for (const [n, p] of u.pins) all.set(n, p);
   const first = parts[0];
   if (!first) return undefined;
-  const want = new Set(first.pins.map((p) => p.number));
+  const pads = new Set(first.pins.map((p) => p.number));
+  const want = [...pads].filter((n) => !omit.has(n));
   const natural = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
-  const missing = [...want].filter((n) => !all.has(n)).sort(natural);
-  const extra = [...all.keys()].filter((n) => !want.has(n)).sort(natural);
+  const missing = want.filter((n) => !all.has(n)).sort(natural);
+  const extra = [...all.keys()].filter((n) => !pads.has(n)).sort(natural);
   if (missing.length + extra.length > 0) {
     return `pin numbers differ (${[
       missing.length > 0 ? `symbol lacks ${missing.join(" ")}` : "",
@@ -322,7 +334,8 @@ export function incompatibility(sym: SchSymbol, parts: FlatPart[]): string | und
   }
   for (const u of sym.units) {
     for (const [n, p] of u.pins) {
-      if (!p.hidden) continue;
+      // KiCad hides a no-connect pin on its own; it stays open, so nothing need show it.
+      if (!p.hidden || omit.has(n)) continue;
       if (p.type === "power_in") return `pin ${n} is a hidden power input`;
       const under = [...u.pins].find(
         ([m, q]) => m !== n && !q.hidden && q.x === p.x && q.y === p.y,

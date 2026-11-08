@@ -148,13 +148,18 @@ export function placePower(
   parts.sort((a, b) => a.order - b.order);
   const useSymbols = ctx.rules.on("local-power-symbols");
   for (const part of useSymbols ? parts : []) {
+    const handled = (p: PlacedPin) => sheet.handled.has(pinKey({ part: part.id, pin: p.id }));
+    // Pins already on a wire take no symbol, but a neighbour on their rail can share their wire.
     const rails = part.pins
       .filter((p) => p.net !== undefined && ctx.role(p.net) !== "signal")
-      .filter((p) => !sheet.handled.has(pinKey({ part: part.id, pin: p.id })))
       .map((p) => pins.get(pinKey({ part: part.id, pin: p.id })) as PlacedPin);
     rails.sort((a, b) => a.outward - b.outward || a.at.x - b.at.x || a.at.y - b.at.y);
     let prev: PlacedPin | undefined;
     for (const pin of rails) {
+      if (handled(pin)) {
+        prev = pin;
+        continue;
+      }
       const net = pin.net as string;
       const distance = prev
         ? Math.abs(prev.at.x - pin.at.x) + Math.abs(prev.at.y - pin.at.y)
@@ -162,6 +167,8 @@ export function placePower(
       if (share && prev && prev.net === net && prev.outward === pin.outward && distance <= 2) {
         sheet.prewires.push([{ net, a: prev.at, b: pin.at }]);
         wires.push(thinRect({ net, a: prev.at, b: pin.at }));
+        // On the wire now: the router still joins it if this short wire does not fit.
+        sheet.handled.add(pinKey({ part: part.id, pin: pin.id }));
       } else {
         place(net, pin, { part: part.id, pin: pin.id });
       }

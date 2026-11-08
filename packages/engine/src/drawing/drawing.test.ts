@@ -157,6 +157,40 @@ describe("prepareDrawing", () => {
     expect([...again.sheets.values()]).toEqual([...drawing.sheets.values()]);
   });
 
+  it("draws parts not wired in yet, a pin or both on no net", async () => {
+    const p = applyPatch(
+      source,
+      "in power\n+ part R20 res(1k, 0603)\n+ part C20 cap(1u, 25V, 0603)\nnet GND += C20.2",
+    );
+    expect(p.issues).toEqual([]);
+    const d = await prepareDrawing(validateProject(p.source));
+    const power = sheetOf(d, "power");
+    for (const ref of ["R20", "C20"]) expect(power.units.map((u) => u.ref)).toContain(ref);
+    expect(checkConnectivity(power)).toEqual([]);
+  });
+
+  it("leaves unused no-connect pins off a generated symbol, but shows a wired one", async () => {
+    const sot23 = `id: SOTDIODE
+summary: diode in SOT-23 with a no-connect pin
+pins:
+  1: { name: A }
+  2: { name: NC, type: nc }
+  3: { name: K }
+`;
+    const draw = async (nets: string) => {
+      const r = validateProject({
+        project: { file: "partstyle-project.yaml", text: "name: t" },
+        circuits: [{ file: "circuit/main.ckt", text: `block main\npart D1 lib:SOTDIODE\n${nets}` }],
+        parts: [{ file: "parts/SOTDIODE.yaml", text: sot23, layer: "project" }],
+      });
+      const unit = (await prepareDrawing(r)).sheets.get("main")?.units[0];
+      return unit?.pins.map((q) => q.number).sort();
+    };
+    expect(await draw("")).toEqual(["1", "3"]);
+    // ERC warns about a wired no-connect pin, but the drawing must still show the wire.
+    expect(await draw("net X : D1.2 D1.1\n")).toEqual(["1", "2", "3"]);
+  });
+
   it("draws a block used twice once, for both instances", async () => {
     const r = validateProject(await loadProject(repo("packages/engine/test-fixtures/multi"), seed));
     const d = await prepareDrawing(r);

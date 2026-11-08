@@ -85,13 +85,26 @@ const libText = writeSExpr([
       pin("passive", "3", "IO", 5, 0, 180),
     ],
   ],
+  // As KiCad draws some regulators: the no-connect pin hidden on its own.
+  [
+    "symbol",
+    "LDO",
+    [
+      "symbol",
+      "LDO_1_1",
+      pin("power_in", "1", "VIN", -5, 0, 0),
+      pin("power_in", "2", "GND", 0, -5, 90),
+      pin("power_out", "3", "VOUT", 5, 0, 180),
+      pin("no_connect", "4", "NC", 0, 0, 0, true),
+    ],
+  ],
 ]);
 
 describe("library symbols", () => {
   const lib = parseSymbolLib(libText);
 
   it("lists top-level symbol names without parsing", () => {
-    expect(symbolNames(libText)).toEqual(["DUAL", "MCP6002-xSN", "STACKED"]);
+    expect(symbolNames(libText)).toEqual(["DUAL", "MCP6002-xSN", "STACKED", "LDO"]);
   });
 
   it("flattens a derived symbol under its own name with its own properties", () => {
@@ -195,6 +208,26 @@ describe("compatibility", () => {
         ]),
       ]),
     ).toBe("U1: stacked pins 1 and 2 are on different nets");
+  });
+
+  it("needs no symbol pin for an unused no-connect pin, shown, hidden or absent", () => {
+    const ldo = part([
+      ["1", "VIN"],
+      ["2", "GND"],
+      ["3", "VOUT"],
+      ["4", undefined],
+    ]);
+    // KiCad hides pin 4 on its own: fine once the part's pin 4 is an unused no-connect.
+    expect(incompatibility(symbol("LDO"), [ldo])).toBe(
+      "hidden pin 4 is not stacked under a visible pin",
+    );
+    expect(incompatibility(symbol("LDO"), [ldo], new Set(["4"]))).toBeUndefined();
+    // A symbol without the pin at all.
+    const nine = part(["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => [n, "N"]));
+    expect(incompatibility(symbol("MCP6002-xSN"), [nine])).toBe(
+      "pin numbers differ (symbol lacks 9)",
+    );
+    expect(incompatibility(symbol("MCP6002-xSN"), [nine], new Set(["9"]))).toBeUndefined();
   });
 });
 
@@ -306,6 +339,32 @@ describe("adaptedSymbol", () => {
     expect(s?.units[0]?.pins.get("3")?.name).toBe("C");
     expect(JSON.stringify(s?.def)).toContain('["symbol","BC817_1_1"');
     expect(incompatibility(s as NonNullable<typeof s>, [part(sot23)])).toBeUndefined();
+  });
+
+  it("pairs a diode symbol with a SOT-23 diode's pads, past its no-connect pin", () => {
+    // BAT54: A on 1, NC on 2, K on 3, against Device:D_Schottky's K on 1 and A on 2.
+    const diode = kicadSymbol("Device:D_Schottky", [
+      "symbol",
+      "D_Schottky",
+      ["symbol", "D_Schottky_1_1", pin("1", "K"), pin("2", "A")],
+    ]);
+    const bat54 = {
+      path: "D3",
+      spec: { kind: "lib", id: "BAT54" },
+      pins: [
+        { number: "1", name: "A", type: "passive" },
+        { number: "2", name: "NC", type: "nc" },
+        { number: "3", name: "K", type: "passive" },
+      ],
+    } as FlatPart;
+    expect(adaptedSymbol(diode, bat54)).toBeUndefined();
+    const s = adaptedSymbol(diode, bat54, new Set(["2"]));
+    expect(s?.libId).toBe("partstyle:BAT54");
+    expect([...(s?.units[0]?.pins ?? [])].map(([n, p]) => `${n}=${p.name}`)).toEqual([
+      "3=K",
+      "1=A",
+    ]);
+    expect(incompatibility(s as NonNullable<typeof s>, [bat54], new Set(["2"]))).toBeUndefined();
   });
 
   it("corrects a pinout-specific symbol whose numbers disagree with the part's names", () => {

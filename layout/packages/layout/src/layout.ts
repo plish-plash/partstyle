@@ -63,7 +63,7 @@ interface Group {
 }
 
 /** Lays out whatever has no wire or anchor to sit on, in one row. */
-function placeLoose(ctx: Ctx, plan: RowPlan): Sheet {
+function placeLoose(ctx: Ctx, plan: RowPlan, loose: string[]): Sheet {
   const tray = newSheet();
   const rules = ctx.rules;
   const byId = <T>(list: T[], id: (item: T) => string) =>
@@ -91,6 +91,13 @@ function placeLoose(ctx: Ctx, plan: RowPlan): Sheet {
     placeLine(ctx, tray, c.parts, c.nets, { x, y: 3 });
     x += c.parts.reduce((s, id) => s + Math.max(ctx.part(id).box.w, ctx.part(id).box.h) + 2, 0);
     for (const p of c.parts) ctx.roles.set(p, "free");
+  }
+  // Parts not wired in yet, lying down, first pin on the left; any wire they have reaches here.
+  for (const id of [...loose].sort()) {
+    const p = ctx.part(id);
+    placeLine(ctx, tray, [id], [p.pins[0]?.net as string], { x, y: 3 });
+    x += Math.max(p.box.w, p.box.h) + 2;
+    ctx.note(id, "loose", "set aside: a pin is on no net");
   }
   return tray;
 }
@@ -170,7 +177,7 @@ export function layoutBlock(input: LayoutInput, overrides: RuleOverrides = {}): 
     placeComponent(ctx, plan, columns, part);
     return { sheet: part, key: [...columns.flat()].sort()[0] as string };
   });
-  const tray = placeLoose(ctx, plan);
+  const tray = placeLoose(ctx, plan, an.loose);
   if (tray.placements.size > 0) groups.push({ sheet: tray, key: "\uffff" });
 
   const sheet = packGroups(ctx, groups);
@@ -252,7 +259,11 @@ export function layoutBlock(input: LayoutInput, overrides: RuleOverrides = {}): 
   const links: RouteRequest["links"] = [];
   for (const s of sheet.symbols) {
     const pin = s.pin ? pins.get(pinKey(s.pin)) : undefined;
-    if (pin && !an.railWires.has(s.net)) links.push({ net: s.net, terminals: [pin.at, s.at] });
+    // On a rail drawn as a wire, a pin already on that wire needs no link to a symbol.
+    const onWire = s.pin !== undefined && sheet.handled.has(pinKey(s.pin));
+    if (pin && !(an.railWires.has(s.net) && onWire)) {
+      links.push({ net: s.net, terminals: [pin.at, s.at] });
+    }
   }
 
   const req: RouteRequest = {

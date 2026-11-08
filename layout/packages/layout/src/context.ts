@@ -61,6 +61,8 @@ export interface Analysis {
   terminalPorts: Set<string>;
   hangersOn: Map<string, Hanger[]>;
   chainsOn: Map<string, Chain[]>;
+  /** Two-terminal parts with a pin on no net: not wired in yet, so set aside. */
+  loose: string[];
 }
 
 export interface Placement {

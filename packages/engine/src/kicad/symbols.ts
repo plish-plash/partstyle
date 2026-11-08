@@ -163,10 +163,15 @@ const roundUp = (x: number, step: number) => Math.ceil(x / step - 1e-9) * step;
 /**
  * Box symbol from a part record: supplies on top, grounds below, inputs left, outputs and I/O
  * right. A part that supplies power itself (a regulator) takes its supply in on the left, so
- * that power flows left to right through it.
+ * that power flows left to right through it. Pins in `omit` (unused no-connect pins) are left
+ * off.
  */
-export function symbolForRecord(record: PartRecord): GeneratedSymbol {
+export function symbolForRecord(
+  record: PartRecord,
+  omit: ReadonlySet<string> = new Set(),
+): GeneratedSymbol {
   const pins = Object.entries(record.pins)
+    .filter(([number]) => !omit.has(number))
     .map(([number, p]) => ({ number, ...p }))
     .sort((a, b) => natural(a.number, b.number));
   const left: typeof pins = [];
@@ -265,12 +270,15 @@ function refPrefixFor(record: PartRecord): string {
  * like a capacitor without KiCad's libraries. Undefined when its pads don't line up with the
  * symbol's: pin 1 of a diode is K here, and the polarity of a part must not be drawn backwards.
  */
-export function symbolForRecordGeneric(record: PartRecord): GeneratedSymbol | undefined {
+export function symbolForRecordGeneric(
+  record: PartRecord,
+  omit: ReadonlySet<string> = new Set(),
+): GeneratedSymbol | undefined {
   const generic = record.generic === undefined ? undefined : splitGenericText(record.generic);
   if (!generic) return undefined;
   const pins = genericPins(generic.fn, generic.args);
   const fits =
-    pins.length === Object.keys(record.pins).length &&
+    pins.length === Object.keys(record.pins).filter((n) => !omit.has(n)).length &&
     pins.every((p) => {
       const pad = record.pins[p.number];
       return pad !== undefined && (p.name === p.number || p.name === pad.name);

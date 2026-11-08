@@ -210,7 +210,11 @@ export function classify(ctx: Ctx): Analysis {
     if (reach.get(root(net))?.size === 1) terminalPorts.add(id);
   }
   const kept = anchors.filter((id) => !terminalPorts.has(id));
+  // Hangers, stacks and chains all need both ends on nets; a part not wired in yet has neither.
+  const loose = twos.filter((p) => !claimed.has(p.id) && !used.has(p.id)).map((p) => p.id);
+  for (const id of loose) ctx.roles.set(id, "free");
   return {
+    loose,
     hangers,
     stacks,
     chains,
