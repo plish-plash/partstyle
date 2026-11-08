@@ -8,7 +8,10 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
 
 - `pnpm build`: `tsc -b` to `dist/`, then the viewer with Vite (`packages/viewer/dist`)
 - `pnpm test`: Vitest. Tests import `@partstyle/engine` from source, so no build is needed
-  (the one test serving the built viewer page is skipped until it is built)
+  (the one test serving the built viewer page is skipped until it is built). Before a full run,
+  rebuild the standalone executable and the `.mcpb` bundle (`pnpm build`, `pnpm standalone`,
+  `pnpm mcpb`, with `BUN` set as below). These usually exist from an earlier session, and their
+  smoke test fails against a stale build, for example with a version mismatch
 - `pnpm lint` / `pnpm format`: Biome check / autofix (also formats Markdown; `.svelte` files are
   excluded because Biome cannot see template usage)
 - `pnpm typecheck`: strict tsc over all sources including tests (`tsconfig.check.json`), then

@@ -1,6 +1,6 @@
 # A Partstyle project: its name, design context and settings. Keep the description to
 # a short summary: the design overview is notes/design.md.
-partstyle_version: "0.2.0"
+partstyle_version: "0.3.0"
 name: bench-sensor
 description: Bench interface that reads a remote analog sensor and reports over UART
 environment:
