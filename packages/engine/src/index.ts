@@ -12,6 +12,7 @@ export { type LexError, lexLine, type Token, type TokenKind } from "./ckt/lexer.
 export { parseCkt, parsePinRef, parseStatement } from "./ckt/parser.js";
 export { printPinRef, printSpec, printStatement } from "./ckt/print.js";
 export * from "./diagnostics.js";
+export type { SheetLayoutDetail } from "./drawing/adapter.js";
 export { checkConnectivity } from "./drawing/connectivity.js";
 export { type Fill, type Prim, type SymbolGraphics, symbolGraphics } from "./drawing/graphics.js";
 export type { DrawingPlan, NetPlan } from "./drawing/plan.js";

@@ -26,9 +26,28 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
     onenter: (prefix: string) => void;
     /** Statements changed since the checkpoint (or by a previewed patch), to highlight. */
     changes?: { block: string; kind: string; key: string; op: string }[];
+    /** Leaves out review marks (approvals), for screenshots of the layout. */
+    plain?: boolean;
+    /** Overlays a grid labelled in sheet grid units (2.54 mm from the paper's corner). */
+    grid?: boolean;
+    /** The part of the sheet to show, in mm, instead of all of it. */
+    region?: { x: number; y: number; w: number; h: number } | undefined;
   }
-  let { sheet, prefix, symbols, parts, issues, comments, selection, onselect, onenter, changes = [] }: Props =
-    $props();
+  let {
+    sheet,
+    prefix,
+    symbols,
+    parts,
+    issues,
+    comments,
+    selection,
+    onselect,
+    onenter,
+    changes = [],
+    plain = false,
+    grid = false,
+    region,
+  }: Props = $props();
 
   /** Change class of a part or net of this sheet's block: "added" or "modified". */
   const changeOf = $derived.by(() => {
@@ -103,7 +122,23 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
   const fit = $derived(`${sheet.block} ${layout.width} ${layout.height}`);
   $effect(() => {
     void fit;
-    view = untrack(() => ({ x: 0, y: 0, ...fitted }));
+    view = untrack(() => region ?? { x: 0, y: 0, ...fitted });
+  });
+
+  /** Grid lines and their labels over the view: finer as the view narrows. */
+  const G = 2.54;
+  const gridMarks = $derived.by(() => {
+    if (!grid) return undefined;
+    const across = Math.max(view.w, view.h) / G;
+    const label = across > 120 ? 10 : 5;
+    const line = across > 60 ? 5 : 1;
+    const size = Math.max(view.w, view.h) / 70;
+    const range = (from: number, len: number) => {
+      const out: number[] = [];
+      for (let k = Math.ceil(from / G / line) * line; k * G <= from + len; k += line) out.push(k);
+      return out;
+    };
+    return { label, size, xs: range(view.x, view.w), ys: range(view.y, view.h) };
   });
   /** Zoom from a few pins across (mm) out to this many times the fitted view. */
   const MIN_WIDTH = 15;
@@ -205,7 +240,7 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
           >{k === 0 ? `${info?.ref ?? u.ref}${unitSuffix(u.unit, symbols[u.libId])}` : (info?.value ?? "")}</text
         >
       {/each}
-      {#if info?.approval}
+      {#if info?.approval && !plain}
         <text x={u.box.x - 0.4} y={u.box.y + 0.4} text-anchor="end" class={`approval-mark ${info.approval.status}`}
           >{info.approval.status === "approved" ? "✓" : "!"}</text
         >
@@ -345,4 +380,21 @@ export function unitSuffix(unit: number, graphics: Graphics | undefined): string
       <text x={m.x} y={m.y} text-anchor="middle" dominant-baseline="central">{m.kind === "comment" ? "✎" : "!"}</text>
     </g>
   {/each}
+
+  {#if gridMarks}
+    {@const g = gridMarks}
+    {#each g.xs as k (k)}
+      <line x1={k * G} y1={view.y} x2={k * G} y2={view.y + view.h} class="grid-line" class:major={k % g.label === 0} />
+    {/each}
+    {#each g.ys as k (k)}
+      <line x1={view.x} y1={k * G} x2={view.x + view.w} y2={k * G} class="grid-line" class:major={k % g.label === 0} />
+    {/each}
+    <!-- Column labels clear of the row labels' corner, so neither is cut off. -->
+    {#each g.xs.filter((k) => k % g.label === 0 && k * G > view.x + g.size * 2) as k (k)}
+      <text x={k * G} y={view.y + g.size * 0.2} text-anchor="middle" dominant-baseline="hanging" class="grid-label" style={`font-size:${g.size}px`}>{k}</text>
+    {/each}
+    {#each g.ys.filter((k) => k % g.label === 0) as k (k)}
+      <text x={view.x + g.size * 0.3} y={k * G} dominant-baseline="central" class="grid-label" style={`font-size:${g.size}px`}>{k}</text>
+    {/each}
+  {/if}
 </svg>

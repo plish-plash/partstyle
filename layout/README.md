@@ -65,18 +65,23 @@ junctions, power symbols and labels. Coordinates are integer grid units with y d
 
 ### How a block is laid out
 
+0. **Split:** a rail that current runs along (a regulator's side pins, an inductor) is drawn as
+   a wire, one per part: each such part's pins move to a piece of the rail of their own, named
+   back after the rail at the end ([split.ts](packages/layout/src/passes/split.ts)).
 1. **Classify:** ICs and connectors become anchors. Anything from a wire to a rail becomes a
    hanger, including whole chains such as resistor + LED + ground. The rest forms series chains.
 2. **Flow:** anchors vote on left-to-right order from pin type and pin side, giving columns.
+   Ports vote too, as stand-in parts, then are dropped: they are only labels from here on.
 3. **Order:** columns are sorted to reduce crossings. IC pins never move.
 4. **Rows:** each pin gets a row carrying everything on its net: hangers above or below the wire,
-   series parts in line, and a port label or the next anchor's pin at the end.
+   series parts in line, and the next anchor's pin at the end.
 5. **Place:** rows are spaced around their hanging parts. Hangers step along so each sits past the
    rows it spans, which is what keeps fan-outs from crossing.
 6. **Power:** rails and grounds get local symbols, pointing up and down. Rail pins on the side
    of a part run straight past it to a symbol just above or below; these wires may cross pin
    wires, which is not counted against the layout.
-7. **Route:** rows are drawn directly; a grid router connects whatever is left.
+7. **Route:** rows are drawn directly; a grid router connects whatever is left, falls back to
+   labels for tangled nets, and gives every port its label.
 8. **Clean up:** wires are merged, junctions added and text placed.
 
 To add a rule, add it to `RULES` in [rules.ts](packages/layout/src/rules.ts) and read it in a pass.

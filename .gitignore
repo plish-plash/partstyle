@@ -8,3 +8,5 @@ packages/cli/standalone/
 .partstyle/
 # Tester verdicts and notes: everyone judges the layouts for themselves
 layout/feedback/
+# Sheets captured from people's own projects (pnpm layout-report --case)
+layout/captured/

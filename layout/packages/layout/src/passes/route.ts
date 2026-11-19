@@ -83,6 +83,11 @@ export interface RouteRequest {
   nets: { net: string; terminals: Pt[] }[];
   /** Short joins within a net that is otherwise not wired, such as a pin and its symbol. */
   links: { net: string; terminals: Pt[] }[];
+  /**
+   * Nets whose labels are port labels, each to get at least one, by the way the signal runs
+   * ("bidir" when the side does not matter).
+   */
+  ports: Map<string, "input" | "output" | "bidir">;
 }
 
 export interface RouteResult {
@@ -808,6 +813,33 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
     }
   }
 
+  // Every port shows its label: on a short riser off the net's wire near its first pin, else
+  // on a stub from that pin. A net drawn in pieces already has one on each.
+  for (const net of [...req.ports.keys()].sort()) {
+    if (labels.some((l) => l.net === net)) continue;
+    const pins = req.pins.filter((p) => p.net === net);
+    const first = pins[0];
+    if (!first) continue;
+    const own = r.of(net);
+    const onWire =
+      own.length > 0
+        ? (teeLabel(r, net, own, first, req, labels) ??
+          cornerLabel(r, net, own, first, req, labels))
+        : undefined;
+    if (onWire) {
+      labels.push(onWire);
+      continue;
+    }
+    const label = placeLabel(net, [first], req, labels, r);
+    if (!label) continue;
+    labels.push(label.label);
+    if (label.stub) {
+      r.block(label.label.box);
+      r.claim(label.label.at, net);
+      if (!r.commitFixed(label.stub)) label.label.at = first.at;
+    }
+  }
+
   // A rail pin that cannot reach its symbol still connects by name.
   for (const at of strandedPins) {
     const pin = req.pins.find((p) => p.at.x === at.x && p.at.y === at.y && p.net !== undefined);
@@ -828,15 +860,26 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
   return { wires: r.all(), labels, unrouted, notes } satisfies RouteResult;
 }
 
+/** How far apart, in grid units, a net drawn as labels still wires two pins together. */
+const JOIN_REACH = 10;
+
 /**
  * Splits a net for labelling. Each anchor pin keeps a piece of its own, except that neighbouring
- * pins (one step apart) share one. A two-terminal part's pin joins the nearest pin of the net, so
- * parts that sit together far from any anchor, such as a divider, form a piece of their own
- * instead of being wired back to a distant anchor.
+ * pins (one step apart) share one, and so do pins facing each other across a short gap. A two-terminal part's pin joins the nearest pin of the net
+ * within `JOIN_REACH`, so parts that sit together, such as a divider, are wired to each other; a
+ * part further from everything gets its own label instead of a long wire back.
  */
+/** Two pins pointing at each other along one grid line, near enough for a straight wire. */
+function facing(p: PlacedPin, q: PlacedPin): boolean {
+  if (manhattan(p.at, q.at) > JOIN_REACH) return false;
+  const [a, b] = p.at.x < q.at.x || p.at.y < q.at.y ? [p, q] : [q, p];
+  if (a.at.y === b.at.y) return a.outward === 0 && b.outward === 180;
+  if (a.at.x === b.at.x) return a.outward === 270 && b.outward === 90;
+  return false;
+}
+
 function splitPieces(pins: PlacedPin[], anchored: Set<string>): PlacedPin[][] {
   const isAnchorPin = (p: PlacedPin) => anchored.has(pointKey(p.at));
-  if (pins.filter(isAnchorPin).length <= 1) return [pins];
   const root = pins.map((_, i) => i);
   const find = (i: number): number => {
     while (root[i] !== i) i = root[i] as number;
@@ -848,7 +891,7 @@ function splitPieces(pins: PlacedPin[], anchored: Set<string>): PlacedPin[][] {
   pins.forEach((p, i) => {
     if (isAnchorPin(p)) {
       pins.forEach((q, j) => {
-        if (j < i && isAnchorPin(q) && manhattan(p.at, q.at) === 1) join(i, j);
+        if (j < i && isAnchorPin(q) && (manhattan(p.at, q.at) === 1 || facing(p, q))) join(i, j);
       });
       return;
     }
@@ -861,7 +904,8 @@ function splitPieces(pins: PlacedPin[], anchored: Set<string>): PlacedPin[][] {
       const bd = b ? manhattan(p.at, b.at) : Number.POSITIVE_INFINITY;
       if (d < bd || (d === bd && b && isAnchorPin(q) && !isAnchorPin(b))) best = j;
     });
-    if (best >= 0) join(i, best);
+    const near = pins[best];
+    if (near && manhattan(p.at, near.at) <= JOIN_REACH) join(i, best);
   });
   const pieces = new Map<number, PlacedPin[]>();
   pins.forEach((p, i) => {
@@ -899,12 +943,13 @@ function teeLabel(
       for (const length of [1, 2]) {
         const at = { x: p.x, y: p.y + dy * length };
         for (const way of [180, 0] as const) {
-          const box = labelBox(net, at, way);
+          const kind = kindOf(req, net);
+          const box = labelBox(net, at, way, kind === "port");
           if (labelHits(box, req, labels, all)) continue;
           if (!r.commitFixed([{ net, a: p, b: at }])) continue;
           r.block(box);
           r.claim(at, net);
-          return { net, text: net, kind: "local", at, outward: way, box };
+          return { net, text: net, kind, at, outward: way, box };
         }
       }
     }
@@ -912,8 +957,59 @@ function teeLabel(
   return undefined;
 }
 
-function labelBox(net: string, at: Pt, d: Direction): Rect {
-  const length = Math.ceil(net.length * CHAR) + 1;
+/**
+ * Puts a label at a corner or loose end of a net's own horizontal wire, reading on past it away
+ * from the wire: where a label off the wire or straight out from the pin would only land on the
+ * wire itself. Ends nearest `near` first; never on a pin.
+ */
+function cornerLabel(
+  r: Router,
+  net: string,
+  wires: Wire[],
+  near: PlacedPin,
+  req: RouteRequest,
+  labels: NetLabel[],
+): NetLabel | undefined {
+  const kind = kindOf(req, net);
+  const pins = new Set(req.pins.map((p) => pointKey(p.at)));
+  const flat = wires.filter((w) => w.a.y === w.b.y && w.a.x !== w.b.x);
+  const ends: { at: Pt; way: 0 | 180 }[] = [];
+  for (const w of flat) {
+    const [lo, hi] = w.a.x < w.b.x ? [w.a, w.b] : [w.b, w.a];
+    ends.push({ at: lo, way: 180 }, { at: hi, way: 0 });
+  }
+  // An end another wire of the net carries on through is no end.
+  const carriesOn = (e: (typeof ends)[number]) =>
+    flat.some((w) => {
+      if (w.a.y !== e.at.y) return false;
+      const x0 = Math.min(w.a.x, w.b.x);
+      const x1 = Math.max(w.a.x, w.b.x);
+      return e.way === 180 ? x0 < e.at.x && x1 >= e.at.x : x1 > e.at.x && x0 <= e.at.x;
+    });
+  ends.sort((a, b) => manhattan(a.at, near.at) - manhattan(b.at, near.at) || a.way - b.way);
+  // The net's own wire meets the label at its end, which is the point; others must keep clear.
+  // Clear of everything if it can be; else wires may cross the text, but none may run along it.
+  const all = r.all().filter((w) => w.net !== net);
+  const along = all.filter((w) => w.a.y === w.b.y);
+  for (const wiresInWay of [all, along]) {
+    for (const e of ends) {
+      if (pins.has(pointKey(e.at)) || carriesOn(e)) continue;
+      const box = labelBox(net, e.at, e.way, kind === "port");
+      if (labelHits(box, req, labels, wiresInWay)) continue;
+      r.block(box);
+      return { net, text: net, kind, at: e.at, outward: e.way, box };
+    }
+  }
+  return undefined;
+}
+
+/** What a label on this net is drawn as. */
+const kindOf = (req: RouteRequest, net: string): NetLabel["kind"] =>
+  req.ports.has(net) ? "port" : "local";
+
+/** A port label's arrow takes two more units than the text. */
+function labelBox(net: string, at: Pt, d: Direction, port = false): Rect {
+  const length = Math.ceil(net.length * CHAR) + 1 + (port ? 2 : 0);
   if (d === 0) return { x: at.x, y: at.y - 0.5, w: length, h: 1 };
   if (d === 180) return { x: at.x - length, y: at.y - 0.5, w: length, h: 1 };
   if (d === 90) return { x: at.x - 0.5, y: at.y - length, w: 1, h: length };
@@ -948,7 +1044,8 @@ function placeLabel(
 ): { label: NetLabel; stub?: Wire[] } | undefined {
   const leader = piece[0];
   if (!leader) return undefined;
-  const boxFor = (at: Pt, d: Direction) => labelBox(net, at, d);
+  const kind = kindOf(req, net);
+  const boxFor = (at: Pt, d: Direction) => labelBox(net, at, d, kind === "port");
   const wires = r.all();
   const hit = (box: Rect) => labelHits(box, req, labels, wires);
   // A pin on a part's top or bottom takes a short step out, then runs sideways past the part.
@@ -962,8 +1059,14 @@ function placeLabel(
     );
     if (body) {
       const dy = leader.outward === 90 ? -1 : 1;
-      const rightNearer = body.x + body.w - leader.at.x <= leader.at.x - body.x;
-      const sides = rightNearer ? [1, -1] : [-1, 1];
+      const toRight = body.x + body.w - leader.at.x;
+      const toLeft = leader.at.x - body.x;
+      // Near the middle, an input port's label comes in from the left and an output's leaves to
+      // the right; elsewhere the nearer side wins, so labels of neighbouring pins never cross.
+      const flow = req.ports.get(net);
+      const central = Math.abs(toRight - toLeft) <= 2 && (flow === "input" || flow === "output");
+      const right = central ? flow === "output" : toRight <= toLeft;
+      const sides = right ? [1, -1] : [-1, 1];
       for (let out = 1; out <= 8; out++) {
         for (const side of sides) {
           const y = leader.at.y + dy * out;
@@ -975,7 +1078,7 @@ function placeLabel(
             { net, a: { x: leader.at.x, y }, b: at },
           ];
           if (hit(box) || !r.canFix(stub)) continue;
-          return { label: { net, text: net, kind: "local", at, outward: way, box }, stub };
+          return { label: { net, text: net, kind, at, outward: way, box }, stub };
         }
       }
     }
@@ -986,7 +1089,7 @@ function placeLabel(
     const box = boxFor(at, leader.outward);
     const stub = [{ net, a: leader.at, b: at }];
     if (!hit(box) && r.canFix(stub)) {
-      return { label: { net, text: net, kind: "local", at, outward: leader.outward, box }, stub };
+      return { label: { net, text: net, kind, at, outward: leader.outward, box }, stub };
     }
   }
   // Nowhere clear: sit on the pin itself. The text may crowd its neighbours, but it connects.
@@ -994,7 +1097,7 @@ function placeLabel(
     label: {
       net,
       text: net,
-      kind: "local",
+      kind,
       at: leader.at,
       outward: leader.outward,
       box: boxFor(leader.at, leader.outward),

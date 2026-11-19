@@ -13,9 +13,10 @@ import {
   placeRun,
   type Sheet,
 } from "./passes/place.js";
-import { placePower } from "./passes/power.js";
+import { makeSymbol, placePower } from "./passes/power.js";
 import { type RouteRequest, route } from "./passes/route.js";
 import { buildRows, type RowPlan } from "./passes/rows.js";
+import { splitRailWires, wireTriggers } from "./passes/split.js";
 import { type RuleOverrides, Rules, resolveRules } from "./rules.js";
 import type {
   LayoutInput,
@@ -29,6 +30,11 @@ import type {
   TraceEntry,
   Wire,
 } from "./types.js";
+
+/** Whether `p` lies on the axis-aligned segment a–b, ends included. */
+const onSegment = (p: Pt, a: Pt, b: Pt) =>
+  (a.x === b.x && p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)) ||
+  (a.y === b.y && p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x));
 
 function sheetBounds(ctx: Ctx, sheet: Sheet): Rect {
   const rects: Rect[] = [];
@@ -162,11 +168,34 @@ function packGroups(ctx: Ctx, groups: Group[]): Sheet {
 }
 
 /** Lays out one block. The same input and rules always give the same drawing. */
-export function layoutBlock(input: LayoutInput, overrides: RuleOverrides = {}): LayoutResult {
+export function layoutBlock(given: LayoutInput, overrides: RuleOverrides = {}): LayoutResult {
+  // Pieces of a rail meet only through their symbols, so without symbols the rail stays whole.
+  if (!new Rules(resolveRules(overrides)).on("local-power-symbols")) {
+    return layoutSplit(given, overrides, new Set(wireTriggers(given).keys()));
+  }
+  const split = splitRailWires(given);
+  return split.restore(layoutSplit(split.input, overrides, split.wires));
+}
+
+function layoutSplit(
+  input: LayoutInput,
+  overrides: RuleOverrides,
+  railWires: Set<string>,
+): LayoutResult {
   const rules = new Rules(resolveRules(overrides));
   const ctx = new Ctx(input, rules);
-  const an = classify(ctx);
+  const an = classify(ctx, railWires);
   const flow = deriveFlow(ctx, an);
+  // Ports have had their say in which way signals run; from here they are labels only.
+  if (rules.on("port-labels")) {
+    ctx.dropPorts();
+    an.anchors = an.anchors.filter((id) => !isPort(id));
+    an.terminalPorts = new Set();
+    flow.components = flow.components
+      .map((c) => c.filter((id) => !isPort(id)))
+      .filter((c) => c.length > 0);
+    flow.links = flow.links.filter((l) => !isPort(l.a) && !isPort(l.b));
+  }
 
   const columnsOf = flow.components.map((comp) => orderColumns(ctx, flow, comp));
   const plan = buildRows(ctx, an, flow, columnsOf.flat());
@@ -268,7 +297,11 @@ export function layoutBlock(input: LayoutInput, overrides: RuleOverrides = {}): 
 
   const req: RouteRequest = {
     bodies,
-    solids: [...power.map(symbolBody), ...portBoxes, ...markers.map((m) => m.box)],
+    solids: [
+      ...power.map(symbolBody),
+      ...portBoxes,
+      ...markers.filter((m) => !m.crowded).map((m) => m.box),
+    ],
     pins: [...pins.values()],
     anchorPins: new Set(
       [...ctx.parts.values()]
@@ -280,9 +313,28 @@ export function layoutBlock(input: LayoutInput, overrides: RuleOverrides = {}): 
     prewires: sheet.prewires,
     nets,
     links,
+    ports: new Map(
+      (rules.on("port-labels") ? input.nets : []).flatMap((n) =>
+        n.port && n.role === "signal"
+          ? [[n.name, rules.on("signal-left-right") ? n.port : "bidir"] as const]
+          : [],
+      ),
+    ),
   };
   const routed = route(ctx, req, (n) => an.railWires.has(n));
-  for (const l of routed.labels) labels.push(l);
+  // A rail joins up by its symbols' name, not a label's, so a rail falling back gets symbols.
+  for (const l of routed.labels) {
+    if (ctx.role(l.net) === "signal" || !useSymbols) labels.push(l);
+    else power.push(makeSymbol(ctx, l.net, l.at));
+  }
+  // A symbol that no wire or pin reached was planned for a wire that did not fit.
+  const touched = (at: Pt) =>
+    routed.wires.some((w) => onSegment(at, w.a, w.b)) ||
+    [...pins.values()].some((p) => p.at.x === at.x && p.at.y === at.y) ||
+    markers.some((m) => m.at.x === at.x && m.at.y === at.y);
+  for (let i = power.length - 1; i >= 0; i--) {
+    if (!touched((power[i] as PowerSymbol).at)) power.splice(i, 1);
+  }
 
   // A port is drawn only as its label, so its internal pin is left out.
   const connections = new Map<string, Pt[]>();

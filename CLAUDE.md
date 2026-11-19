@@ -46,7 +46,31 @@ AI-first schematic editor; see [docs/design.md](docs/design.md). Circuits are `.
   `kicad-cli sch export svg` and screenshot the SVG with headless Edge (no PDF renderer here).
   To screenshot the viewer, use `--virtual-time-budget=8000` and the `?live=0` URL (the live
   event stream otherwise keeps headless Edge waiting forever); write `.partstyle/focus.json`
-  first to choose the sheet and selection.
+  first to choose the sheet and selection. For layout work prefer `pnpm layout-shot` below.
+
+## Examining a project's layout
+
+Both scripts run from source with tsx (layout and engine edits apply without a build; only
+`pnpm layout-shot` needs the viewer page built). Coordinates in both are sheet grid units: mm
+from the paper's top left corner / 2.54, so report positions can be found on a screenshot.
+
+- `pnpm layout-report -p DIR`: one line per sheet with the `@partstyle/layout` metrics (as
+  `pnpm score` gives them), then hard failures and `layout.connectivity` bugs. Add a SHEET (block
+  name or instance prefix) for its issues and parts; `--part REF` for a part's pins and the rules
+  that placed it (`trace`); `--grid` for a character grid with rulers; `--rules '<json>'` to try
+  rule overrides against the project's own layout (changed values show the old in brackets);
+  `--case [ID]` to save the sheet's layout input as a tester case in `layout/captured/`
+  (gitignored: these are people's designs), which `pnpm score` and `pnpm dump` in `layout/` read.
+- `pnpm layout-shot -p DIR [SHEET[@x,y,w,h]...] [--grid] [--select U1,NET] [--width PX]`:
+  PNGs of the viewer's `?shot` mode (the sheet alone, no sidebar) in `DIR/.partstyle/shots/` or
+  `--out`, all from one headless Edge over CDP (about 2 s for a whole project, most of it loading
+  the design). `@x,y,w,h` crops to a region, `--grid` overlays labelled grid lines, `--select`
+  highlights parts (by refdes) and nets (by flat name). It never touches the person's open
+  viewer or `focus.json`. Read the PNGs to judge what the metrics miss: text collisions,
+  crowding, awkward routing. Run it from PowerShell: under the Bash tool Edge exits at once.
+- When you identify a layout issue, save the last screenshot of it to `layout/captured/`
+  (`--out layout/captured`, usually a `--grid` close-up) so the user can see it; the JSON cases
+  there are not enough on their own.
 
 ## Layout
 

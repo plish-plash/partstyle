@@ -114,11 +114,18 @@ function spaceRisers(ctx: Ctx, id: string, list: Riser[]) {
   ups.sort((a, b) => Math.min(...ys(a)) - Math.min(...ys(b)));
   downs.sort((a, b) => Math.max(...ys(b)) - Math.max(...ys(a)));
   const done: Riser[] = [];
+  // The first riser of a net that gets a marker (a PWR_FLAG) keeps room for it beside its symbol.
+  const roomy = new Set(
+    list.filter(
+      (r, i) => ctx.nets.get(r.net)?.flagged && list.findIndex((o) => o.net === r.net) === i,
+    ),
+  );
   for (const r of [...ups, ...downs]) {
     const [lo, hi] = span(r);
     const clash = (o: Riser, offset: number) => {
       // Same way: their symbols sit side by side. Opposite ways: only overlapping wires clash.
-      if (o.dir === r.dir) return Math.abs(o.offset - offset) < 2;
+      if (o.dir === r.dir)
+        return Math.abs(o.offset - offset) < (roomy.has(o) || roomy.has(r) ? 5 : 2);
       const [a, b] = span(o);
       return o.offset === offset && a <= hi && lo <= b;
     };
@@ -313,7 +320,15 @@ export function buildRows(ctx: Ctx, an: Analysis, flow: Flow, columns: string[][
             continue;
           }
           if (isRailEnd(net) && useRisers) {
-            const same = share ? mine.find((r) => r.side === side && r.net === net) : undefined;
+            // Only pins close together share a riser: one far down the part would need a long
+            // wire past every pin between.
+            const near = (r: Riser) => {
+              const last = ctx.pin({ part: id, pin: r.pins.at(-1) as string });
+              return Math.abs(last.y - pin.y) <= 2;
+            };
+            const same = share
+              ? mine.find((r) => r.side === side && r.net === net && near(r))
+              : undefined;
             if (same) same.pins.push(pin.id);
             else {
               const riserDir = zeroHanger(net, ctx).dir;

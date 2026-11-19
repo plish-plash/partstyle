@@ -731,4 +731,86 @@ export const CASES: TestCase[] = [
       c.gnd("GND", "U1.GND", "C1.2", "C2.2");
     },
   ),
+  make(
+    "port-column-pullup",
+    "Signal chains",
+    "Stacked ports, one with a pull-up",
+    "Two chained shift registers fed by input ports that stack in a column, the last through a series resistor onto a pulled-up enable. A port's box is half a unit either side of its pin; the parts stacked after it must still land on the grid.",
+    (c) => {
+      const sr = (ref: string) =>
+        c.ic(ref, "74HC595", {
+          left: ["SER", "SRCLK", "RCLK", null, "~OE"],
+          right: ["QA", "QH'"],
+          top: ["VCC"],
+          bottom: ["GND"],
+        });
+      sr("U1");
+      sr("U2");
+      c.res("R1", "1k").res("R2", "10k").res("R3", "1k");
+      c.input("DATA", "U1.SER");
+      c.net("CHAIN", "U1.QH'", "U2.SER");
+      c.input("CLK", "U1.SRCLK", "U2.SRCLK");
+      c.input("LATCH", "R3.1");
+      c.net("LATCH_INT", "R3.2", "U1.RCLK", "U2.RCLK");
+      c.input("OE_N", "R1.1");
+      c.net("OE_INT", "R1.2", "U1.~OE", "U2.~OE", "R2.1");
+      c.rail("+3V3", "R2.2", "U1.VCC", "U2.VCC");
+      c.gnd("GND", "U1.GND", "U2.GND");
+      c.output("QA", "U1.QA");
+      c.output("QB", "U2.QA");
+    },
+  ),
+  make(
+    "mux-ground-pins",
+    "Power",
+    "Mux with unused inputs grounded",
+    "An analog mux with four unused inputs tied to ground on its right side, the common pin between them, and a negative supply on a bottom pin. The grounded pins share one riser that runs past all of them; the negative symbol hangs straight down off its pin.",
+    (c) => {
+      c.ic("U1", "CD74HC4051", {
+        left: ["~E", "S2", "S1", "S0"],
+        right: [
+          "A4:bidir",
+          "A6:bidir",
+          "COM:bidir",
+          "A7:bidir",
+          "A5:bidir",
+          "A3:bidir",
+          "A0:bidir",
+          "A1:bidir",
+          "A2:bidir",
+        ],
+        top: ["VCC"],
+        bottom: ["VEE", "GND"],
+      });
+      c.input("EN_N", "U1.~E");
+      c.input("S1", "U1.S1");
+      c.input("S0", "U1.S0");
+      c.gnd("AGND", "U1.S2", "U1.A4", "U1.A6", "U1.A7", "U1.A5", "U1.GND");
+      c.rail("+4V8", "U1.VCC");
+      c.rail("-4V8", "U1.VEE");
+      c.output("OUT", "U1.COM");
+      for (const a of ["A3", "A0", "A1", "A2"]) c.input(`IN_${a}`, `U1.${a}`);
+    },
+  ),
+  make(
+    "port-top-pins",
+    "Signal chains",
+    "Port on a top pin",
+    "A converter with its enable input in the middle of its top edge, straight to a port, and its power-good output on its side. The enable label steps up off the part and runs left, the way the signal comes in.",
+    (c) => {
+      c.ic("U1", "TPS62", {
+        left: ["VIN:power_in"],
+        right: ["SW:output", null, "PG:output"],
+        top: ["EN:input"],
+        bottom: ["GND"],
+      });
+      c.ind("L1", "2.2u").cap("C1", "10u").cap("C2", "22u");
+      c.rail("+5V", "U1.VIN", "C1.1");
+      c.net("SW", "U1.SW", "L1.1");
+      c.rail("+3V3", "L1.2", "C2.1");
+      c.gnd("GND", "U1.GND", "C1.2", "C2.2");
+      c.input("EN", "U1.EN");
+      c.output("PG", "U1.PG");
+    },
+  ),
 ];

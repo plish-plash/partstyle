@@ -264,9 +264,12 @@ function portRect(ctx: Ctx, id: string, side: 1 | -1, v: number, y: number): Rec
 }
 
 /** Finds the first column at or past `u` where `probe` fits. */
+/** How far `firstFree` looks; reaching it means nothing is free. */
+const FREE_SEARCH = 400;
+
 function firstFree(u: number, probe: (v: number) => Rect, occ: Rect[]): number {
   let v = u;
-  for (let n = 0; n < 400 && collides(probe(v), occ); n++) v++;
+  for (let n = 0; n < FREE_SEARCH && collides(probe(v), occ); n++) v++;
   return v;
 }
 
@@ -361,7 +364,15 @@ function layoutSide(
         u += spacing;
       } else if (item.t === "hang") {
         const probe = (v: number) => hangRect(ctx, side * v, r.y, item);
-        u = firstFree(u, probe, occ);
+        const from = u;
+        u = firstFree(from, probe, occ);
+        // A stem lining it up with its neighbours may have to cross a row that runs right
+        // through the gap; then it hangs at its own height instead.
+        const stems = [item.up, item.down].filter((h) => h?.stem);
+        if (u - from >= FREE_SEARCH && stems.length > 0) {
+          for (const h of stems) if (h) delete h.stem;
+          u = firstFree(from, probe, occ);
+        }
         placed.push({ item, x: side * u });
         occ.push(probe(u));
         u += !item.up?.parts.length && !item.down?.parts.length ? 2 : spacing;
@@ -482,7 +493,9 @@ export function placeComponent(ctx: Ctx, plan: RowPlan, columns: string[][], she
         .filter((r) => r.target?.part === id && r.anchor !== undefined)
         .map((r) => pinAt(pinRef(r)).y - localPin(ctx, id, ctx.pin(r.target as PinRef)).y)
         .sort((a, b) => a - b);
-      const base = cursor === undefined ? 0 : cursor + ext.top - box.y;
+      // Boxes need not be whole units (a port's is half a unit either side of its pin); the
+      // origin, and so every pin, must be.
+      const base = cursor === undefined ? 0 : Math.ceil(cursor + ext.top - box.y);
       let y = base;
       if (straighten && wants.length > 0) {
         const want = wants[Math.floor((wants.length - 1) / 2)] as number;
@@ -565,7 +578,7 @@ export function placeComponent(ctx: Ctx, plan: RowPlan, columns: string[][], she
       const steps = step(id).sort((a, b) => a - b);
       let dy = steps[Math.floor((steps.length - 1) / 2)] ?? 0;
       if (Math.abs(dy) > maxShift) dy = 0;
-      if (floor !== undefined) dy = Math.max(dy, floor + ext.top - box.y - pl.at.y);
+      if (floor !== undefined) dy = Math.max(dy, Math.ceil(floor + ext.top - box.y - pl.at.y));
       if (dy !== 0) {
         moveAnchors([id], 0, dy);
         ctx.note(id, "straighten-wires", "moved to meet the rows reaching it");

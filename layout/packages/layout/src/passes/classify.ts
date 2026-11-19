@@ -13,8 +13,10 @@ import type { LayoutPart } from "../types.js";
  *
  * Reduction order matters: rails first, then hangers (which absorb the parts in front of them, so
  * resistor + LED + ground becomes one hanger), then what is left forms series chains.
+ *
+ * `railWires` are the rails drawn as a wire (see `splitRailWires`): signals as far as this goes.
  */
-export function classify(ctx: Ctx): Analysis {
+export function classify(ctx: Ctx, railWires: Set<string>): Analysis {
   const anchors: string[] = [];
   const twos: LayoutPart[] = [];
   for (const p of ctx.parts.values()) {
@@ -24,7 +26,6 @@ export function classify(ctx: Ctx): Analysis {
   anchors.sort((a, b) => ctx.part(a).order - ctx.part(b).order);
   twos.sort((a, b) => a.order - b.order);
 
-  const railWires = findRailWires(ctx);
   const isRail = (net: string | undefined) =>
     net !== undefined && ctx.role(net) !== "signal" && !railWires.has(net);
 
@@ -242,30 +243,4 @@ function adjacentPins(ctx: Ctx, anchor: string, c: Chain): boolean {
   return !ctx
     .part(anchor)
     .pins.some((p) => p.outward === pa.outward && p.y > lo && p.y < hi && p.net !== undefined);
-}
-
-/**
- * Rails drawn as a wire. Current runs along these from left to right, so their caps hang off the
- * wire: a side power pin of an IC, or the far side of an inductor or ferrite.
- */
-function findRailWires(ctx: Ctx): Set<string> {
-  const out = new Set<string>();
-  for (const p of ctx.parts.values()) {
-    for (const pin of p.pins) {
-      if (pin.net === undefined || ctx.role(pin.net) !== "power") continue;
-      const side = pin.outward === 0 || pin.outward === 180;
-      if (!side) continue;
-      const icLike = p.kind !== "connector";
-      if (pin.type === "power_out" || (icLike && pin.type === "power_in")) out.add(pin.net);
-    }
-    if ((p.kind === "inductor" || p.kind === "ferrite") && p.pins.length === 2) {
-      const [a, b] = [p.pins[0]?.net, p.pins[1]?.net];
-      if (a === undefined || b === undefined) continue;
-      const roleA = ctx.role(a);
-      const roleB = ctx.role(b);
-      if (roleA === "power" && roleB !== "ground") out.add(a);
-      if (roleB === "power" && roleA !== "ground") out.add(b);
-    }
-  }
-  return out;
 }

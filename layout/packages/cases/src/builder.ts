@@ -9,7 +9,15 @@ import type {
   PinType,
 } from "@partstyle/layout";
 
-export type Category = "Sanity" | "MCU" | "LED chains" | "Signal chains" | "Power" | "Whole sheets";
+export type Category =
+  | "Sanity"
+  | "MCU"
+  | "LED chains"
+  | "Signal chains"
+  | "Power"
+  | "Whole sheets"
+  /** Sheets of real projects, kept locally in `layout/captured/`. */
+  | "Captured";
 
 export interface TestCase {
   id: string;

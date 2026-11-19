@@ -28,11 +28,9 @@ describe.each(CASES.map((c) => [c.id, c] as const))("%s", (_id, c) => {
   });
 
   it("points rails up and grounds down", () => {
+    // The metric allows a rail to hang down only straight off a bottom pin, or below ground.
     expect(metrics.powerWrongWay).toBe(0);
-    for (const s of result.power) {
-      if (s.role === "ground") expect(s.outward).toBe(270);
-      else if (!s.name.startsWith("-")) expect(s.outward).toBe(90);
-    }
+    for (const s of result.power) if (s.role === "ground") expect(s.outward).toBe(270);
   });
 
   it("places every part once", () => {
@@ -146,6 +144,26 @@ describe("specific placements", () => {
     expect(r.wires.filter((w) => w.net === net.net).length).toBeLessThanOrEqual(2);
     const lefts = ["R10", "R9", "R8"].map((id) => box(r, id).x);
     expect(lefts).toEqual([...lefts].sort((a, b) => a - b));
+  });
+
+  it("runs one riser past every side pin it serves", () => {
+    const r = layout("mux-ground-pins");
+    const ends = ["A4", "A6", "A7", "A5"].map((id) => pin(r, "U1", id).at);
+    const x = (ends[0]?.x ?? 0) + 1;
+    const risers = r.wires.filter(
+      (w) => w.net === "AGND" && w.a.x === w.b.x && w.a.x > (ends[0]?.x ?? 0),
+    );
+    expect(new Set(risers.map((w) => w.a.x))).toEqual(new Set([x]));
+    const top = Math.min(...risers.flatMap((w) => [w.a.y, w.b.y]));
+    expect(top).toBe(Math.min(...ends.map((e) => e.y)));
+  });
+
+  it("hangs a symbol on a bottom pin straight down, whatever its rail", () => {
+    const r = layout("mux-ground-pins");
+    const vee = pin(r, "U1", "VEE").at;
+    const s = r.power.find((p) => p.net === "-4V8");
+    expect(s?.outward).toBe(270);
+    expect(s?.at.x).toBe(vee.x);
   });
 });
 

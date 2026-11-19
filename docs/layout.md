@@ -20,8 +20,8 @@ Every part is one of a few things, decided from how it connects:
 
 Anchors are placed in columns along the signal flow, judged by which side their pins are on, then
 by pin type and port direction. Each anchor pin then gets a row, a horizontal run carrying
-everything on that net: hangers above or below the wire, series parts in line, and a port label
-or the next anchor's pin at the end.
+everything on that net: hangers above or below the wire, series parts in line, and the next
+anchor's pin at the end.
 
 Rows are spaced to fit what hangs from them, and hangers step along so that each sits past the
 rows it spans, which is what keeps fan-outs from crossing. Matching hangers on neighbouring rows
@@ -46,33 +46,51 @@ line up on stems of different lengths. A grid router connects whatever the rows 
   instance-qualified one (`PWR_+12V`) when two nets share a bare name. If a block used more than
   once would need different power names per instance, that net is drawn as a signal.
 - **Power symbols point the conventional way:** rails up, ground down, and rails below ground
-  down unless they sit on a part's top pin. A symbol sits directly on the pin where it can.
+  down unless they sit on a part's top pin. A symbol on a part's bottom pin hangs straight down
+  off it, whatever its rail. A symbol sits directly on the pin where it can.
 - **Power pins on the side of a part** run a short stub, then straight up or down to a symbol just
   past the part, crossing other pin wires if they must. Pins of one rail on one side share a wire
-  and a symbol.
+  and a symbol when they are within two pins of each other.
 - **Rails that current runs along**, such as a regulator's input and output, are drawn as wires
-  with their parts hanging from them.
+  with their parts hanging from them. With one source on the rail (a regulator's output, an
+  inductor), the wire runs from it into the side power inputs it feeds, and capacitors, diodes to
+  another rail and parts leading to no other IC (an LED and its resistor) hang from it. Without
+  one, each IC drawing the rail this way has its own wire. A wire takes in only one side of each
+  IC (several VIN pins share it); the IC's other pins on the rail, pull-up resistors and other
+  ICs take their own symbols. A part whose only pins on the rail are spread down its side gets
+  symbols instead of a wire.
+- **A rail pin that cannot reach its symbol** gets a symbol of its own on the pin, never a label:
+  power symbols and labels do not connect to each other.
 - **Other nets** are wires. A net becomes labels instead when its wires would cross three or more
   others, wander far out of their way, take one wire more than 55 grid units long (bends
   included), or cannot be routed at all.
 - **Labels** sit straight out from a side pin, or on a short step then sideways just past the part
   for a top or bottom pin. Each anchor pin gets its own label, neighbouring pins sharing one; a
-  two-terminal part joins the nearest pin of the net, so parts that sit together, such as a
-  divider, are wired to each other and share a label. On a piece with wires of its own, a label
+  two-terminal part joins the nearest pin of the net within 10 grid units, so parts that sit
+  together, such as a divider, are wired to each other and share a label, while a part further
+  from the rest gets a label of its own. Two pins facing each other across a short gap stay
+  wired, with one label. Where a label off the wire or straight out from the pin would land on
+  the wire itself, it moves to a corner or loose end of the net's wire, reading on past it; if
+  no corner is clear, another net's wire may cross the text there, but none may run along it. On a piece with wires of its own, a label
   hangs off the wire on a short stub so that the wire stays straight.
 - **Pins off the 100 mil grid**, which some KiCad symbols have (`Device:R_Potentiometer`'s wiper),
   get a short wire straight out to the next grid point. The symbol is placed so that as many of
   its pins as possible can do this: a side pin needs its height on the grid, and a top or bottom
   pin its position across. A pin that still cannot reach the grid straight out takes a small jog.
-- **Ports** that are not power nets become sheet pins on the parent's sheet symbol. In the child
-  sheet, the row ends in a hierarchical label, right beside the part where it fits.
+- **Ports** that are not power nets become sheet pins on the parent's sheet symbol, each a short
+  wire stub out from the sheet's edge like a symbol's pin, so wires meet the sheet square on. In
+  the child sheet, a port is a hierarchical label placed like any label: on a short riser off the
+  net's wire near its first pin, or straight out from a pin. A net drawn as labels carries the
+  hierarchical label on every piece. On a top or bottom pin near the middle of the part, an input
+  port's label runs left and an output's right.
 - **Junction dots** mark every point where three or more things meet: pins, wires, power symbols
   and labels each count.
 - **Unconnected pins** get no-connect flags.
 - **PWR_FLAG** (`power:PWR_FLAG`) is added to every net drawn with power symbols or feeding
   `power_in` pins that has no `power_out` pin, i.e. power from outside the design (a
   `{source: ...}` rail, ground). It sits in free space beside one of the net's symbols, in a sheet
-  where the net reaches real part pins.
+  where the net reaches real part pins. Risers side by side leave room beside the first riser of
+  each such net; where there is still no room, the flag is drawn anyway but never blocks a wire.
 
 ## Text
 

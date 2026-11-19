@@ -96,6 +96,20 @@ export class Ctx {
     }
   }
 
+  /**
+   * Forgets the port parts once they have steered the signal flow, so that ports are only the
+   * labels the router adds (rule `port-labels`).
+   */
+  dropPorts() {
+    for (const id of [...this.parts.keys()]) if (isPort(id)) this.parts.delete(id);
+    for (const [net, refs] of this.netPins) {
+      this.netPins.set(
+        net,
+        refs.filter((r) => !isPort(r.part)),
+      );
+    }
+  }
+
   private addPart(p: LayoutPart) {
     this.parts.set(p.id, p);
     for (const pin of p.pins) {

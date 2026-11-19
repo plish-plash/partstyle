@@ -12,7 +12,7 @@ import { symbolForGeneric, symbolForRecord, symbolForRecordGeneric } from "../ki
 import type { FlatPart, Netlist } from "../netlist/elaborate.js";
 import { type ProjectConfig, TOP_BLOCK } from "../project/config.js";
 import type { ValidationResult } from "../validate.js";
-import { layoutSheet } from "./adapter.js";
+import { layoutSheetDetail, type SheetLayoutDetail } from "./adapter.js";
 import { checkConnectivity } from "./connectivity.js";
 import { type DrawingPlan, planDrawing } from "./plan.js";
 import type { SheetLayout } from "./types.js";
@@ -56,6 +56,8 @@ export interface Drawing {
   plan: DrawingPlan;
   /** Laid-out sheet per block in use, by block name. */
   sheets: Map<string, SheetLayout>;
+  /** The layout engine's input and result behind each sheet, for diagnosing layouts. */
+  layouts: Map<string, SheetLayoutDetail>;
   issues: Issue[];
 }
 
@@ -184,10 +186,13 @@ export async function prepareDrawing(
   });
   const blocks = new Map(result.blocks.map((b) => [b.block.name, b]));
   const sheets = new Map<string, SheetLayout>();
+  const layouts = new Map<string, SheetLayoutDetail>();
   for (const block of result.blocks) {
     if (plan.instancesOf(block.block.name).length === 0) continue;
-    const sheet = layoutSheet(block, plan, netlist, blocks, config.layout);
+    const detail = layoutSheetDetail(block, plan, netlist, blocks, config.layout);
+    const { sheet } = detail;
     sheets.set(block.block.name, sheet);
+    layouts.set(block.block.name, detail);
     for (const problem of checkConnectivity(sheet)) {
       issues.push({
         code: "layout.connectivity",
@@ -209,6 +214,7 @@ export async function prepareDrawing(
     power,
     plan,
     sheets,
+    layouts,
     issues,
   };
 }

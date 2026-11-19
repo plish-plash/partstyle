@@ -17,6 +17,7 @@
     "layout/packages/layout/src",
     "layout/packages/cases/src",
     "layout/packages/tester/scripts",
+    "scripts",
     "vitest.config.ts",
     "vitest.setup.ts"
   ],

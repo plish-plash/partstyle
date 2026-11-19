@@ -100,12 +100,13 @@ function checkConnectivity(input: LayoutInput, r: LayoutResult, issues: MetricIs
   for (const s of r.power) {
     const k = pointKey(s.at);
     for (const id of interior.get(k) ?? []) dsu.union(id, `p${k}`);
-    dsu.union(`name:${s.name}`, `p${k}`);
+    dsu.union(`power:${s.name}`, `p${k}`);
   }
+  // As in KiCad, a label joins labels of its own kind; a power symbol joins only power symbols.
   for (const l of r.labels) {
     const k = pointKey(l.at);
     for (const id of interior.get(k) ?? []) dsu.union(id, `p${k}`);
-    dsu.union(`name:${l.text}`, `p${k}`);
+    dsu.union(`${l.kind}:${l.text}`, `p${k}`);
   }
 
   let opens = 0;
@@ -144,12 +145,24 @@ function checkConnectivity(input: LayoutInput, r: LayoutResult, issues: MetricIs
   return { opens, shorts };
 }
 
-function isOnGrid(r: LayoutResult): number {
+/** Points that should be on the grid and are not; each part and symbol is named once. */
+function isOnGrid(r: LayoutResult, issues: MetricIssue[]): number {
   const off = (p: Pt) => (Number.isInteger(p.x) && Number.isInteger(p.y) ? 0 : 1);
   let n = 0;
-  for (const part of r.parts) for (const pin of part.pins) n += off(pin.at);
-  for (const w of r.wires) n += off(w.a) + off(w.b);
-  for (const s of r.power) n += off(s.at);
+  for (const part of r.parts) {
+    const k = part.pins.reduce((s, pin) => s + off(pin.at), 0);
+    if (k > 0)
+      issues.push({ metric: "offGrid", message: `${part.ref} has ${k} pins off the grid` });
+    n += k;
+  }
+  let wires = 0;
+  for (const w of r.wires) wires += off(w.a) + off(w.b);
+  if (wires > 0) issues.push({ metric: "offGrid", message: `${wires} wire ends off the grid` });
+  n += wires;
+  for (const s of r.power) {
+    if (off(s.at)) issues.push({ metric: "offGrid", message: `${s.name} symbol off the grid` });
+    n += off(s.at);
+  }
   return n;
 }
 
@@ -283,8 +296,18 @@ export function measure(
   const pointsDown = (net: string | undefined) =>
     input.nets.find((n) => n.name === net)?.pointsDown === true;
   let powerWrongWay = 0;
+  // Any symbol may hang straight down off a pin on a part's bottom edge.
+  const belowBottomPin = (s: (typeof r.power)[number]) =>
+    r.parts.some((p) =>
+      p.pins.some(
+        (q) => q.net === s.net && q.outward === 270 && q.at.x === s.at.x && q.at.y <= s.at.y,
+      ),
+    );
   for (const s of r.power) {
-    const wrong = s.role === "ground" ? s.outward !== 270 : s.outward !== 90 && !pointsDown(s.net);
+    const wrong =
+      s.role === "ground"
+        ? s.outward !== 270
+        : s.outward !== 90 && !pointsDown(s.net) && !belowBottomPin(s);
     if (wrong) {
       powerWrongWay++;
       issues.push({ metric: "powerWrongWay", message: `${s.name} symbol points the wrong way` });
@@ -328,7 +351,7 @@ export function measure(
     });
   }
 
-  const offGrid = isOnGrid(r);
+  const offGrid = isOnGrid(r, issues);
   const unrouted = r.unrouted.length;
   const metrics: Metrics = {
     opens,

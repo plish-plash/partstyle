@@ -33,6 +33,12 @@ Feedback in `feedback/` is gitignored: each person judges the layouts for themse
 
 Hot reload keeps the previous layouts, so the user can compare without doing anything.
 
+Sheets of real projects can be captured from the repo root with `pnpm layout-report -p DIR SHEET
+--case`. They land in `captured/` (gitignored), and `pnpm score` and `pnpm dump` include them
+after the built-in cases; the tester does not show them yet. A captured case records the
+project's rule overrides in `rules`, which `score` does not apply. Turn a failure shape found this
+way into a small case in `cases.ts` rather than relying on the capture.
+
 ## Rules of the code
 
 - `packages/layout` stays pure, synchronous, deterministic and dependency-free, with no Node APIs.

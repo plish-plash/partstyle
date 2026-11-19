@@ -103,11 +103,15 @@ const str = (v: unknown, name: string, max = 2000): string => {
  * model, live change events, and the few writes the viewer makes (focus, comments, part
  * verification, approvals, review actions). Tries successive ports when the default is taken (several projects can be
  * viewed at once).
+ *
+ * With `snapshot`, the server is for one look, as screenshots take it: it neither watches the
+ * project nor records itself as the project's viewer, so a viewer already open keeps its place.
  */
 export async function startViewer(
   first: Workspace,
-  opts: { port?: number } = {},
+  opts: { port?: number; snapshot?: boolean } = {},
 ): Promise<ViewerServer> {
+  const snapshot = opts.snapshot === true;
   let ws = first;
   const dist = embeddedViewer ? "" : viewerDist();
   const clients = new Set<ServerResponse>();
@@ -324,6 +328,7 @@ export async function startViewer(
   const watchProject = async () => {
     for (const w of watchers) w.close();
     watchers = [];
+    if (snapshot) return;
     for (const dir of [ws.root, ...(await ws.libraryDirs())]) {
       try {
         watchers.push(watch(dir, { recursive: true }, (_event, file) => changed(file)));
@@ -338,17 +343,20 @@ export async function startViewer(
   }, 25_000);
 
   const url = `http://127.0.0.1:${port}/`;
-  await ws.setViewerUrl(url);
+  const register = async (u: string | undefined) => {
+    if (!snapshot) await ws.setViewerUrl(u);
+  };
+  await register(url);
   return {
     url,
     port,
     switchTo: async (next) => {
       if (next.root === ws.root) return;
-      await ws.setViewerUrl(undefined);
+      await register(undefined);
       ws = next;
       models.clear();
       await watchProject();
-      await ws.setViewerUrl(url);
+      await register(url);
       const data = JSON.stringify({ project: await ws.name() });
       for (const c of clients) c.write(`event: project\ndata: ${data}\n\n`);
     },
@@ -358,7 +366,7 @@ export async function startViewer(
       for (const w of watchers) w.close();
       for (const c of clients) c.end();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await ws.setViewerUrl(undefined);
+      await register(undefined);
     },
   };
 }

@@ -11,7 +11,10 @@ import {
   measure,
   type RuleOverrides,
 } from "@partstyle/layout";
-import { CASES, shuffleInput } from "@partstyle/layout-cases";
+import { shuffleInput } from "@partstyle/layout-cases";
+import { allCases } from "./captured.js";
+
+const CASES = allCases();
 
 const args = process.argv.slice(2);
 const rulesAt = args.indexOf("--rules");

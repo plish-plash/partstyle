@@ -17,12 +17,15 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "partstyle": "node packages/cli/dist/main.js",
     "standalone": "node scripts/standalone.mjs",
-    "mcpb": "node scripts/standalone.mjs --mcpb"
+    "mcpb": "node scripts/standalone.mjs --mcpb",
+    "layout-report": "tsx --tsconfig tsconfig.check.json scripts/layout-report.ts",
+    "layout-shot": "tsx --tsconfig tsconfig.check.json scripts/layout-shot.ts"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "2.1.2",
     "@biomejs/biome": "^2.6.4",
     "@types/node": "^26.6.6",
+    "tsx": "^4.19.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

@@ -13,7 +13,12 @@ export function symbolBox(at: Pt, outward: 90 | 270): Rect {
 
 const defaultWay = (ctx: Ctx, net: string): 90 | 270 => (ctx.railPointsDown(net) ? 270 : 90);
 
-function makeSymbol(ctx: Ctx, net: string, at: Pt, outward = defaultWay(ctx, net)): PowerSymbol {
+export function makeSymbol(
+  ctx: Ctx,
+  net: string,
+  at: Pt,
+  outward = defaultWay(ctx, net),
+): PowerSymbol {
   const role = ctx.role(net) === "ground" ? "ground" : "power";
   return {
     net,
@@ -59,6 +64,7 @@ export function placePower(
   };
 
   const share = ctx.rules.bool("local-power-symbols", "shareAdjacent");
+  const bottomDown = ctx.rules.bool("local-power-symbols", "bottomDown");
 
   // Side pins first: a short stub, then straight past the part to a symbol.
   const gap = ctx.rules.num("power-risers", "gap");
@@ -84,7 +90,8 @@ export function placePower(
         break;
       }
     }
-    const far = placed.reduce((a, b) => (dy * (a.at.y - b.at.y) > 0 ? a : b));
+    // The riser runs from the pin furthest from its symbol, past every other pin it serves.
+    const far = placed.reduce((a, b) => (dy * (a.at.y - b.at.y) < 0 ? a : b));
     const stub: Wire[] = [{ net: r.net, a: { x, y: far.at.y }, b: at }];
     for (const p of placed) stub.push({ net: r.net, a: p.at, b: { x, y: p.at.y } });
     const sym = makeSymbol(ctx, r.net, at);
@@ -99,7 +106,13 @@ export function placePower(
   const place = (net: string, pin: PlacedPin, ref: PinRef) => {
     // A negative rail on a top pin may stand up: there is no room to hang it from there.
     const negative = ctx.role(net) === "power" && ctx.railPointsDown(net);
-    const want: 90 | 270 = negative && pin.outward === 90 ? 90 : defaultWay(ctx, net);
+    // A pin on a part's bottom edge takes its symbol straight off it, pointing down.
+    const want: 90 | 270 =
+      bottomDown && pin.outward === 270
+        ? 270
+        : negative && pin.outward === 90
+          ? 90
+          : defaultWay(ctx, net);
     const step = stepOf(pin.outward);
     const put = (at: Pt, path: Pt[]) => {
       const sym = makeSymbol(ctx, net, at, want);
@@ -192,21 +205,25 @@ export function placePower(
         const step = stepOf(outward);
         // The box starts a step out, so it may sit beside a symbol that shares `at`.
         const off = translate(box, step.x, step.y);
+        // Both tested where the marker will be drawn, a step out: clear of every wire.
         const hits =
-          taken.some((t) => rectsOverlap(off, t)) || wires.some((w) => rectsOverlap(box, w));
+          taken.some((t) => rectsOverlap(off, t)) || wires.some((w) => rectsOverlap(off, w));
         if (hits) continue;
         chosen = { net: net.name, at, outward, box: off };
         break;
       }
       if (chosen) break;
     }
-    const fallback = spots[0];
-    if (!chosen && fallback) {
-      chosen = { net: net.name, at: fallback, outward: 0, box: markerBox(fallback, 0) };
-    }
     if (chosen) {
       markers.push(chosen);
       taken.push(chosen.box);
+      continue;
+    }
+    // Nowhere clear: it still has to be drawn, but it must not keep another net's wire out.
+    const fallback = spots[0];
+    if (fallback) {
+      const box = translate(markerBox(fallback, 0), 1, 0);
+      markers.push({ net: net.name, at: fallback, outward: 0, box, crowded: true });
     }
   }
   return { symbols, markers };

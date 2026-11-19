@@ -12,6 +12,7 @@ import {
   type Preferences,
   preferenceOverrides,
   type Rotation,
+  type RuleOverrides,
   type TextField,
 } from "@partstyle/layout";
 import type { CktFile, PortKind } from "../ckt/ast.js";
@@ -38,6 +39,8 @@ const GRID = 2.54;
 const CHAR = 1.27;
 /** Blank grid units around a sheet's contents. */
 const MARGIN = 6;
+/** Length of the wire stub in front of each child sheet pin, in grid units. */
+const SHEET_STUB = 1;
 
 const textWidth = (s: string) => s.length * CHAR;
 const round = (v: number) => Number(v.toFixed(4));
@@ -128,14 +131,47 @@ interface Translation {
 /**
  * A symbol's extent rounded out to whole grid units, so layout always sees at least the whole
  * symbol: it aligns parts by this box, and wires stay out of it.
+ *
+ * On a side its pins point out of, the box ends at the pins' ends even where the drawing reaches
+ * a little past them, such as an LED's light arrows: rounded out, the box would swallow the first
+ * unit of each pin's own wire. Nothing else can run along that grid line without meeting a pin.
  */
 function gridBox(symbol: Rect, origin: Pt, pins: LayoutPin[]): Rect {
   const down = (v: number) => Math.floor(v / GRID + 1e-6);
   const up = (v: number) => Math.ceil(v / GRID - 1e-6);
-  const x0 = Math.min(down(symbol.x - origin.x), ...pins.map((p) => p.x));
-  const x1 = Math.max(up(symbol.x + symbol.w - origin.x), ...pins.map((p) => p.x));
-  const y0 = Math.min(down(symbol.y - origin.y), ...pins.map((p) => p.y));
-  const y1 = Math.max(up(symbol.y + symbol.h - origin.y), ...pins.map((p) => p.y));
+  /** The edge, held at the outermost pin facing that way if the drawing passes it by under a unit. */
+  const edge = (
+    drawn: number,
+    rounded: number,
+    facing: Direction,
+    at: (p: LayoutPin) => number,
+  ) => {
+    const ends = pins.filter((p) => p.outward === facing).map(at);
+    if (ends.length === 0) return rounded;
+    // Left and up are towards smaller coordinates.
+    const pin = facing === 180 || facing === 90 ? Math.min(...ends) : Math.max(...ends);
+    return Math.abs(drawn - pin) < 1 ? pin : rounded;
+  };
+  const left = (symbol.x - origin.x) / GRID;
+  const right = (symbol.x + symbol.w - origin.x) / GRID;
+  const top = (symbol.y - origin.y) / GRID;
+  const bottom = (symbol.y + symbol.h - origin.y) / GRID;
+  const x0 = Math.min(
+    edge(left, down(symbol.x - origin.x), 180, (p) => p.x),
+    ...pins.map((p) => p.x),
+  );
+  const x1 = Math.max(
+    edge(right, up(symbol.x + symbol.w - origin.x), 0, (p) => p.x),
+    ...pins.map((p) => p.x),
+  );
+  const y0 = Math.min(
+    edge(top, down(symbol.y - origin.y), 90, (p) => p.y),
+    ...pins.map((p) => p.y),
+  );
+  const y1 = Math.max(
+    edge(bottom, up(symbol.y + symbol.h - origin.y), 270, (p) => p.y),
+    ...pins.map((p) => p.y),
+  );
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
@@ -331,14 +367,19 @@ function toLayoutInput(
       };
     };
     const id = `sheet:${u.instance}`;
+    // Pins stand a stub out from the box, like a symbol's, so wires meet the box square on and
+    // keep a unit clear of its edges; `toSheetLayout` draws the stubs as wires.
     parts.push({
       id,
       ref: u.instance,
       value: u.block,
       kind: "sheet",
       order: u.location.line * 100,
-      box: { x: 0, y: 0, w, h },
-      pins: [...left.map((p, i) => pin(p, i, 0, 180)), ...right.map((p, i) => pin(p, i, w, 0))],
+      box: { x: -SHEET_STUB, y: -SHEET_STUB, w: w + 2 * SHEET_STUB, h: h + 2 * SHEET_STUB },
+      pins: [
+        ...left.map((p, i) => pin(p, i, -SHEET_STUB, 180)),
+        ...right.map((p, i) => pin(p, i, w + SHEET_STUB, 0)),
+      ],
     });
     sheets.set(id, {
       instance: u.instance,
@@ -387,10 +428,15 @@ const fieldOf = (t: TextField | undefined, fallback: Pt, toMm: (p: GridPt) => Pt
   return { at: toMm(t.at), angle: 0, justify: [...side, "bottom"] };
 };
 
+/** Where the engine's grid origin lands on the sheet, in grid units: a margin from the paper edge. */
+const sheetOffset = (result: LayoutResult): GridPt => ({
+  x: MARGIN - Math.floor(result.bounds.x),
+  y: MARGIN - Math.floor(result.bounds.y),
+});
+
 /** Turns the engine's drawing into the sheet that the viewer and the KiCad export read. */
 function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan): SheetLayout {
-  const dx = MARGIN - Math.floor(result.bounds.x);
-  const dy = MARGIN - Math.floor(result.bounds.y);
+  const { x: dx, y: dy } = sheetOffset(result);
   const toMm = (p: GridPt): Pt => ({ x: round((p.x + dx) * GRID), y: round((p.y + dy) * GRID) });
 
   const units: PlacedUnit[] = [];
@@ -400,15 +446,23 @@ function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan):
   for (const part of result.parts) {
     const sheet = t.sheets.get(part.id);
     if (sheet) {
+      // The box the engine placed has the pin stubs around it; the sheet itself is inside.
+      const edge = (p: (typeof part.pins)[number]): GridPt => ({
+        x: p.at.x + (p.outward === 0 ? -SHEET_STUB : p.outward === 180 ? SHEET_STUB : 0),
+        y: p.at.y,
+      });
+      for (const p of part.pins) {
+        if (p.net !== undefined) stubs.push({ net: p.net, a: toMm(p.at), b: toMm(edge(p)) });
+      }
       sheets.push({
         instance: sheet.instance,
         block: sheet.block,
-        at: toMm({ x: part.box.x, y: part.box.y }),
+        at: toMm({ x: part.box.x + SHEET_STUB, y: part.box.y + SHEET_STUB }),
         size: sheet.size,
         pins: part.pins.map((p) => ({
           port: p.id,
           kind: sheet.kinds.get(p.id) ?? "passive",
-          at: toMm(p.at),
+          at: toMm(edge(p)),
           outward: p.outward,
           ...(p.net !== undefined && { net: p.net }),
         })),
@@ -527,15 +581,40 @@ function toSheetLayout(result: LayoutResult, t: Translation, plan: DrawingPlan):
   };
 }
 
-/** Lays out one block's sheet. */
-export function layoutSheet(
+/** A sheet with what the layout engine was given and returned, for diagnosing layouts. */
+export interface SheetLayoutDetail {
+  sheet: SheetLayout;
+  input: LayoutInput;
+  result: LayoutResult;
+  overrides: RuleOverrides;
+  /**
+   * Added to the engine's grid coordinates to give sheet grid coordinates: millimetres from the
+   * paper's top left corner divided by 2.54.
+   */
+  offset: GridPt;
+  /** Time spent in `layoutBlock`. */
+  ms: number;
+}
+
+/** Lays out one block's sheet, keeping what the engine was given and returned. */
+export function layoutSheetDetail(
   block: CktFile,
   plan: DrawingPlan,
   netlist: Netlist,
   blocks: Map<string, CktFile>,
   preferences: Preferences,
-): SheetLayout {
+): SheetLayoutDetail {
   const translation = toLayoutInput(block, plan, netlist, blocks);
-  const result = layoutBlock(translation.input, preferenceOverrides(preferences));
-  return toSheetLayout(result, translation, plan);
+  const overrides = preferenceOverrides(preferences);
+  const start = performance.now();
+  const result = layoutBlock(translation.input, overrides);
+  const ms = performance.now() - start;
+  return {
+    sheet: toSheetLayout(result, translation, plan),
+    input: translation.input,
+    result,
+    overrides,
+    offset: sheetOffset(result),
+    ms,
+  };
 }

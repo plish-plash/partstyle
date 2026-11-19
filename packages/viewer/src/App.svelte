@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { ViewerModel } from "@partstyle/engine";
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
 import * as api from "./api";
 import Changes from "./Changes.svelte";
 import Inspector from "./Inspector.svelte";
@@ -9,6 +9,22 @@ import LayoutPanel from "./LayoutPanel.svelte";
 import Sheet from "./Sheet.svelte";
 
 const params = new URLSearchParams(location.search);
+/**
+ * Screenshot mode (?shot): only the sheet, filling the window, with no update stream. It takes
+ * `sheet` (an instance prefix such as PWR/, or a block name), `select` (comma-separated subjects),
+ * `region` (x,y,w,h in sheet grid units of 2.54 mm from the paper's corner) and `grid` (a
+ * labelled coordinate grid). `<html data-ready>` is set to "1" once the sheet is drawn, or to
+ * "error" with the reason in `data-error`.
+ */
+const shot = params.has("shot");
+const shotRegion = (() => {
+  const v = (params.get("region") ?? "").split(",").map(Number);
+  if (v.length !== 4 || v.some((n) => !Number.isFinite(n)) || (v[2] ?? 0) <= 0 || (v[3] ?? 0) <= 0) {
+    return undefined;
+  }
+  const [x, y, w, h] = v.map((n) => n * 2.54) as [number, number, number, number];
+  return { x, y, w, h };
+})();
 let model = $state<ViewerModel | undefined>();
 let error = $state<string | undefined>();
 let prefix = $state("");
@@ -77,9 +93,16 @@ async function refresh() {
     }
     if (!restored) {
       restored = true;
-      selection = model.focus.selection;
-      if (model.focus.sheet !== undefined && pages.some((p) => p.prefix === model?.focus.sheet)) {
-        prefix = model.focus.sheet;
+      if (shot) {
+        selection = (params.get("select") ?? "").split(",").filter(Boolean);
+        const wanted = shotSheet(params.get("sheet") ?? "");
+        if (wanted === undefined) throw new Error(`no sheet ${params.get("sheet")}`);
+        prefix = wanted;
+      } else {
+        selection = model.focus.selection;
+        if (model.focus.sheet !== undefined && pages.some((p) => p.prefix === model?.focus.sheet)) {
+          prefix = model.focus.sheet;
+        }
       }
     }
     if (!pages.some((p) => p.prefix === prefix)) prefix = pages[0]?.prefix ?? "";
@@ -88,10 +111,35 @@ async function refresh() {
   }
 }
 
+/** The page a ?sheet= names: an instance prefix (with or without its slash) or a block name. */
+function shotSheet(name: string): string | undefined {
+  if (name === "") return pages[0]?.prefix ?? "";
+  const byPrefix = pages.find((p) => p.prefix === name || p.prefix === `${name}/`);
+  return byPrefix?.prefix ?? pages.find((p) => p.block === name)?.prefix;
+}
+
+// Tells a screenshot tool when the page is complete.
+$effect(() => {
+  if (!shot) return;
+  const root = document.documentElement;
+  if (error !== undefined) {
+    root.dataset.error = error;
+    root.dataset.ready = "error";
+  } else if (model && !current) {
+    root.dataset.error = "nothing to draw: the design has errors";
+    root.dataset.ready = "error";
+  } else if (current) {
+    void prefix;
+    void tick().then(() => {
+      root.dataset.ready = "1";
+    });
+  }
+});
+
 onMount(() => {
   void refresh();
-  // ?live=0 shows a snapshot without the update stream (screenshots, embedding).
-  if (new URLSearchParams(location.search).get("live") === "0") return;
+  // ?live=0 shows a snapshot without the update stream (embedding); ?shot implies it.
+  if (shot || new URLSearchParams(location.search).get("live") === "0") return;
   const unsubscribe = api.subscribe(
     () => {
       live = true;
@@ -111,6 +159,8 @@ onMount(() => {
 });
 
 function publish() {
+  // A screenshot must not move the person's own viewer.
+  if (shot) return;
   void api.sendFocus({ selection, sheet: prefix, ...(variant && { variant }) }).catch(() => {});
 }
 function select(subjects: string[], additive: boolean) {
@@ -181,6 +231,28 @@ function showChange(c: { block: string; kind: string; key: string }) {
 
 <svelte:window onkeydown={key} />
 
+{#if shot}
+  <div class="canvas shot">
+    {#if error}
+      <p class="error">{error}</p>
+    {:else if model && current}
+      <Sheet
+        sheet={current}
+        {prefix}
+        symbols={model.symbols}
+        parts={model.parts}
+        issues={model.issues}
+        comments={[]}
+        {selection}
+        onselect={() => {}}
+        onenter={() => {}}
+        plain
+        grid={params.has("grid")}
+        region={shotRegion}
+      />
+    {/if}
+  </div>
+{:else}
 <header>
   <h1>{model?.project ?? "Partstyle"}</h1>
   {#if model}
@@ -280,3 +352,4 @@ function showChange(c: { block: string; kind: string; key: string }) {
     {/if}
   </aside>
 </main>
+{/if}

@@ -38,7 +38,7 @@ export const RULES: RuleDef[] = [
     id: "signal-left-right",
     title: "Signal flows left to right",
     description:
-      "Places sources left of sinks, judged by pin type (output, input) and port direction. It decides only where IC pin sides do not, such as a chain of passives. Off: declaration order decides.",
+      "Places sources left of sinks, judged by pin type (output, input) and port direction. It decides only where IC pin sides do not, such as a chain of passives. A port label on a pin in the middle of a part's top or bottom runs left for an input and right for an output. Off: declaration order decides, and such a label takes the nearer side.",
     group: "Flow",
     enabled: true,
     params: [],
@@ -211,11 +211,12 @@ export const RULES: RuleDef[] = [
     id: "local-power-symbols",
     title: "Local power symbols",
     description:
-      "Draws a rail or ground symbol at each connected pin instead of wiring the rail. Rails always point up, grounds down.",
+      "Draws a rail or ground symbol at each connected pin instead of wiring the rail. Rails point up, grounds down; with Bottom pins point down, a symbol on a pin on a part's bottom edge points down whatever its rail, straight off the pin.",
     group: "Power",
     enabled: true,
     params: [
       { key: "shareAdjacent", label: "Share adjacent pins", type: "boolean", default: true },
+      { key: "bottomDown", label: "Bottom pins point down", type: "boolean", default: true },
     ],
   },
   {
@@ -346,6 +347,15 @@ export const RULES: RuleDef[] = [
           "How long one wire may run, bends included, before its net is drawn with labels. Higher keeps long wires.",
       },
     ],
+  },
+  {
+    id: "port-labels",
+    title: "Ports as labels on their nets",
+    description:
+      "A port is a label like any net label: it sits on a pin of its net, on a short stub, or on a short riser off the net's wire, and a net drawn in pieces carries it on each. Off: each port is placed as a part in the columns and wired to its pins.",
+    group: "Wiring",
+    enabled: true,
+    params: [],
   },
 ];
 

@@ -165,6 +165,8 @@ export interface Marker {
   at: Pt;
   outward: Direction;
   box: Rect;
+  /** Set when no spot was clear: it may overlap what is around it, and wires may cross it. */
+  crowded?: boolean;
 }
 
 export interface Junction {

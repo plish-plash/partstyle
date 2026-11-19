@@ -22,7 +22,7 @@ import {
 } from "../approvals.js";
 import { type BomStatus, buildBom, formatBomCsv, unresolvedLines } from "../bom.js";
 import { compareIssues, formatIssue, issueDelta } from "../diagnostics.js";
-import { type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
+import { type Drawing, type KicadLibraries, prepareDrawing } from "../drawing/prepare.js";
 import { ANNOTATION_FILE } from "../kicad/annotate.js";
 import { exportKicad } from "../kicad/export.js";
 import { buildImport, cktName } from "../kicad/import.js";
@@ -1323,6 +1323,15 @@ export class Workspace {
     }
     const model = await this.drawModel(result);
     return preview ? { ...model, preview } : model;
+  }
+
+  /**
+   * The design laid out as the viewer and the KiCad export draw it, with the layout engine's
+   * input and result per sheet: for diagnosing layouts. Throws if the design does not elaborate.
+   */
+  async drawing(): Promise<{ result: ValidationResult; drawing: Drawing }> {
+    const { result } = await this.load();
+    return { result, drawing: await prepareDrawing(result, await this.libraries(result)) };
   }
 
   private async drawModel(result: ValidationResult): Promise<ViewerModel> {
