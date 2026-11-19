@@ -141,6 +141,20 @@ export function placePower(
           return;
         }
       }
+      // A side pin with no room straight out: a step out, then the way the symbol points.
+      if (!facesWant) {
+        const dy = want === 90 ? -1 : 1;
+        for (let out = 1; out <= 6; out++) {
+          for (let up = 1; up <= 4; up++) {
+            const corner = { x: pin.at.x + step.x * out, y: pin.at.y };
+            const at = { x: corner.x, y: corner.y + dy * up };
+            if (clear(symbolBox(at, want))) {
+              put(at, [pin.at, corner, at]);
+              return;
+            }
+          }
+        }
+      }
     } else {
       // Facing away from its symbol: go out, across, and let the symbol turn back.
       for (let out = 1; out <= 8; out++) {

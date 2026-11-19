@@ -1,7 +1,9 @@
 import { Ctx, isPort, type Placement } from "./context.js";
 import { placedPins, pointKey, transformRect, translate, unionRects } from "./geometry.js";
+import { measure } from "./metrics.js";
 import { classify } from "./passes/classify.js";
 import { normalizeWires, placeText } from "./passes/cleanup.js";
+import { cutNets } from "./passes/cut.js";
 import { placeDecoupling } from "./passes/decoupling.js";
 import { deriveFlow } from "./passes/flow.js";
 import { orderColumns } from "./passes/order.js";
@@ -14,7 +16,7 @@ import {
   type Sheet,
 } from "./passes/place.js";
 import { makeSymbol, placePower } from "./passes/power.js";
-import { type RouteRequest, route } from "./passes/route.js";
+import { type Predict, type RouteRequest, route } from "./passes/route.js";
 import { buildRows, type RowPlan } from "./passes/rows.js";
 import { splitRailWires, wireTriggers } from "./passes/split.js";
 import { type RuleOverrides, Rules, resolveRules } from "./rules.js";
@@ -30,6 +32,20 @@ import type {
   TraceEntry,
   Wire,
 } from "./types.js";
+
+const emptyResult = (name: string): LayoutResult => ({
+  name,
+  parts: [],
+  wires: [],
+  junctions: [],
+  power: [],
+  labels: [],
+  noConnects: [],
+  markers: [],
+  bounds: { x: 0, y: 0, w: 0, h: 0 },
+  trace: {},
+  unrouted: [],
+});
 
 /** Whether `p` lies on the axis-aligned segment a–b, ends included. */
 const onSegment = (p: Pt, a: Pt, b: Pt) =>
@@ -169,19 +185,49 @@ function packGroups(ctx: Ctx, groups: Group[]): Sheet {
 
 /** Lays out one block. The same input and rules always give the same drawing. */
 export function layoutBlock(given: LayoutInput, overrides: RuleOverrides = {}): LayoutResult {
+  return layoutBlockWith(given, overrides, "connect");
+}
+
+/**
+ * `layoutBlock`, choosing how nets that end up as labels are found before the final placement:
+ * judged on a quick first route ("connect", the default), on a full first route ("full"), or not
+ * at all, placing once for wires that may be replaced by labels ("none").
+ */
+export function layoutBlockWith(
+  given: LayoutInput,
+  overrides: RuleOverrides,
+  predict: Predict | "none",
+): LayoutResult {
   // Pieces of a rail meet only through their symbols, so without symbols the rail stays whole.
-  if (!new Rules(resolveRules(overrides)).on("local-power-symbols")) {
-    return layoutSplit(given, overrides, new Set(wireTriggers(given).keys()));
+  const symbols = new Rules(resolveRules(overrides)).on("local-power-symbols");
+  const split = symbols
+    ? splitRailWires(given)
+    : { input: given, wires: new Set(wireTriggers(given).keys()), restore: (r: LayoutResult) => r };
+  const { input, wires } = split;
+  const first = layoutSplit(input, overrides, wires, {
+    ...(predict !== "none" && { predict }),
+  });
+  if (!first.cut) return split.restore(first);
+  // Place again knowing which nets are drawn as labels, so no room is kept for their wires.
+  const cut = cutNets(input, first.cut);
+  const second = cut.restore(layoutSplit(cut.input, overrides, wires, { labelled: cut.labelled }));
+  // Rarely, the tighter placement leaves something no room at all. Then the first placement,
+  // routed in full, is drawn instead if it does better.
+  const hard = (r: LayoutResult) => measure(input, r).metrics.hardFailures;
+  const broken = hard(second);
+  if (broken > 0) {
+    const once = layoutSplit(input, overrides, wires);
+    if (hard(once) < broken) return split.restore(once);
   }
-  const split = splitRailWires(given);
-  return split.restore(layoutSplit(split.input, overrides, split.wires));
+  return split.restore(second);
 }
 
 function layoutSplit(
   input: LayoutInput,
   overrides: RuleOverrides,
   railWires: Set<string>,
-): LayoutResult {
+  opts: { predict?: Predict; labelled?: Set<string> } = {},
+): LayoutResult & { cut?: Map<string, string[][]> } {
   const rules = new Rules(resolveRules(overrides));
   const ctx = new Ctx(input, rules);
   const an = classify(ctx, railWires);
@@ -320,8 +366,28 @@ function layoutSplit(
           : [],
       ),
     ),
+    // A piece of a port carries the port's label already.
+    labelled: new Set([...(opts.labelled ?? [])].filter((n) => !ctx.nets.get(n)?.port)),
   };
-  const routed = route(ctx, req, (n) => an.railWires.has(n));
+  const routed = route(ctx, req, (n) => an.railWires.has(n), opts.predict);
+  if (routed.cut) {
+    // Pieces by pin key, for placing again. Two pins of the net may share a point (a divider's
+    // middle), so each point keeps every pin of the net on it.
+    const cut = new Map(
+      [...routed.cut].map(([net, pieces]) => {
+        const keysAt = new Map<string, string[]>();
+        for (const [k, p] of pins) {
+          if (p.net !== net) continue;
+          keysAt.set(pointKey(p.at), [...(keysAt.get(pointKey(p.at)) ?? []), k]);
+        }
+        const keys = (piece: Pt[]) => [
+          ...new Set(piece.flatMap((at) => keysAt.get(pointKey(at)) ?? [])),
+        ];
+        return [net, pieces.map(keys)];
+      }),
+    );
+    return { ...emptyResult(input.name), cut };
+  }
   // A rail joins up by its symbols' name, not a label's, so a rail falling back gets symbols.
   for (const l of routed.labels) {
     if (ctx.role(l.net) === "signal" || !useSymbols) labels.push(l);

@@ -135,10 +135,21 @@ export const RULES: RuleDef[] = [
     id: "align-hangers",
     title: "Line up hanging parts",
     description:
-      "Matching parts hanging from neighbouring rows sit level with each other, on stems of different lengths, instead of following the pins in a staircase.",
+      "Matching parts hanging from neighbouring rows of one part sit level with each other, on stems of different lengths, instead of following the pins in a staircase. Rows count as neighbours when no more than Row gap apart, and no stem grows longer than Longest stem.",
     group: "Placement",
     enabled: true,
-    params: [],
+    params: [
+      { key: "rowGap", label: "Row gap", type: "number", min: 1, max: 6, step: 1, default: 2 },
+      {
+        key: "maxStem",
+        label: "Longest stem",
+        type: "number",
+        min: 1,
+        max: 20,
+        step: 1,
+        default: 6,
+      },
+    ],
   },
   {
     id: "pack-groups",

@@ -82,7 +82,11 @@ junctions, power symbols and labels. Coordinates are integer grid units with y d
    wires, which is not counted against the layout.
 7. **Route:** rows are drawn directly; a grid router connects whatever is left, falls back to
    labels for tangled nets, and gives every port its label.
-8. **Clean up:** wires are merged, junctions added and text placed.
+8. **Place again:** routing is nearly all the time, so the first route only connects each net
+   once and then judges which nets would become labels. If any would, they are cut into their
+   labelled pieces ([cut.ts](packages/layout/src/passes/cut.ts)) and steps 1 to 7 run again on the
+   cut nets, routing in full. Otherwise that first route simply carries on.
+9. **Clean up:** wires are merged, junctions added and text placed.
 
 To add a rule, add it to `RULES` in [rules.ts](packages/layout/src/rules.ts) and read it in a pass.
 The tester builds its controls from that list. To add a test circuit, add it to

@@ -184,10 +184,13 @@ function solveRowHeights(ctx: Ctx, rows: Row[]) {
 }
 
 /**
- * Lines up matching hangers from neighbouring rows: each gets a stem down to the level of the
- * furthest row, so their parts sit in a line instead of a staircase.
+ * Lines up matching hangers from neighbouring rows of one anchor: each gets a stem down to the
+ * level of the furthest row, so their parts sit in a line instead of a staircase. Rows further
+ * apart than `rowGap` start a new line, and so does a row whose stem would pass `maxStem`.
  */
 function alignHangers(ctx: Ctx, rows: Row[]) {
+  const rowGap = ctx.rules.num("align-hangers", "rowGap");
+  const maxStem = ctx.rules.num("align-hangers", "maxStem");
   const groups = new Map<string, { h: Hanger; y: number }[]>();
   for (const r of rows) {
     if (r.target || r.items.length !== 1) continue;
@@ -195,21 +198,42 @@ function alignHangers(ctx: Ctx, rows: Row[]) {
     if (item?.t !== "hang" || (item.up && item.down)) continue;
     const h = item.up ?? item.down;
     if (!h || h.parts.length === 0) continue;
-    const key = [r.side, h.dir, ...h.parts.map((p) => ctx.part(p).kind)].join(":");
+    const owner = rootAnchor(r);
+    const key = [owner, r.side, h.dir, ...h.parts.map((p) => ctx.part(p).kind)].join(":");
     const list = groups.get(key) ?? [];
     list.push({ h, y: r.y });
     groups.set(key, list);
   }
   for (const list of groups.values()) {
-    if (list.length < 2) continue;
-    const ys = list.map((e) => e.y);
-    const level = list[0]?.h.dir === "up" ? Math.min(...ys) : Math.max(...ys);
+    const down = list[0]?.h.dir !== "up";
+    // Furthest row first, so each line hangs level with the row it ends at.
+    list.sort((a, b) => (down ? b.y - a.y : a.y - b.y));
+    let line: { h: Hanger; y: number }[] = [];
+    const finish = () => {
+      if (line.length >= 2) {
+        const level = line[0]?.y as number;
+        for (const e of line) if (e.y !== level) e.h.stem = Math.abs(e.y - level);
+      }
+      line = [];
+    };
     for (const e of list) {
-      const stem = Math.abs(e.y - level);
-      if (stem > 0) e.h.stem = stem;
+      const last = line.at(-1);
+      const first = line[0];
+      if (
+        last &&
+        (Math.abs(last.y - e.y) > rowGap || Math.abs((first?.y ?? e.y) - e.y) > maxStem)
+      ) {
+        finish();
+      }
+      line.push(e);
     }
+    finish();
   }
 }
+
+/** The anchor a row leaves from, following branches back to their row. */
+const rootAnchor = (r: Row): string | undefined =>
+  r.anchor ?? (r.branchOf && rootAnchor(r.branchOf));
 
 /**
  * Gives each step between a row and a pin its own vertical track. Steps going the same way nest:

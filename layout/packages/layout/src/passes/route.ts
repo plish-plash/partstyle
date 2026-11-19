@@ -88,6 +88,8 @@ export interface RouteRequest {
    * ("bidir" when the side does not matter).
    */
   ports: Map<string, "input" | "output" | "bidir">;
+  /** Pieces of nets known in advance to be drawn as labels: each gets a label of its own. */
+  labelled: Set<string>;
 }
 
 export interface RouteResult {
@@ -95,6 +97,8 @@ export interface RouteResult {
   labels: NetLabel[];
   unrouted: { net: string; at: Pt }[];
   notes: { net: string; note: string }[];
+  /** With `predict`: the nets that would be drawn as labels, by piece, as pin positions. */
+  cut?: Map<string, Pt[][]>;
 }
 
 /** A maze router on the pin grid that keeps every net's wires distinct. */
@@ -668,7 +672,20 @@ export function crossingsByNet(wires: Wire[], exempt: (net: string) => boolean) 
   return counts;
 }
 
-export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => boolean) {
+/**
+ * With `predict`, the router stops to say which nets would be drawn as labels, cut into the pieces
+ * each would be labelled in (by pin position), so that layout can place again knowing that.
+ * "connect" judges after the first connection of every net, without ripping up; "full" after the
+ * whole route. Either way, when no net would become labels the route simply carries on.
+ */
+export type Predict = "connect" | "full";
+
+export function route(
+  ctx: Ctx,
+  req: RouteRequest,
+  isRailWire: (net: string) => boolean,
+  predict?: Predict,
+): RouteResult {
   const costs = ctx.rules.on("route-costs");
   const bend = costs ? ctx.rules.num("route-costs", "bend") : 1;
   const cross = costs ? ctx.rules.num("route-costs", "crossing") : 0;
@@ -698,6 +715,87 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
     if (r.connect(n.net, n.terminals).length > 0) strandedPins.push(n.terminals[0] as Pt);
   }
 
+  const fallback = ctx.rules.on("label-fallback");
+  /**
+   * Picks the nets to draw as labels, one at a time, most tangled first: any that could not be
+   * routed, then those crossing too many others, wandering, or taking one very long wire.
+   */
+  const chooseLabelNets = (convert: (net: string, why: string) => void) => {
+    const limit = ctx.rules.num("label-fallback", "crossingLimit");
+    const detourLimit = ctx.rules.num("label-fallback", "detourLimit");
+    const lengthLimit = ctx.rules.num("label-fallback", "lengthLimit");
+    /** How much further a net's wires run than the box around its pins calls for. */
+    const detour = (n: RouteRequest["nets"][number]) => {
+      const length = r.of(n.net).reduce((s, w) => s + manhattan(w.a, w.b), 0);
+      return length - span(n.terminals) * Math.max(1, n.terminals.length / 2);
+    };
+    const done = new Set<string>();
+    for (let guard = 0; guard < req.nets.length + 2; guard++) {
+      const counts = crossingsByNet(r.all(), isRail);
+      const candidates = [...counts.entries()]
+        .filter(([net, c]) => {
+          return c >= limit && !done.has(net) && ctx.role(net) === "signal" && !isRailWire(net);
+        })
+        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      const open = (n: RouteRequest["nets"][number]) =>
+        !done.has(n.net) && ctx.role(n.net) === "signal" && !isRailWire(n.net);
+      const wandering = req.nets.find((n) => open(n) && detour(n) > detourLimit);
+      const longest = (n: RouteRequest["nets"][number]) => longestWire(r.of(n.net), n.terminals);
+      const long = req.nets.find((n) => open(n) && longest(n) > lengthLimit);
+      const next =
+        [...failed.keys()].find((net) => !done.has(net)) ??
+        candidates[0]?.[0] ??
+        wandering?.net ??
+        long?.net;
+      if (next === undefined) break;
+      const c = counts.get(next) ?? 0;
+      const why = failed.has(next)
+        ? "no route found"
+        : c >= limit
+          ? `would cross ${c} wires`
+          : next === wandering?.net
+            ? "would take a long way round"
+            : `would take a wire ${longest(long as RouteRequest["nets"][number])} units long`;
+      done.add(next);
+      convert(next, why);
+    }
+  };
+  /**
+   * The pieces a net drawn as labels is cut into for placing again, by pin position. A piece with
+   * no anchor pin, such as a divider or a pull-up, goes with the nearest piece that has one: cut
+   * loose, it would have nothing to be placed beside.
+   */
+  const piecesOf = (net: string): Pt[][] => {
+    const n = req.nets.find((x) => x.net === net);
+    if (!n) return [];
+    const pins = req.pins.filter(
+      (p) => p.net === net && n.terminals.some((t) => t.x === p.at.x && t.y === p.at.y),
+    );
+    const pieces = splitPieces(pins, req.anchorPins);
+    const anchored = (piece: PlacedPin[]) => piece.some((p) => req.anchorPins.has(pointKey(p.at)));
+    const kept = pieces.filter(anchored);
+    if (kept.length === 0) return pieces.map((piece) => piece.map((p) => p.at));
+    for (const loose of pieces.filter((piece) => !anchored(piece))) {
+      const gap = (piece: PlacedPin[]) =>
+        Math.min(...piece.flatMap((p) => loose.map((q) => manhattan(p.at, q.at))));
+      const nearest = kept.reduce((a, b) => (gap(b) < gap(a) ? b : a));
+      nearest.push(...loose);
+    }
+    return kept.map((piece) => piece.map((p) => p.at));
+  };
+
+  if (predict === "connect" && fallback) {
+    const cut = new Map<string, Pt[][]>();
+    chooseLabelNets((net) => {
+      if (!req.nets.some((x) => x.net === net)) return;
+      cut.set(net, piecesOf(net));
+      failed.delete(net);
+      r.clearNet(net);
+    });
+    // Nothing would become labels, and nothing was touched: the route carries on.
+    if (cut.size > 0) return { wires: [], labels: [], unrouted: [], notes: [], cut };
+  }
+
   // Rip up the most-crossed nets and try them again with everything else in place.
   for (let pass = 0; pass < passes; pass++) {
     const counts = crossingsByNet(r.all(), isRail);
@@ -721,20 +819,10 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
   const labels: NetLabel[] = [];
   const notes: RouteResult["notes"] = [];
 
-  if (ctx.rules.on("label-fallback")) {
-    const limit = ctx.rules.num("label-fallback", "crossingLimit");
-    const detourLimit = ctx.rules.num("label-fallback", "detourLimit");
-    const lengthLimit = ctx.rules.num("label-fallback", "lengthLimit");
-    /** How much further a net's wires run than the box around its pins calls for. */
-    const detour = (n: RouteRequest["nets"][number]) => {
-      const length = r.of(n.net).reduce((s, w) => s + manhattan(w.a, w.b), 0);
-      return length - span(n.terminals) * Math.max(1, n.terminals.length / 2);
-    };
-    const done = new Set<string>();
+  if (fallback) {
     const convert = (net: string, why: string) => {
       const n = req.nets.find((x) => x.net === net);
       if (!n) return;
-      done.add(net);
       failed.delete(net);
       r.clearNet(net);
       const pins = req.pins.filter(
@@ -783,39 +871,22 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
       }
       notes.push({ net, note: why });
     };
-    for (let guard = 0; guard < req.nets.length + 2; guard++) {
-      const counts = crossingsByNet(r.all(), isRail);
-      const candidates = [...counts.entries()]
-        .filter(([net, c]) => {
-          return c >= limit && !done.has(net) && ctx.role(net) === "signal" && !isRailWire(net);
-        })
-        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
-      const open = (n: RouteRequest["nets"][number]) =>
-        !done.has(n.net) && ctx.role(n.net) === "signal" && !isRailWire(n.net);
-      const wandering = req.nets.find((n) => open(n) && detour(n) > detourLimit);
-      const longest = (n: RouteRequest["nets"][number]) => longestWire(r.of(n.net), n.terminals);
-      const long = req.nets.find((n) => open(n) && longest(n) > lengthLimit);
-      const next =
-        [...failed.keys()].find((net) => !done.has(net)) ??
-        candidates[0]?.[0] ??
-        wandering?.net ??
-        long?.net;
-      if (next === undefined) break;
-      const c = counts.get(next) ?? 0;
-      const why = failed.has(next)
-        ? "no route found"
-        : c >= limit
-          ? `would cross ${c} wires`
-          : next === wandering?.net
-            ? "would take a long way round"
-            : `would take a wire ${longest(long as RouteRequest["nets"][number])} units long`;
-      convert(next, why);
+    // Judged after the whole route instead: the pieces are known before any is drawn.
+    if (predict === "full") {
+      const cut = new Map<string, Pt[][]>();
+      chooseLabelNets((net) => {
+        if (!req.nets.some((x) => x.net === net)) return;
+        cut.set(net, piecesOf(net));
+        r.clearNet(net);
+      });
+      if (cut.size > 0) return { wires: [], labels: [], unrouted: [], notes: [], cut };
     }
+    chooseLabelNets(convert);
   }
 
-  // Every port shows its label: on a short riser off the net's wire near its first pin, else
-  // on a stub from that pin. A net drawn in pieces already has one on each.
-  for (const net of [...req.ports.keys()].sort()) {
+  // Every port, and every piece of a net known to be drawn as labels, shows its label: on a
+  // short riser off its wire near its first pin, else on a stub from that pin.
+  for (const net of [...new Set([...req.ports.keys(), ...req.labelled])].sort()) {
     if (labels.some((l) => l.net === net)) continue;
     const pins = req.pins.filter((p) => p.net === net);
     const first = pins[0];
@@ -840,11 +911,27 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
     }
   }
 
-  // A rail pin that cannot reach its symbol still connects by name.
+  // A rail pin that cannot reach its symbol still connects by name: a symbol of its own on a
+  // short stub where one fits (layout turns a rail's label into a symbol), else a label's spot.
   for (const at of strandedPins) {
     const pin = req.pins.find((p) => p.at.x === at.x && p.at.y === at.y && p.net !== undefined);
     if (!pin) continue;
     const net = pin.net as string;
+    const down = ctx.role(net) === "ground" || ctx.railPointsDown(net);
+    const spot = symbolSpot(net, pin, down, req, labels, r);
+    if (spot) {
+      r.commitFixed(spot.stub);
+      r.block(spot.box);
+      labels.push({
+        net,
+        text: net,
+        kind: "local",
+        at: spot.at,
+        outward: down ? 270 : 90,
+        box: spot.box,
+      });
+      continue;
+    }
     const label = placeLabel(net, [pin], req, labels, r);
     if (!label) continue;
     labels.push(label.label);
@@ -857,18 +944,12 @@ export function route(ctx: Ctx, req: RouteRequest, isRailWire: (net: string) => 
 
   const unrouted: RouteResult["unrouted"] = [];
   for (const [net, pts] of failed) for (const at of pts) unrouted.push({ net, at });
-  return { wires: r.all(), labels, unrouted, notes } satisfies RouteResult;
+  return { wires: r.all(), labels, unrouted, notes };
 }
 
 /** How far apart, in grid units, a net drawn as labels still wires two pins together. */
 const JOIN_REACH = 10;
 
-/**
- * Splits a net for labelling. Each anchor pin keeps a piece of its own, except that neighbouring
- * pins (one step apart) share one, and so do pins facing each other across a short gap. A two-terminal part's pin joins the nearest pin of the net
- * within `JOIN_REACH`, so parts that sit together, such as a divider, are wired to each other; a
- * part further from everything gets its own label instead of a long wire back.
- */
 /** Two pins pointing at each other along one grid line, near enough for a straight wire. */
 function facing(p: PlacedPin, q: PlacedPin): boolean {
   if (manhattan(p.at, q.at) > JOIN_REACH) return false;
@@ -878,6 +959,13 @@ function facing(p: PlacedPin, q: PlacedPin): boolean {
   return false;
 }
 
+/**
+ * Splits a net for labelling. Each anchor pin keeps a piece of its own, except that neighbouring
+ * pins (one step apart) share one, and so do pins facing each other across a short gap. A
+ * two-terminal part's pin joins the nearest pin of the net within `JOIN_REACH`, so parts that sit
+ * together, such as a divider, are wired to each other; a part further from everything gets its
+ * own label instead of a long wire back.
+ */
 function splitPieces(pins: PlacedPin[], anchored: Set<string>): PlacedPin[][] {
   const isAnchorPin = (p: PlacedPin) => anchored.has(pointKey(p.at));
   const root = pins.map((_, i) => i);
@@ -999,6 +1087,44 @@ function cornerLabel(
       r.block(box);
       return { net, text: net, kind, at: e.at, outward: e.way, box };
     }
+  }
+  return undefined;
+}
+
+/**
+ * A clear spot for a rail symbol of a pin's own: straight out from the pin, or a step out and then
+ * the way the symbol points, with a stub the router can draw.
+ */
+function symbolSpot(
+  net: string,
+  pin: PlacedPin,
+  down: boolean,
+  req: RouteRequest,
+  labels: NetLabel[],
+  r: Router,
+): { at: Pt; box: Rect; stub: Wire[] } | undefined {
+  const boxAt = (at: Pt): Rect =>
+    down ? { x: at.x - 1, y: at.y, w: 2, h: 2 } : { x: at.x - 1, y: at.y - 2, w: 2, h: 2 };
+  const step = stepOf(pin.outward);
+  const dy = down ? 1 : -1;
+  const wires = r.all();
+  const paths: Pt[][] = [];
+  for (let out = 1; out <= 6; out++) {
+    const corner = { x: pin.at.x + step.x * out, y: pin.at.y + step.y * out };
+    paths.push([pin.at, corner]);
+    if (step.y === 0) {
+      for (let up = 1; up <= 4; up++)
+        paths.push([pin.at, corner, { x: corner.x, y: corner.y + dy * up }]);
+    }
+  }
+  for (const path of paths) {
+    const at = path.at(-1) as Pt;
+    const box = boxAt(at);
+    const stub: Wire[] = [];
+    for (let i = 0; i + 1 < path.length; i++)
+      stub.push({ net, a: path[i] as Pt, b: path[i + 1] as Pt });
+    if (labelHits(box, req, labels, wires) || !r.canFix(stub)) continue;
+    return { at, box, stub };
   }
   return undefined;
 }

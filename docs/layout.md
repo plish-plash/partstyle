@@ -25,7 +25,14 @@ anchor's pin at the end.
 
 Rows are spaced to fit what hangs from them, and hangers step along so that each sits past the
 rows it spans, which is what keeps fan-outs from crossing. Matching hangers on neighbouring rows
-line up on stems of different lengths. A grid router connects whatever the rows do not.
+of one part line up on stems of different lengths, up to 6 units long. A grid router connects
+whatever the rows do not.
+
+Nets that will be drawn as labels (see below) are found before the final placement: after a
+quick first route, any net that would become labels is cut into the pieces it would be labelled
+in, and the sheet is placed again without keeping room for those wires. A piece with no IC pin of
+its own, such as a pull-up, goes with the nearest piece that has one, so it hangs beside that pin.
+If the tighter placement breaks something, the first placement is drawn instead.
 
 - **Two-terminal parts** (R, C, L, F, FB, D, LED, Y refdes with two pins) are turned: a shunt
   hangs below its wire to ground and stands above it to a rail; a series part lies in the signal

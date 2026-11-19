@@ -180,35 +180,45 @@ export function splitRailWires(input: LayoutInput): {
     });
   }
 
-  const restore = (r: LayoutResult): LayoutResult => {
-    const trace: LayoutResult["trace"] = {};
-    for (const [id, list] of Object.entries(r.trace)) {
-      trace[id] = list.map((t) => ({ ...t, note: baseNet(t.note) }));
-    }
-    const original = new Map(input.parts.map((p) => [p.id, p]));
-    return {
-      ...r,
-      parts: r.parts.map((p) => ({
-        ...p,
-        pins: p.pins.map((pin) => {
-          const net = original.get(p.id)?.pins.find((q) => q.id === pin.id)?.net;
-          const { net: _net, ...rest } = pin;
-          return net === undefined ? rest : { ...rest, net };
-        }),
-      })),
-      wires: r.wires.map((w) => ({ ...w, net: baseNet(w.net) })),
-      junctions: r.junctions.map((j) => ({ ...j, net: baseNet(j.net) })),
-      power: r.power.map((s) => {
-        const net = baseNet(s.net);
-        return { ...s, net, name: net, showName: s.role !== "ground" || net !== "GND" };
-      }),
-      labels: r.labels.map((l) => ({ ...l, net: baseNet(l.net), text: baseNet(l.text) })),
-      markers: r.markers.map((m) => ({ ...m, net: baseNet(m.net) })),
-      unrouted: r.unrouted.map((u) => ({ ...u, net: baseNet(u.net) })),
-      trace,
-    };
-  };
+  const restore = (r: LayoutResult): LayoutResult => renameNets(r, input, baseNet);
   return { input: { ...input, parts, nets }, wires, restore };
+}
+
+/**
+ * Names a result's nets back, after layout ran on renamed ones: pins take their nets from the
+ * original input, everything else goes through `base`.
+ */
+export function renameNets(
+  r: LayoutResult,
+  original: LayoutInput,
+  base: (net: string) => string,
+): LayoutResult {
+  const trace: LayoutResult["trace"] = {};
+  for (const [id, list] of Object.entries(r.trace)) {
+    trace[id] = list.map((t) => ({ ...t, note: base(t.note) }));
+  }
+  const parts = new Map(original.parts.map((p) => [p.id, p]));
+  return {
+    ...r,
+    parts: r.parts.map((p) => ({
+      ...p,
+      pins: p.pins.map((pin) => {
+        const net = parts.get(p.id)?.pins.find((q) => q.id === pin.id)?.net;
+        const { net: _net, ...rest } = pin;
+        return net === undefined ? rest : { ...rest, net };
+      }),
+    })),
+    wires: r.wires.map((w) => ({ ...w, net: base(w.net) })),
+    junctions: r.junctions.map((j) => ({ ...j, net: base(j.net) })),
+    power: r.power.map((s) => {
+      const net = base(s.net);
+      return { ...s, net, name: net, showName: s.role !== "ground" || net !== "GND" };
+    }),
+    labels: r.labels.map((l) => ({ ...l, net: base(l.net), text: base(l.text) })),
+    markers: r.markers.map((m) => ({ ...m, net: base(m.net) })),
+    unrouted: r.unrouted.map((u) => ({ ...u, net: base(u.net) })),
+    trace,
+  };
 }
 
 /** Whether pins of one part sit together: one side, each within two of the next. */
